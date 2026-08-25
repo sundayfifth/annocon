@@ -21,16 +21,6 @@ export interface SelectionChangedHandler {
   handler: (selection: ReadonlyArray<SelectionSummary>) => void
 }
 
-export interface SpikeReportHandler {
-  name: 'SPIKE_REPORT'
-  handler: (report: string) => void
-}
-
-export interface RunSpikesHandler {
-  name: 'RUN_SPIKES'
-  handler: () => void
-}
-
 export interface ResyncPageHandler {
   name: 'RESYNC_PAGE'
   handler: () => void

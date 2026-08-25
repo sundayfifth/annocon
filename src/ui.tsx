@@ -15,10 +15,8 @@ import { useEffect, useState } from 'preact/hooks'
 import type {
   CloseHandler,
   ResyncPageHandler,
-  RunSpikesHandler,
   SelectionChangedHandler,
-  SelectionSummary,
-  SpikeReportHandler
+  SelectionSummary
 } from './messages.js'
 
 interface PluginProps {
@@ -51,18 +49,13 @@ function SelectionReadout({ selection }: { selection: ReadonlyArray<SelectionSum
 function Plugin({ selection: initialSelection }: PluginProps) {
   const [selection, setSelection] = useState<ReadonlyArray<SelectionSummary>>(initialSelection)
   const [tab, setTab] = useState<string>('Annotate')
-  const [spikeReport, setSpikeReport] = useState<string>('')
 
   useEffect(() => {
     const offSelection = on<SelectionChangedHandler>('SELECTION_CHANGED', (next) => {
       setSelection(next)
     })
-    const offReport = on<SpikeReportHandler>('SPIKE_REPORT', (report) => {
-      setSpikeReport((previous) => (previous === '' ? report : `${previous}\n\n${report}`))
-    })
     return () => {
       offSelection()
-      offReport()
     }
   }, [])
 
@@ -111,44 +104,6 @@ function Plugin({ selection: initialSelection }: PluginProps) {
                 >
                   Re-sync this page
                 </Button>
-                <VerticalSpace space="medium" />
-              </Container>
-            )
-          },
-          {
-            value: 'Spikes',
-            children: (
-              <Container space="medium">
-                <VerticalSpace space="medium" />
-                <Text>
-                  <Muted>
-                    Phase 0 probes for the four undocumented behaviours. Select a frame,
-                    run them, then drag it around for ten seconds.
-                  </Muted>
-                </Text>
-                <VerticalSpace space="small" />
-                <Button
-                  fullWidth
-                  onClick={() => {
-                    setSpikeReport('')
-                    emit<RunSpikesHandler>('RUN_SPIKES')
-                  }}
-                >
-                  Run spikes
-                </Button>
-                <VerticalSpace space="small" />
-                {spikeReport === '' ? null : (
-                  <pre
-                    style={{
-                      whiteSpace: 'pre-wrap',
-                      fontSize: '11px',
-                      lineHeight: '1.4',
-                      margin: 0
-                    }}
-                  >
-                    {spikeReport}
-                  </pre>
-                )}
                 <VerticalSpace space="medium" />
               </Container>
             )

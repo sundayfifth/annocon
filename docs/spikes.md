@@ -1,8 +1,8 @@
 # Phase 0 spikes
 
 Five things the Figma docs do not settle, which the architecture depends on.
-Run the probes from the plugin's **Spikes** tab against a scratch file and
-record the answer here. Delete `src/spikes.ts` once all five are closed.
+All five are closed; the probes that answered them (`src/spikes.ts` and the
+plugin's Spikes tab) have been removed.
 
 | # | Question | Status |
 | --- | --- | --- |

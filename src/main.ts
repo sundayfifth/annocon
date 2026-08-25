@@ -3,12 +3,9 @@ import { emit, on, showUI } from '@create-figma-plugin/utilities'
 import type {
   CloseHandler,
   ResyncPageHandler,
-  RunSpikesHandler,
   SelectionChangedHandler,
-  SelectionSummary,
-  SpikeReportHandler
+  SelectionSummary
 } from './messages.js'
-import { runSpikes, startNodeChangeProbe } from './spikes.js'
 
 function summariseSelection(): Array<SelectionSummary> {
   return figma.currentPage.selection.map((node) => ({
@@ -22,19 +19,6 @@ function summariseSelection(): Array<SelectionSummary> {
 }
 
 export default function main(): void {
-  on<RunSpikesHandler>('RUN_SPIKES', () => {
-    startNodeChangeProbe((text) => {
-      emit<SpikeReportHandler>('SPIKE_REPORT', text)
-    })
-    runSpikes()
-      .then((report) => {
-        emit<SpikeReportHandler>('SPIKE_REPORT', report)
-      })
-      .catch((error: unknown) => {
-        emit<SpikeReportHandler>('SPIKE_REPORT', `Spike run threw: ${String(error)}`)
-      })
-  })
-
   on<ResyncPageHandler>('RESYNC_PAGE', () => {
     figma.notify('Re-sync lands in phase 3 — nothing to sync yet.')
   })
