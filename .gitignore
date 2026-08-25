@@ -1,0 +1,11 @@
+node_modules/
+build/
+manifest.json
+*.log
+npm-debug.log*
+.DS_Store
+.vscode/
+.idea/
+coverage/
+*.tsbuildinfo
+src/**/*.css.d.ts

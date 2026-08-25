@@ -1,0 +1,11 @@
+node_modules/
+build/
+package-lock.json
+coverage/
+*.log
+.DS_Store
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.fig

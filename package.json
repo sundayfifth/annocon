@@ -1,0 +1,80 @@
+{
+  "name": "annotate-connect",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Figma Design plugin: canvas-visible annotations and FigJam-style connectors that stay attached.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "build-figma-plugin --typecheck --minify",
+    "watch": "build-figma-plugin --typecheck --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@create-figma-plugin/ui": "^4.0.3",
+    "@create-figma-plugin/utilities": "^4.0.3",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@create-figma-plugin/build": "^4.0.3",
+    "@figma/eslint-plugin-figma-plugins": "^1.0.0",
+    "@figma/plugin-typings": "^1.135.0",
+    "eslint": "^10.9.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^4.1.11"
+  },
+  "figma-plugin": {
+    "id": "annotate-connect-dev",
+    "name": "Annotate & Connect",
+    "editorType": [
+      "figma"
+    ],
+    "documentAccess": "dynamic-page",
+    "networkAccess": {
+      "allowedDomains": [
+        "none"
+      ]
+    },
+    "main": "src/main.ts",
+    "ui": "src/ui.tsx",
+    "menu": [
+      {
+        "name": "Annotate & Connect",
+        "main": "src/main.ts",
+        "ui": "src/ui.tsx"
+      },
+      "-",
+      {
+        "name": "Re-sync this page",
+        "main": {
+          "src": "src/main.ts",
+          "handler": "resyncPage"
+        }
+      }
+    ],
+    "relaunchButtons": {
+      "annotate": {
+        "name": "Edit annotation",
+        "main": {
+          "src": "src/main.ts",
+          "handler": "default"
+        },
+        "ui": "src/ui.tsx"
+      },
+      "resync": {
+        "name": "Re-sync connectors",
+        "main": {
+          "src": "src/main.ts",
+          "handler": "resyncPage"
+        },
+        "multipleSelection": true
+      }
+    }
+  }
+}

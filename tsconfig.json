@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "lib": ["DOM", "ES2020"],
+    "target": "ES2017",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "typeRoots": ["node_modules/@figma", "node_modules/@types"]
+  },
+  "include": ["src/**/*", "test/**/*", "vitest.config.ts"]
+}
