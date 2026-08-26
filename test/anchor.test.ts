@@ -6,6 +6,7 @@ import {
   anchorNodeId,
   centerOf,
   magnetPoint,
+  outwardNormal,
   ratioPoint,
   resolveAnchor,
   resolveAnchorPair,
@@ -108,6 +109,26 @@ describe('resolveAnchorPair', () => {
     const pair = resolveAnchorPair(auto('l'), left, free, null)
     expect(pair.start).toEqual({ x: 0, y: 50 })
     expect(pair.end).toEqual({ x: -300, y: 50 })
+  })
+
+  it('reports which side each endpoint resolved to, null for a free anchor', () => {
+    const pair = resolveAnchorPair(auto('l'), left, auto('r'), right)
+    expect(pair.startSide).toBe('RIGHT')
+    expect(pair.endSide).toBe('LEFT')
+
+    const free: Anchor = { kind: 'free', point: { x: -300, y: 50 } }
+    const withFree = resolveAnchorPair(auto('l'), left, free, null)
+    expect(withFree.endSide).toBeNull()
+  })
+})
+
+describe('outwardNormal', () => {
+  it('points away from the box on each side', () => {
+    expect(outwardNormal('TOP')).toEqual({ x: 0, y: -1 })
+    expect(outwardNormal('BOTTOM')).toEqual({ x: 0, y: 1 })
+    expect(outwardNormal('LEFT')).toEqual({ x: -1, y: 0 })
+    expect(outwardNormal('RIGHT')).toEqual({ x: 1, y: 0 })
+    expect(outwardNormal('CENTER')).toEqual({ x: 0, y: 0 })
   })
 })
 

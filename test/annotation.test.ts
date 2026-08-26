@@ -6,9 +6,11 @@ import {
   type AnnotationRecord,
   DEFAULT_CARD_OFFSET,
   annotationLayout,
+  annotationLayoutOutsideFrame,
   createAnnotationRecord,
-  numberInReadingOrder,
+  elbowPoints,
   parseAnnotationRecord,
+  resolveCardStacking,
   resolveSide,
   serialiseAnnotationRecord
 } from '../src/core/annotation.js'
@@ -40,12 +42,26 @@ describe('parseAnnotationRecord', () => {
       v: ANNOTATION_VERSION,
       text: 'hi',
       side: 'AUTO',
-      cardOffset: DEFAULT_CARD_OFFSET
+      cardOffset: DEFAULT_CARD_OFFSET,
+      categoryId: null
     })
+  })
+
+  it('reads a categoryId when present, else defaults to no category', () => {
+    expect(parseAnnotationRecord('{"text":"hi","categoryId":"cat-1"}')?.categoryId).toBe('cat-1')
+    expect(parseAnnotationRecord('{"text":"hi"}')?.categoryId).toBeNull()
+    expect(parseAnnotationRecord('{"text":"hi","categoryId":5}')?.categoryId).toBeNull()
   })
 
   it('rejects non-finite offsets rather than rendering at NaN', () => {
     const parsed = parseAnnotationRecord('{"text":"hi","cardOffset":{"x":null,"y":0}}')
+    expect(parsed?.cardOffset).toEqual(DEFAULT_CARD_OFFSET)
+  })
+
+  it('resets an implausibly large offset instead of trusting a corrupted record', () => {
+    // e.g. a card offset captured while the card was still parented inside
+    // another frame — a relative coordinate read as if it were absolute.
+    const parsed = parseAnnotationRecord('{"text":"hi","cardOffset":{"x":48213,"y":-9110}}')
     expect(parsed?.cardOffset).toEqual(DEFAULT_CARD_OFFSET)
   })
 })
@@ -104,58 +120,153 @@ describe('annotationLayout', () => {
   })
 })
 
-describe('numberInReadingOrder', () => {
-  const at = (id: string, x: number, y: number) => ({ id, point: { x, y } })
+describe('annotationLayoutOutsideFrame', () => {
+  const frame: Rect = { x: 0, y: 0, width: 400, height: 300 }
 
-  it('numbers top to bottom, left to right', () => {
-    const numbers = numberInReadingOrder([
-      at('c', 10, 500),
-      at('b', 300, 10),
-      at('a', 10, 10)
-    ])
-    expect([...numbers]).toEqual([
-      ['a', 1],
-      ['b', 2],
-      ['c', 3]
-    ])
-  })
-
-  it('treats near-equal heights as one row', () => {
-    const numbers = numberInReadingOrder([at('right', 900, 18), at('left', 10, 0)], 24)
-    expect(numbers.get('left')).toBe(1)
-    expect(numbers.get('right')).toBe(2)
-  })
-
-  it('starts a new row once the tolerance is exceeded', () => {
-    const numbers = numberInReadingOrder([at('below', 10, 100), at('above', 900, 0)], 24)
-    expect(numbers.get('above')).toBe(1)
-    expect(numbers.get('below')).toBe(2)
-  })
-
-  it('does not let a drifting band swallow a whole column', () => {
-    // Each badge is 20px below the previous: within tolerance pairwise, so
-    // banding from the *previous badge* would collapse all four into one row
-    // and number them purely right-to-left (d, c, b, a). Banding from the
-    // row's top instead breaks them into two rows of two.
-    const numbers = numberInReadingOrder(
-      [at('a', 500, 0), at('b', 400, 20), at('c', 300, 40), at('d', 200, 60)],
-      24
-    )
-    expect([...numbers]).toEqual([
-      ['b', 1],
-      ['a', 2],
-      ['d', 3],
-      ['c', 4]
+  it('routes to the right when the target has equal or more room that way', () => {
+    const layout = annotationLayoutOutsideFrame(target, frame, record(), metrics)
+    // Target's right edge is x=300, mid-height y=150. Badge sits gap(10) +
+    // radius(10) further out.
+    expect(layout.badgeCenter).toEqual({ x: 320, y: 150 })
+    expect(layout.cardTopLeft).toEqual({ x: 420, y: 140 })
+    expect(layout.leader).toEqual([
+      { x: 300, y: 150 },
+      { x: 420, y: 150 }
     ])
   })
 
-  it('is deterministic for badges at the identical point', () => {
-    const first = numberInReadingOrder([at('z', 0, 0), at('y', 0, 0)])
-    const second = numberInReadingOrder([at('y', 0, 0), at('z', 0, 0)])
-    expect([...first]).toEqual([...second])
+  it('routes to the left when the target sits closer to the right edge of the frame', () => {
+    const nearRightEdge: Rect = { x: 350, y: 100, width: 200, height: 100 }
+    const layout = annotationLayoutOutsideFrame(nearRightEdge, frame, record(), metrics)
+    expect(layout.badgeCenter).toEqual({ x: 330, y: 150 })
+    expect(layout.cardTopLeft).toEqual({ x: -240, y: 140 })
+    expect(layout.leader).toEqual([
+      { x: 350, y: 150 },
+      { x: -240 + metrics.cardWidth, y: 150 }
+    ])
   })
 
-  it('returns an empty map for no badges', () => {
-    expect(numberInReadingOrder([]).size).toBe(0)
+  it('keeps the card outside the frame regardless of the stored side', () => {
+    // Unlike annotationLayout, a fixed `side` on the record must not pull the
+    // card back next to the target — the frame edge always wins.
+    const layout = annotationLayoutOutsideFrame(target, frame, record({ side: 'TOP' }), metrics)
+    expect(layout.cardTopLeft.x).toBe(420)
+  })
+
+  it('ignores cardOffset.x but still applies cardOffset.y as a vertical nudge', () => {
+    const nudged = record({ cardOffset: { x: 999, y: 30 } })
+    const layout = annotationLayoutOutsideFrame(target, frame, nudged, metrics)
+    expect(layout.cardTopLeft).toEqual({ x: 420, y: 180 })
+  })
+
+  it('bends the leader once the card is nudged off the target edge height', () => {
+    const nudged = record({ cardOffset: { x: 22, y: -60 } })
+    const layout = annotationLayoutOutsideFrame(target, frame, nudged, metrics)
+    // cardTopLeft.y = 150 - 60 = 90; the leader targets 10px into the card's
+    // top edge (CARD_LEADER_INSET), so y=100 — no longer level with the
+    // target edge at y=150, so the line has to bend.
+    expect(layout.leader).toEqual([
+      { x: 300, y: 150 },
+      { x: 420, y: 150 },
+      { x: 420, y: 100 }
+    ])
   })
 })
+
+describe('elbowPoints', () => {
+  it('returns a straight two-point line when the points already share an axis', () => {
+    expect(elbowPoints({ x: 0, y: 0 }, { x: 100, y: 0 })).toEqual([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 }
+    ])
+    expect(elbowPoints({ x: 0, y: 0 }, { x: 0, y: 100 })).toEqual([
+      { x: 0, y: 0 },
+      { x: 0, y: 100 }
+    ])
+  })
+
+  it('bends once — horizontal then vertical — when the points share neither axis', () => {
+    expect(elbowPoints({ x: 0, y: 0 }, { x: 100, y: 50 })).toEqual([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 50 }
+    ])
+  })
+
+  it('returns null when the points coincide', () => {
+    expect(elbowPoints({ x: 5, y: 5 }, { x: 5, y: 5 })).toBeNull()
+  })
+})
+
+describe('resolveCardStacking', () => {
+  it('leaves cards alone when none overlap', () => {
+    const positions = resolveCardStacking(
+      [
+        { id: 'a', top: 0, height: 40 },
+        { id: 'b', top: 100, height: 40 }
+      ],
+      16
+    )
+    expect(positions.get('a')).toBe(0)
+    expect(positions.get('b')).toBe(100)
+  })
+
+  it('pushes a later card down to clear the one above it, plus the gap', () => {
+    const positions = resolveCardStacking(
+      [
+        { id: 'a', top: 0, height: 40 },
+        { id: 'b', top: 20, height: 40 }
+      ],
+      16
+    )
+    expect(positions.get('a')).toBe(0)
+    expect(positions.get('b')).toBe(56) // 0 + 40 + 16
+  })
+
+  it('cascades through a chain of overlaps', () => {
+    const positions = resolveCardStacking(
+      [
+        { id: 'a', top: 0, height: 40 },
+        { id: 'b', top: 10, height: 40 },
+        { id: 'c', top: 20, height: 40 }
+      ],
+      10
+    )
+    expect(positions.get('a')).toBe(0)
+    expect(positions.get('b')).toBe(50) // 0 + 40 + 10
+    expect(positions.get('c')).toBe(100) // 50 + 40 + 10
+  })
+
+  it('never moves a card up, even if that would pack tighter', () => {
+    const positions = resolveCardStacking(
+      [
+        { id: 'a', top: 200, height: 40 },
+        { id: 'b', top: 0, height: 20 }
+      ],
+      10
+    )
+    // b is processed first (lower natural top) and keeps its position; a
+    // starts well clear of b already, so it also keeps its natural position.
+    expect(positions.get('b')).toBe(0)
+    expect(positions.get('a')).toBe(200)
+  })
+
+  it('is deterministic for cards with the identical natural top', () => {
+    const first = resolveCardStacking(
+      [
+        { id: 'z', top: 0, height: 40 },
+        { id: 'y', top: 0, height: 40 }
+      ],
+      10
+    )
+    const second = resolveCardStacking(
+      [
+        { id: 'y', top: 0, height: 40 },
+        { id: 'z', top: 0, height: 40 }
+      ],
+      10
+    )
+    expect([...first]).toEqual([...second])
+  })
+})
+

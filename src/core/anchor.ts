@@ -87,6 +87,49 @@ export function resolveMagnet(rect: Rect, towards: Point): ResolvedMagnet {
   return dy >= 0 ? 'BOTTOM' : 'TOP'
 }
 
+/** Unit vector pointing out of a box, away from the given side. `CENTER` has no direction. */
+export function outwardNormal(side: ResolvedMagnet): Point {
+  switch (side) {
+    case 'TOP':
+      return { x: 0, y: -1 }
+    case 'BOTTOM':
+      return { x: 0, y: 1 }
+    case 'LEFT':
+      return { x: -1, y: 0 }
+    case 'RIGHT':
+      return { x: 1, y: 0 }
+    case 'CENTER':
+      return { x: 0, y: 0 }
+  }
+}
+
+interface ResolvedAnchorPoint {
+  readonly point: Point | null
+  /** The side of the box the point landed on — `null` for a `free`/`ratio` anchor, which has no "side". */
+  readonly side: ResolvedMagnet | null
+}
+
+function resolveAnchorDetailed(
+  anchor: Anchor,
+  rect: Rect | null,
+  towards: Point | null
+): ResolvedAnchorPoint {
+  if (anchor.kind === 'free') {
+    return { point: anchor.point, side: null }
+  }
+  if (rect === null) {
+    return { point: null, side: null }
+  }
+  if (anchor.kind === 'ratio') {
+    return { point: ratioPoint(rect, anchor.ratio), side: null }
+  }
+  const magnet =
+    anchor.magnet === 'AUTO'
+      ? resolveMagnet(rect, towards ?? centerOf(rect))
+      : anchor.magnet
+  return { point: magnetPoint(rect, magnet), side: magnet }
+}
+
 /**
  * Resolves an anchor to a point in canvas space.
  *
@@ -99,20 +142,7 @@ export function resolveAnchor(
   rect: Rect | null,
   towards: Point | null
 ): Point | null {
-  if (anchor.kind === 'free') {
-    return anchor.point
-  }
-  if (rect === null) {
-    return null
-  }
-  if (anchor.kind === 'ratio') {
-    return ratioPoint(rect, anchor.ratio)
-  }
-  const magnet =
-    anchor.magnet === 'AUTO'
-      ? resolveMagnet(rect, towards ?? centerOf(rect))
-      : anchor.magnet
-  return magnetPoint(rect, magnet)
+  return resolveAnchorDetailed(anchor, rect, towards).point
 }
 
 /** The node id an anchor depends on, or `null` for a free anchor. */
@@ -124,6 +154,9 @@ export function anchorNodeId(anchor: Anchor): string | null {
 export interface ResolvedPair {
   readonly start: Point | null
   readonly end: Point | null
+  /** Which side of its box each endpoint sits on — `null` for a `free`/`ratio` anchor. Used to route a connector out perpendicular to the edge instead of flush against it. */
+  readonly startSide: ResolvedMagnet | null
+  readonly endSide: ResolvedMagnet | null
 }
 
 /**
@@ -147,11 +180,16 @@ export function resolveAnchorPair(
   const startSeed = seed(start, startRect)
   const endSeed = seed(end, endRect)
 
-  const firstStart = resolveAnchor(start, startRect, endSeed)
-  const firstEnd = resolveAnchor(end, endRect, startSeed)
+  const firstStart = resolveAnchorDetailed(start, startRect, endSeed)
+  const firstEnd = resolveAnchorDetailed(end, endRect, startSeed)
+
+  const finalStart = resolveAnchorDetailed(start, startRect, firstEnd.point ?? endSeed)
+  const finalEnd = resolveAnchorDetailed(end, endRect, firstStart.point ?? startSeed)
 
   return {
-    start: resolveAnchor(start, startRect, firstEnd ?? endSeed),
-    end: resolveAnchor(end, endRect, firstStart ?? startSeed)
+    start: finalStart.point,
+    end: finalEnd.point,
+    startSide: finalStart.side,
+    endSide: finalEnd.side
   }
 }

@@ -18,6 +18,8 @@ export interface AnnotationRecord {
   readonly side: Magnet
   /** Card top-left, relative to the badge centre. */
   readonly cardOffset: Point
+  /** id into the file-wide category list (`core/category.ts`), or `null` for none. */
+  readonly categoryId: string | null
 }
 
 export interface LayoutMetrics {
@@ -28,9 +30,16 @@ export interface LayoutMetrics {
 }
 
 export const DEFAULT_METRICS: LayoutMetrics = {
-  badgeDiameter: 20,
+  // A small marker dot, not a numbered badge — Figma's own native
+  // annotations just mark the spot with a dot; the leader line itself
+  // already shows which element it points to.
+  badgeDiameter: 8,
   badgeGap: 12,
-  cardWidth: 220
+  // Matches MIN_OUTSIDE_CARD_WIDTH — a 120px card plus 20px OUTSIDE_MARGIN on
+  // each side lands neatly in a 160px gap between two frames, which is what
+  // this was tuned against. A wider default just meant more cards than that
+  // needed to shrink to fit, for no benefit.
+  cardWidth: 120
 }
 
 export const DEFAULT_CARD_OFFSET: Point = { x: 22, y: -10 }
@@ -39,10 +48,12 @@ export interface AnnotationLayout {
   /** Centre of the badge, in the same space as the target rect. */
   readonly badgeCenter: Point
   /**
-   * Leader line from the target's edge to the badge's edge, or `null` when the
-   * two coincide and a line would be a zero-length artefact.
+   * The leader line, as a polyline from the target's edge to the card — two
+   * points for a straight run (`annotationLayout`), three for a right-angled
+   * elbow (`annotationLayoutOutsideFrame`, see `elbowPoints`). `null` when
+   * the endpoints coincide and a line would be a zero-length artefact.
    */
-  readonly leader: readonly [Point, Point] | null
+  readonly leader: ReadonlyArray<Point> | null
   readonly cardTopLeft: Point
 }
 
@@ -51,7 +62,8 @@ export function createAnnotationRecord(text: string): AnnotationRecord {
     v: ANNOTATION_VERSION,
     text,
     side: 'AUTO',
-    cardOffset: DEFAULT_CARD_OFFSET
+    cardOffset: DEFAULT_CARD_OFFSET,
+    categoryId: null
   }
 }
 
@@ -83,7 +95,11 @@ export function parseAnnotationRecord(raw: string): AnnotationRecord | null {
     v: ANNOTATION_VERSION,
     text: candidate.text,
     side: isMagnet(candidate.side) ? candidate.side : 'AUTO',
-    cardOffset: isPoint(candidate.cardOffset) ? candidate.cardOffset : DEFAULT_CARD_OFFSET
+    cardOffset:
+      isPoint(candidate.cardOffset) && isSaneCardOffset(candidate.cardOffset)
+        ? candidate.cardOffset
+        : DEFAULT_CARD_OFFSET,
+    categoryId: typeof candidate.categoryId === 'string' ? candidate.categoryId : null
   }
 }
 
@@ -108,6 +124,17 @@ function isPoint(value: unknown): value is Point {
     Number.isFinite(candidate.x) &&
     Number.isFinite(candidate.y)
   )
+}
+
+// A card offset this large can only be corruption, not a real preference —
+// e.g. a card offset accidentally captured while the card was still parented
+// inside some other frame (relative coordinates read as absolute) before
+// that bug was fixed. Bounding it here means an already-corrupted record
+// self-heals the next time it's synced, instead of staying broken forever.
+const MAX_SANE_CARD_OFFSET = 4000
+
+function isSaneCardOffset(point: Point): boolean {
+  return Math.abs(point.x) <= MAX_SANE_CARD_OFFSET && Math.abs(point.y) <= MAX_SANE_CARD_OFFSET
 }
 
 /** Unit vector pointing out of the target, away from the chosen side. */
@@ -178,45 +205,116 @@ export function annotationLayout(
   }
 }
 
+export const OUTSIDE_MARGIN = 20
+/** Never shrink an outside card narrower than this to fit a tight gap between frames. */
+export const MIN_OUTSIDE_CARD_WIDTH = 120
+/** How far into the card's top edge the leader points, so it reads as "pointing at this card" rather than at a bare corner. */
+export const CARD_LEADER_INSET = 10
+
 /**
- * Numbers annotations in reading order — top to bottom, then left to right.
+ * A leader routed as a right-angled elbow — horizontal first, then vertical
+ * — instead of a straight diagonal. A card that's been pushed down to avoid
+ * overlapping its neighbour (`resolveCardStacking`) can end up well below
+ * where it "naturally" would sit; a straight line to it reads as messy and
+ * arbitrary, where a horizontal run out from the target followed by a clean
+ * vertical drop reads as deliberate routing, the way FigJam or dev-mode
+ * connectors do it.
  *
- * Rows are banded so badges at slightly different heights still count as the
- * same row, which is how a person reads a screen full of annotations. The
- * banding is done as an explicit pass rather than inside a comparator: "within
- * `rowTolerance` of each other" is not transitive, so using it to compare pairs
- * gives an unstable sort.
+ * Degrades to a plain two-point line when the points already share an axis
+ * (no bend needed), and to `null` when they coincide.
  */
-export function numberInReadingOrder(
-  badges: ReadonlyArray<{ readonly id: string; readonly point: Point }>,
-  rowTolerance = 24
+export function elbowPoints(from: Point, to: Point): ReadonlyArray<Point> | null {
+  if (from.x === to.x && from.y === to.y) return null
+  if (from.x === to.x || from.y === to.y) return [from, to]
+  return [from, { x: to.x, y: from.y }, to]
+}
+
+/**
+ * Which side of `frame` a card routed outside it should go on — whichever
+ * gives the leader line less distance to cross. Exposed on its own so a
+ * caller can work out which side *before* it knows the card's final width
+ * (e.g. to check how much room that side actually has).
+ */
+export function resolveOutsideSide(target: Rect, frame: Rect): 'LEFT' | 'RIGHT' {
+  const targetCenter = centerOf(target)
+  const roomOnRight = frame.x + frame.width - targetCenter.x
+  const roomOnLeft = targetCenter.x - frame.x
+  return roomOnRight >= roomOnLeft ? 'RIGHT' : 'LEFT'
+}
+
+/**
+ * Same idea as `annotationLayout`, but keeps the card out of the design
+ * itself — routed past the edge of the enclosing frame instead of tucked
+ * next to the target, so it never sits on top of the UI it's annotating.
+ *
+ * The badge still docks to the target, same as `annotationLayout`; only the
+ * card moves, to whichever side of `frame` gives the leader line less
+ * distance to cross. `record.side` is ignored here — the frame's geometry,
+ * not the card's history, decides which side the badge faces, since the
+ * whole point of this layout is a leader that never has to double back.
+ */
+export function annotationLayoutOutsideFrame(
+  target: Rect,
+  frame: Rect,
+  record: AnnotationRecord,
+  metrics: LayoutMetrics = DEFAULT_METRICS
+): AnnotationLayout {
+  const side: Exclude<Magnet, 'AUTO'> = resolveOutsideSide(target, frame)
+
+  const edge = magnetPoint(target, side)
+  const normal = outwardNormal(side)
+  const radius = metrics.badgeDiameter / 2
+  const badgeCenter = {
+    x: edge.x + normal.x * (metrics.badgeGap + radius),
+    y: edge.y + normal.y * (metrics.badgeGap + radius)
+  }
+
+  const cardTopLeft = {
+    x:
+      side === 'RIGHT'
+        ? frame.x + frame.width + OUTSIDE_MARGIN
+        : frame.x - OUTSIDE_MARGIN - metrics.cardWidth,
+    y: badgeCenter.y + record.cardOffset.y
+  }
+  const cardNearEdge = {
+    x: side === 'RIGHT' ? cardTopLeft.x : cardTopLeft.x + metrics.cardWidth,
+    y: cardTopLeft.y + CARD_LEADER_INSET
+  }
+  const leader = elbowPoints(edge, cardNearEdge)
+
+  return { badgeCenter, leader, cardTopLeft }
+}
+
+export interface StackableCard {
+  readonly id: string
+  /** Natural (unstacked) top position. */
+  readonly top: number
+  readonly height: number
+}
+
+/**
+ * Pushes cards down just enough that none overlap another on the same side.
+ *
+ * Cards routed outside their frame (`annotationLayoutOutsideFrame`) are
+ * placed independently of each other, so two targets close together —
+ * frames stacked with only a small gap between them, say — can land cards
+ * that overlap. This keeps each card's natural top when there's room, and
+ * only pushes a card down, never up, so earlier cards in the order never
+ * move to make way for later ones.
+ */
+export function resolveCardStacking(
+  cards: ReadonlyArray<StackableCard>,
+  gap = 16
 ): Map<string, number> {
-  const byPosition = [...badges].sort(
-    (a, b) => a.point.y - b.point.y || a.point.x - b.point.x || compareIds(a.id, b.id)
-  )
-
-  const rows: Array<Array<{ id: string; point: Point }>> = []
-  let bandTop = Number.NEGATIVE_INFINITY
-  for (const badge of byPosition) {
-    const row = rows[rows.length - 1]
-    if (typeof row === 'undefined' || badge.point.y - bandTop > rowTolerance) {
-      bandTop = badge.point.y
-      rows.push([badge])
-      continue
-    }
-    row.push(badge)
+  const sorted = [...cards].sort((a, b) => a.top - b.top || compareIds(a.id, b.id))
+  const positions = new Map<string, number>()
+  let bottom = Number.NEGATIVE_INFINITY
+  for (const card of sorted) {
+    const top = bottom === Number.NEGATIVE_INFINITY ? card.top : Math.max(card.top, bottom + gap)
+    positions.set(card.id, top)
+    bottom = top + card.height
   }
-
-  const numbers = new Map<string, number>()
-  let next = 1
-  for (const row of rows) {
-    row.sort((a, b) => a.point.x - b.point.x || compareIds(a.id, b.id))
-    for (const badge of row) {
-      numbers.set(badge.id, next)
-      next += 1
-    }
-  }
-  return numbers
+  return positions
 }
 
 function compareIds(a: string, b: string): number {
