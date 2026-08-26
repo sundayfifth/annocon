@@ -230,6 +230,31 @@ export function elbowPoints(from: Point, to: Point): ReadonlyArray<Point> | null
 }
 
 /**
+ * Same idea as `elbowPoints`, but the vertical run happens at a caller-chosen
+ * `laneX` instead of wherever `to` happens to be — so several leaders
+ * converging on the same narrow margin corridor (several annotations routed
+ * outside the same frame, on the same side) can be given distinct parallel
+ * lanes instead of all overlapping on `to.x`. Degenerates to a plain
+ * `elbowPoints`-shaped route when `laneX` already coincides with either
+ * endpoint's x, so the common single-annotation case is unaffected.
+ */
+export function laneElbowPoints(edge: Point, laneX: number, cardEdge: Point): ReadonlyArray<Point> {
+  const raw: ReadonlyArray<Point> = [
+    edge,
+    { x: laneX, y: edge.y },
+    { x: laneX, y: cardEdge.y },
+    cardEdge
+  ]
+  const points: Array<Point> = []
+  for (const point of raw) {
+    const prev = points[points.length - 1]
+    if (typeof prev !== 'undefined' && prev.x === point.x && prev.y === point.y) continue
+    points.push(point)
+  }
+  return points
+}
+
+/**
  * Which side of `frame` a card routed outside it should go on — whichever
  * gives the leader line less distance to cross. Exposed on its own so a
  * caller can work out which side *before* it knows the card's final width

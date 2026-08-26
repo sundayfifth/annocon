@@ -9,6 +9,7 @@ import {
   annotationLayoutOutsideFrame,
   createAnnotationRecord,
   elbowPoints,
+  laneElbowPoints,
   parseAnnotationRecord,
   resolveCardStacking,
   resolveSide,
@@ -195,6 +196,31 @@ describe('elbowPoints', () => {
 
   it('returns null when the points coincide', () => {
     expect(elbowPoints({ x: 5, y: 5 }, { x: 5, y: 5 })).toBeNull()
+  })
+})
+
+describe('laneElbowPoints', () => {
+  it('bends at the given lane x, not at the card edge x', () => {
+    const points = laneElbowPoints({ x: 0, y: 0 }, 40, { x: 100, y: 50 })
+    expect(points).toEqual([
+      { x: 0, y: 0 },
+      { x: 40, y: 0 },
+      { x: 40, y: 50 },
+      { x: 100, y: 50 }
+    ])
+  })
+
+  it('degenerates to a single-bend elbow when the lane already sits at the edge x', () => {
+    expect(laneElbowPoints({ x: 0, y: 0 }, 0, { x: 100, y: 50 })).toEqual([
+      { x: 0, y: 0 },
+      { x: 0, y: 50 },
+      { x: 100, y: 50 }
+    ])
+    expect(laneElbowPoints({ x: 0, y: 0 }, 100, { x: 100, y: 50 })).toEqual([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 50 }
+    ])
   })
 })
 

@@ -9,6 +9,7 @@ import {
   DEFAULT_CONNECTOR_WEIGHT,
   DEFAULT_CORNER_RADIUS,
   DEFAULT_END_CAP,
+  DEFAULT_LABEL,
   DEFAULT_LINE_STYLE,
   DEFAULT_START_CAP,
   connectorAxisOf,
@@ -18,6 +19,8 @@ import {
   createConnectorRecord,
   frameGapMidpoint,
   parseConnectorRecord,
+  pointAlongPolyline,
+  pointOnCurve,
   resolveConnectorGeometry,
   serialiseConnectorRecord
 } from '../src/core/connector.js'
@@ -38,7 +41,8 @@ describe('createConnectorRecord', () => {
       startCap: DEFAULT_START_CAP,
       endCap: DEFAULT_END_CAP,
       lineStyle: DEFAULT_LINE_STYLE,
-      cornerRadius: DEFAULT_CORNER_RADIUS
+      cornerRadius: DEFAULT_CORNER_RADIUS,
+      label: DEFAULT_LABEL
     })
   })
 })
@@ -155,6 +159,21 @@ describe('parseConnectorRecord', () => {
     })
     const parsed = parseConnectorRecord(raw)
     expect(parsed?.start).toEqual({ kind: 'free', point: { x: 1, y: 2 } })
+  })
+
+  it('reads a label when present, else defaults to none', () => {
+    const withLabel = JSON.stringify({
+      start: { kind: 'magnet', nodeId: 'a', magnet: 'AUTO' },
+      end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' },
+      label: 'Payment success'
+    })
+    expect(parseConnectorRecord(withLabel)?.label).toBe('Payment success')
+
+    const withoutLabel = JSON.stringify({
+      start: { kind: 'magnet', nodeId: 'a', magnet: 'AUTO' },
+      end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' }
+    })
+    expect(parseConnectorRecord(withoutLabel)?.label).toBe(DEFAULT_LABEL)
   })
 })
 
@@ -407,5 +426,47 @@ describe('connectorCurveTangents', () => {
 
     const long = connectorCurveTangents({ x: 0, y: 0 }, { x: 1000, y: 0 }, 'RIGHT', 'LEFT')
     expect(Math.hypot(long.tangentStart.x, long.tangentStart.y)).toBe(140)
+  })
+})
+
+describe('pointAlongPolyline', () => {
+  it('finds the true midpoint by path length, not by vertex index', () => {
+    // A 20-length first leg and an 80-length second leg — the geometric
+    // midpoint of the whole 100-length path is 30 units into the second leg,
+    // nowhere near the shared vertex at index 1.
+    const points = [
+      { x: 0, y: 0 },
+      { x: 20, y: 0 },
+      { x: 20, y: 80 }
+    ]
+    expect(pointAlongPolyline(points, 0.5)).toEqual({ x: 20, y: 30 })
+  })
+
+  it('clamps t to the 0..1 range', () => {
+    const points = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 }
+    ]
+    expect(pointAlongPolyline(points, -1)).toEqual({ x: 0, y: 0 })
+    expect(pointAlongPolyline(points, 2)).toEqual({ x: 100, y: 0 })
+  })
+
+  it('handles a single-point path without dividing by zero', () => {
+    expect(pointAlongPolyline([{ x: 5, y: 5 }], 0.5)).toEqual({ x: 5, y: 5 })
+  })
+})
+
+describe('pointOnCurve', () => {
+  it('starts and ends exactly on the two endpoints', () => {
+    const curve = connectorCurveTangents({ x: 0, y: 0 }, { x: 100, y: 0 }, 'RIGHT', 'LEFT')
+    expect(pointOnCurve({ x: 0, y: 0 }, { x: 100, y: 0 }, curve, 0)).toEqual({ x: 0, y: 0 })
+    expect(pointOnCurve({ x: 0, y: 0 }, { x: 100, y: 0 }, curve, 1)).toEqual({ x: 100, y: 0 })
+  })
+
+  it('sits on the line for a straight-ahead curve at the midpoint', () => {
+    const curve = connectorCurveTangents({ x: 0, y: 0 }, { x: 100, y: 0 }, 'RIGHT', 'LEFT')
+    const mid = pointOnCurve({ x: 0, y: 0 }, { x: 100, y: 0 }, curve, 0.5)
+    expect(mid.x).toBeCloseTo(50)
+    expect(mid.y).toBeCloseTo(0)
   })
 })

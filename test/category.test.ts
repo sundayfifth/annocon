@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   CATEGORY_PALETTE,
+  DEFAULT_CATEGORIES,
+  DEFAULT_CATEGORY_ID,
   createCategory,
   findCategory,
   parseCategoryList,
@@ -42,6 +44,19 @@ describe('parseCategoryList / serialiseCategoryList', () => {
       { id: 'a', name: 'Bug', color: '#E5484D' },
       { id: 'c', name: 'Question', color: '#0091FF' }
     ])
+  })
+})
+
+describe('DEFAULT_CATEGORIES', () => {
+  it('includes a Note category at DEFAULT_CATEGORY_ID, using colours from the palette', () => {
+    const note = findCategory(DEFAULT_CATEGORIES, DEFAULT_CATEGORY_ID)
+    expect(note?.name).toBe('Note')
+    expect(DEFAULT_CATEGORIES.every((category) => CATEGORY_PALETTE.includes(category.color))).toBe(true)
+  })
+
+  it('has three categories with distinct ids', () => {
+    expect(DEFAULT_CATEGORIES).toHaveLength(3)
+    expect(new Set(DEFAULT_CATEGORIES.map((category) => category.id)).size).toBe(3)
   })
 })
 

@@ -68,16 +68,18 @@ export interface ConnectorRecord {
   readonly lineStyle: ConnectorLineStyle
   /** How rounded an `ELBOW` bend is. Meaningless (and unused) for `STRAIGHT`/`CURVE`. */
   readonly cornerRadius: number
+  /** An optional label drawn at the midpoint of the route, FigJam/Autoflow-style. Empty string means no label. */
+  readonly label: string
 }
 
 export const DEFAULT_CONNECTOR_WEIGHT = 1.5
-/** Grey by default — a page with several connectors reads as noisy fast when every one is a loud accent colour. */
-export const DEFAULT_CONNECTOR_COLOR = '#8C8C8C'
+export const DEFAULT_CONNECTOR_COLOR = '#000000'
 export const DEFAULT_CONNECTOR_OPACITY = 1
 export const DEFAULT_START_CAP: ConnectorCap = 'CIRCLE_FILLED'
 export const DEFAULT_END_CAP: ConnectorCap = 'ARROW_EQUILATERAL'
 export const DEFAULT_LINE_STYLE: ConnectorLineStyle = 'ELBOW'
 export const DEFAULT_CORNER_RADIUS = 20
+export const DEFAULT_LABEL = ''
 
 export function createConnectorRecord(startNodeId: string, endNodeId: string): ConnectorRecord {
   return {
@@ -90,7 +92,8 @@ export function createConnectorRecord(startNodeId: string, endNodeId: string): C
     startCap: DEFAULT_START_CAP,
     endCap: DEFAULT_END_CAP,
     lineStyle: DEFAULT_LINE_STYLE,
-    cornerRadius: DEFAULT_CORNER_RADIUS
+    cornerRadius: DEFAULT_CORNER_RADIUS,
+    label: DEFAULT_LABEL
   }
 }
 
@@ -179,7 +182,8 @@ export function parseConnectorRecord(raw: string): ConnectorRecord | null {
     cornerRadius:
       typeof candidate.cornerRadius === 'number' && candidate.cornerRadius >= 0
         ? candidate.cornerRadius
-        : DEFAULT_CORNER_RADIUS
+        : DEFAULT_CORNER_RADIUS,
+    label: typeof candidate.label === 'string' ? candidate.label : DEFAULT_LABEL
   }
 }
 
@@ -510,5 +514,57 @@ export function connectorCurveTangents(
   return {
     tangentStart: { x: startDir.x * startLength, y: startDir.y * startLength },
     tangentEnd: { x: endDir.x * endLength, y: endDir.y * endLength }
+  }
+}
+
+/**
+ * A point a fraction `t` (0..1) along a polyline, by cumulative segment
+ * length rather than by vertex index — a route with a short stub and a long
+ * middle run would otherwise put the "midpoint" nowhere near the visual
+ * middle. Used to place a connector's label (`ConnectorRecord.label`) on
+ * `STRAIGHT`/`ELBOW` routes.
+ */
+export function pointAlongPolyline(points: ReadonlyArray<Point>, t: number): Point {
+  const first = points[0]
+  if (typeof first === 'undefined') return { x: 0, y: 0 }
+  if (points.length === 1) return first
+
+  let total = 0
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const from = points[i]
+    const to = points[i + 1]
+    if (typeof from === 'undefined' || typeof to === 'undefined') continue
+    total += Math.hypot(to.x - from.x, to.y - from.y)
+  }
+  if (total === 0) return first
+
+  let remaining = Math.min(1, Math.max(0, t)) * total
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const from = points[i]
+    const to = points[i + 1]
+    if (typeof from === 'undefined' || typeof to === 'undefined') continue
+    const length = Math.hypot(to.x - from.x, to.y - from.y)
+    if (remaining <= length || i === points.length - 2) {
+      const ratio = length === 0 ? 0 : remaining / length
+      return { x: from.x + (to.x - from.x) * ratio, y: from.y + (to.y - from.y) * ratio }
+    }
+    remaining -= length
+  }
+  return first
+}
+
+/**
+ * The point at parameter `t` (0..1) on the cubic bezier a `CURVE` connector
+ * draws — the curved counterpart to `pointAlongPolyline`, for the same
+ * label-placement purpose. A parametric midpoint (`t = 0.5`), not a true
+ * arc-length one; close enough for where a label sits.
+ */
+export function pointOnCurve(start: Point, end: Point, curve: ConnectorCurve, t: number): Point {
+  const p1 = { x: start.x + curve.tangentStart.x, y: start.y + curve.tangentStart.y }
+  const p2 = { x: end.x + curve.tangentEnd.x, y: end.y + curve.tangentEnd.y }
+  const mt = 1 - t
+  return {
+    x: mt * mt * mt * start.x + 3 * mt * mt * t * p1.x + 3 * mt * t * t * p2.x + t * t * t * end.x,
+    y: mt * mt * mt * start.y + 3 * mt * mt * t * p1.y + 3 * mt * t * t * p2.y + t * t * t * end.y
   }
 }

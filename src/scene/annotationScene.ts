@@ -5,11 +5,13 @@
  * only ever writes canvas state from a record (see ADR 0001 — geometry flows
  * one way, record to node, never back).
  *
- * The record lives in `annotation` pluginData on the target node. The badge,
- * card, and leader are separate top-level nodes tagged with `annotationOwner`
+ * The record lives in `annotation` pluginData on the target node. The card
+ * and leader are separate top-level nodes tagged with `annotationOwner`
  * (the target's id) and `annotationRole`, found by query rather than by id
  * cached on the target — the canvas is untrusted, so a fresh scan is the
- * source of truth on every sync, not a cache that can drift.
+ * source of truth on every sync, not a cache that can drift. (`badge` is a
+ * third, retired role kept only so an older file's leftover dot markers get
+ * swept up and removed on the next sync.)
  */
 
 import type { Point, Rect } from '../core/anchor.js'
@@ -23,12 +25,18 @@ import {
   annotationLayoutOutsideFrame,
   createAnnotationRecord,
   elbowPoints,
+  laneElbowPoints,
   parseAnnotationRecord,
   resolveCardStacking,
   resolveOutsideSide,
   serialiseAnnotationRecord
 } from '../core/annotation.js'
-import { type Category, findCategory } from '../core/category.js'
+import {
+  type Category,
+  DEFAULT_CATEGORY_ID,
+  contrastingTextColor,
+  findCategory
+} from '../core/category.js'
 import { getCategories } from './categoryScene.js'
 import { findEnclosingFrame } from './frames.js'
 import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
@@ -39,7 +47,7 @@ const ROLE_KEY = 'annotationRole'
 
 type Role = 'badge' | 'card' | 'leader'
 
-// Badge/leader colour for an annotation with no category assigned.
+// Leader colour for an annotation with no category assigned.
 const DEFAULT_ANNOTATION_COLOR = '#000000'
 const CARD_FILL = '#FFFFFF'
 const CARD_STROKE = '#E1E1E6'
@@ -47,7 +55,7 @@ const CARD_TEXT = '#1E1E24'
 // Inter is Figma's own UI typeface — used for the category pill's label. It
 // has no Thai glyphs at all, though, so the card's note text needs a font
 // that actually covers Thai — see `resolveCardFont`.
-const BADGE_FONT: FontName = { family: 'Inter', style: 'Bold' }
+const PILL_FONT: FontName = { family: 'Inter', style: 'Bold' }
 
 /**
  * The note card's font, resolved once and cached for the rest of the
@@ -81,10 +89,11 @@ function resolveCardFont(): Promise<FontName> {
   return resolvedCardFont
 }
 /**
- * A short label for the layer name — badge/card/leader are otherwise named
- * identically, which is useless clutter once there's more than one on the
- * canvas (Figma floats layer names above nodes when zoomed out). The note's
- * own text is more meaningful here than an arbitrary number would be.
+ * The card and leader's own layer name — just the note's text, not a
+ * generic "Annotation" label. Card/leader would otherwise be named
+ * identically across every annotation, which is useless clutter once
+ * there's more than one on the canvas (Figma floats layer names above
+ * nodes when zoomed out).
  */
 function truncate(text: string, max: number): string {
   const trimmed = text.trim()
@@ -237,33 +246,6 @@ export function removeOrphanRenderedNodes(liveTargetIds: ReadonlySet<string>): n
   return removed
 }
 
-// Styling is reasserted on every sync, not just at creation — a node reused
-// from an older version of this code (or hand-edited on canvas) otherwise
-// stays stuck with whatever properties it happened to get the first time.
-//
-// Just a marker dot, not a numbered badge — see `DEFAULT_METRICS.badgeDiameter`.
-// A frame with a corner radius of half its width renders identically to an
-// ellipse, and reuses the same creation/dedupe/tagging shape as the card.
-function ensureBadge(existing: FrameNode | null, ownerId: string, color: string): FrameNode {
-  const badge = existing ?? figma.createFrame()
-  badge.name = 'Annotation dot'
-  badge.fills = [figma.util.solidPaint(color)]
-  badge.strokes = []
-  badge.resize(DEFAULT_METRICS.badgeDiameter, DEFAULT_METRICS.badgeDiameter)
-  badge.cornerRadius = DEFAULT_METRICS.badgeDiameter / 2
-  // Rendered nodes are derived output, not something to hand-edit on
-  // canvas — editing them directly would desync them from the record they
-  // came from. Locked nodes don't intercept canvas clicks either, so a
-  // click where a badge sits reaches whatever is underneath instead.
-  badge.locked = true
-  tag(badge, ownerId, 'badge')
-  // A badge reused from before this became a plain dot may still carry its
-  // old number label as a child — nothing manages that child any more, so
-  // clear it out rather than leave it frozen in place.
-  for (const child of [...badge.children]) child.remove()
-  return badge
-}
-
 interface Card {
   readonly card: FrameNode
   readonly text: TextNode
@@ -307,16 +289,19 @@ async function ensureCategoryPill(card: FrameNode, category: Category | null): P
   let label = pill.children.find((child): child is TextNode => child.type === 'TEXT')
   if (typeof label === 'undefined') {
     label = figma.createText()
-    await figma.loadFontAsync(BADGE_FONT)
-    label.fontName = BADGE_FONT
+    await figma.loadFontAsync(PILL_FONT)
+    label.fontName = PILL_FONT
     label.fontSize = 10
-    label.fills = [figma.util.solidPaint('#FFFFFF')]
     pill.appendChild(label)
   }
   if (label.characters !== category.name) {
-    await figma.loadFontAsync(BADGE_FONT)
+    await figma.loadFontAsync(PILL_FONT)
     label.characters = category.name
   }
+  // Reasserted every sync, not just on creation — a recolour needs the
+  // label to flip between black and white right along with it, and this is
+  // cheap enough that a pill created before this fix self-heals too.
+  label.fills = [figma.util.solidPaint(contrastingTextColor(category.color))]
 }
 
 async function ensureCard(
@@ -580,20 +565,22 @@ async function syncAnnotationBody(
     // an auto-layout frame it lands in can also force its size, hiding
     // the text). Reparenting first makes every write below mean what it's
     // supposed to, regardless of where the node drifted to on canvas.
-    if (rendered.badge !== null) figma.currentPage.appendChild(rendered.badge)
     if (rendered.card !== null) figma.currentPage.appendChild(rendered.card)
     if (rendered.leader !== null) figma.currentPage.appendChild(rendered.leader)
+    // The dot marker used to sit at the target's edge — dropped, since a
+    // leader line already shows what's being annotated without one more
+    // node cluttering the canvas. Sweeps away any left over from before
+    // this changed, rather than stranding them.
+    removeIfPresent(rendered.badge)
 
     const resolved = computeLayout(target, rect, record)
     const { layout } = resolved
 
-    const badge = ensureBadge(rendered.badge, target.id, color)
-    badge.x = layout.badgeCenter.x - DEFAULT_METRICS.badgeDiameter / 2
-    badge.y = layout.badgeCenter.y - DEFAULT_METRICS.badgeDiameter / 2
-    badge.name = `Annotation dot — ${label}`
-
     const { card, text } = await ensureCard(rendered.card, target.id, resolved.cardWidth, category)
-    card.name = `Annotation — ${label}`
+    // The note's own text, not a generic "Annotation — " prefix — every
+    // layer already reads as an annotation from its type/position, so
+    // spelling that out on each one was clutter of its own.
+    card.name = label
     card.x = layout.cardTopLeft.x
     card.y = layout.cardTopLeft.y
     if (text.characters !== record.text) {
@@ -605,26 +592,22 @@ async function syncAnnotationBody(
       removeIfPresent(rendered.leader)
     } else {
       const leader = ensureLeader(rendered.leader, target.id, color)
-      leader.name = `Annotation leader — ${label}`
+      leader.name = label
       // `layout.leader`'s card-side endpoint was computed before the card's
       // real height was known (a fixed inset from the top, as a stand-in).
       // Now that `card.height` reflects the actual rendered card, retarget
       // it at the card's vertical centre instead — only meaningful for the
       // outside-frame layout, where the leader actually reaches the card;
-      // the near-target layout's leader just docks the badge to the target.
+      // the near-target layout's leader just docks at the target's edge.
       const points =
         resolved.side === null ? layout.leader : leaderToCardCenter(layout.leader, card)
       await positionLeader(leader, points)
     }
 
     // Re-parenting to the same page moves a node to the front of the
-    // stacking order. Done last, and only for the badge, so it always sits
-    // visually on top of its own leader line — otherwise the dashed line
-    // cuts across the dot. Without re-parenting at all, a reused
-    // badge/card/leader would also stay wherever it landed in z-order the
-    // first time, so a design frame edited later on the page could end up
-    // drawn in front of it.
-    figma.currentPage.appendChild(badge)
+    // stacking order. Done last so the card's solid face reads as covering
+    // the leader's endpoint, not a dashed line cutting across its corner.
+    figma.currentPage.appendChild(card)
   })
 }
 
@@ -632,6 +615,11 @@ async function syncAnnotationBody(
 // floats each layer's name above it when zoomed out, and a tighter gap left
 // that label overlapping the card above it.
 const CARD_STACK_GAP = 28
+
+// The margin corridor (`OUTSIDE_MARGIN`) is only 20px wide, so this has to
+// stay small — enough to visibly separate a handful of leaders sharing the
+// same side without running the innermost lane back into the frame itself.
+const LEADER_LANE_GAP = 5
 
 interface StackItem {
   readonly ownerId: string
@@ -690,11 +678,24 @@ export async function applyCardStacking(): Promise<void> {
     // Suppressed for the same reason as in `syncAnnotationExclusive`: moving
     // a card here to avoid overlap must not look like a person dragging it.
     await withSuppressedNodeChangeAsync(async () => {
-      for (const list of groups.values()) {
+      for (const [side, list] of groups.entries()) {
         const stacked = resolveCardStacking(
           list.map((item) => ({ id: item.ownerId, top: item.naturalTop, height: item.card.height })),
           CARD_STACK_GAP
         )
+        // Every leader in this group shares the same `nearEdgeX` — bending
+        // all of them there at once is what made several leaders overlap
+        // into the same line through the margin. Lane them instead: sort
+        // top to bottom and give each one after the first a bend a little
+        // further into the margin, so they fan out instead of stacking on
+        // top of each other. `RIGHT` fans toward smaller x (back toward the
+        // frame); `LEFT` mirrors it toward larger x.
+        const laneSign = side === 'RIGHT' ? -1 : 1
+        const lanesOf = [...list].sort((a, b) => a.edgeStart.y - b.edgeStart.y)
+        const laneXById = new Map<string, number>(
+          lanesOf.map((item, index) => [item.ownerId, item.nearEdgeX + laneSign * index * LEADER_LANE_GAP])
+        )
+
         for (const item of list) {
           const top = stacked.get(item.ownerId)
           if (typeof top !== 'number') continue
@@ -709,8 +710,8 @@ export async function applyCardStacking(): Promise<void> {
           // fixed top-of-card inset `CARD_LEADER_INSET` still used as this
           // module's own before-the-real-height starting guess.
           const to: Point = { x: item.nearEdgeX, y: top + item.card.height / 2 }
-          const points = elbowPoints(item.edgeStart, to)
-          if (points === null) continue
+          const laneX = laneXById.get(item.ownerId) ?? item.nearEdgeX
+          const points = laneElbowPoints(item.edgeStart, laneX, to)
           await positionLeader(item.leader, points)
         }
       }
@@ -743,8 +744,14 @@ export async function setAnnotationText(target: SceneNode, text: string): Promis
     return
   }
   const existing = getAnnotationRecord(target)
+  // A brand-new annotation defaults to the Note category rather than none —
+  // `createAnnotationRecord` itself stays opinion-free (`categoryId: null`);
+  // this is where category policy actually lives, alongside the rest of the
+  // category lookups this module already does.
   const record: AnnotationRecord =
-    existing === null ? createAnnotationRecord(trimmed) : { ...existing, text: trimmed }
+    existing === null
+      ? { ...createAnnotationRecord(trimmed), categoryId: DEFAULT_CATEGORY_ID }
+      : { ...existing, text: trimmed }
   writeAnnotationRecord(target, record)
   await syncAnnotation(target)
   await finalizeLayout()

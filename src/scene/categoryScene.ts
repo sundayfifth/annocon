@@ -6,6 +6,7 @@
 
 import {
   type Category,
+  DEFAULT_CATEGORIES,
   createCategory,
   parseCategoryList,
   serialiseCategoryList
@@ -22,6 +23,17 @@ function saveCategories(categories: ReadonlyArray<Category>): void {
   withSuppressedNodeChange(() => {
     figma.root.setPluginData(CATEGORIES_KEY, serialiseCategoryList(categories))
   })
+}
+
+/**
+ * Seeds the three defaults (Note/Idea/Requirement) the first time a file
+ * has no categories at all — never once any exist, so it won't clobber a
+ * list someone has already customised (deleting down to zero and reopening
+ * re-seeds, same as any other empty state).
+ */
+export function ensureDefaultCategories(): void {
+  if (getCategories().length > 0) return
+  saveCategories(DEFAULT_CATEGORIES)
 }
 
 function generateCategoryId(): string {

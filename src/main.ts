@@ -41,6 +41,7 @@ import {
 import {
   addCategory,
   deleteCategory,
+  ensureDefaultCategories,
   getCategories,
   recolorCategory,
   renameCategory
@@ -52,6 +53,7 @@ import {
   findConnectorsWithEndpointUnder,
   getConnectorRecord,
   reconcileAllConnectors,
+  removeConnectorLabel,
   syncConnector,
   updateConnectorAnchorSide,
   updateConnectorStyle
@@ -110,7 +112,8 @@ function summariseSelection(): Array<SelectionSummary> {
               lineStyle: connectorRecord.lineStyle,
               cornerRadius: connectorRecord.cornerRadius,
               startMagnet: connectorRecord.start.kind === 'magnet' ? connectorRecord.start.magnet : 'AUTO',
-              endMagnet: connectorRecord.end.kind === 'magnet' ? connectorRecord.end.magnet : 'AUTO'
+              endMagnet: connectorRecord.end.kind === 'magnet' ? connectorRecord.end.magnet : 'AUTO',
+              label: connectorRecord.label
             }
     }
   })
@@ -293,6 +296,11 @@ async function resyncTouched({
 
   for (const id of deletedIds) {
     removeRenderedNodesForOwner(id)
+    // A cheap no-op if `id` wasn't itself a connector's own id — only
+    // meaningful when the connector node just got deleted directly, since
+    // its label is a separate top-level node that would otherwise be left
+    // stranded, orphaned but not swept up until the next full reconcile.
+    removeConnectorLabel(id)
     for (const connector of findConnectorsInvolving(id)) {
       await syncConnector(connector)
     }
@@ -383,6 +391,7 @@ export default function main(): void {
   figma.currentPage.on('nodechange', handleNodeChange)
 
   fireAndForget(reconcileEverything())
+  ensureDefaultCategories()
 
   showUI(
     { height: 440, width: 320 },

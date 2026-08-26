@@ -20,6 +20,7 @@ export interface Category {
 }
 
 export const CATEGORY_PALETTE: ReadonlyArray<string> = [
+  '#8C8C8C', // grey — the neutral option; matches the default connector colour
   '#E5484D', // red
   '#F76B15', // orange
   '#FFC53D', // yellow
@@ -31,6 +32,22 @@ export const CATEGORY_PALETTE: ReadonlyArray<string> = [
 ]
 
 export const DEFAULT_CATEGORY_COLOR: string = CATEGORY_PALETTE[0] as string
+
+/**
+ * Seeded once, the first time a file has no categories at all — see
+ * `categoryScene.ensureDefaultCategories`. Fixed (not randomly generated)
+ * ids so `DEFAULT_CATEGORY_ID` can be referenced as the fallback an
+ * annotation gets when nobody's picked a category — dangling gracefully to
+ * "no category" if this one's ever renamed away or deleted, same as any
+ * other `categoryId`.
+ */
+export const DEFAULT_CATEGORY_ID = 'cat-note'
+
+export const DEFAULT_CATEGORIES: ReadonlyArray<Category> = [
+  { id: DEFAULT_CATEGORY_ID, name: 'Note', color: '#8C8C8C' },
+  { id: 'cat-idea', name: 'Idea', color: '#FFC53D' },
+  { id: 'cat-requirement', name: 'Requirement', color: '#F76B15' }
+]
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim() !== ''
@@ -79,4 +96,19 @@ export function findCategory(
 ): Category | null {
   if (categoryId === null) return null
   return categories.find((category) => category.id === categoryId) ?? null
+}
+
+/**
+ * Black or white, whichever reads clearly on `hex` — a category's label is
+ * always drawn in one fixed colour (white) both on the canvas pill and in
+ * the picker, which fails outright on a light background like the palette's
+ * yellow. YIQ perceived-brightness, not full WCAG contrast: cheap, and more
+ * than accurate enough for picking between exactly two options.
+ */
+export function contrastingTextColor(hex: string): string {
+  const r = Number.parseInt(hex.slice(1, 3), 16)
+  const g = Number.parseInt(hex.slice(3, 5), 16)
+  const b = Number.parseInt(hex.slice(5, 7), 16)
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000
+  return yiq >= 150 ? '#1E1E24' : '#FFFFFF'
 }

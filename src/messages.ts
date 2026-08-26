@@ -22,6 +22,8 @@ export interface ConnectorStyleSummary {
   /** Which side of the start/end node the connector exits/enters from. `AUTO` picks based on relative position. */
   readonly startMagnet: Magnet
   readonly endMagnet: Magnet
+  /** Optional label drawn at the midpoint of the route. Empty string means none. */
+  readonly label: string
 }
 
 /** What the UI needs to know about the current selection. */
@@ -137,6 +139,7 @@ export interface UpdateConnectorStylePayload {
   readonly endCap?: ConnectorCap
   readonly lineStyle?: ConnectorLineStyle
   readonly cornerRadius?: number
+  readonly label?: string
 }
 
 export interface UpdateConnectorStyleHandler {

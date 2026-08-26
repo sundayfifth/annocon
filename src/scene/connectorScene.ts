@@ -18,6 +18,8 @@ import {
   createConnectorRecord,
   frameGapMidpoint,
   parseConnectorRecord,
+  pointAlongPolyline,
+  pointOnCurve,
   resolveConnectorGeometry,
   serialiseConnectorRecord
 } from '../core/connector.js'
@@ -26,6 +28,7 @@ import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './plugi
 
 const CONNECTOR_KEY = 'connector'
 const BROKEN_COLOR = '#E5484D'
+const LABEL_OWNER_KEY = 'connectorLabelOwner'
 
 export function getConnectorRecord(node: SceneNode): ConnectorRecord | null {
   return parseConnectorRecord(node.getPluginData(CONNECTOR_KEY))
@@ -99,6 +102,93 @@ export function findConnectorsWithEndpointUnder(
     if (record === null) return false
     return anchorIn(record.start, descendantIds) || anchorIn(record.end, descendantIds)
   })
+}
+
+/**
+ * A connector's optional label — `connectorLabelOwner` pluginData points
+ * back at the connector's own node id, the same "tag, then query" shape
+ * Annotate uses for its card/leader. A vector node can't have children in
+ * Figma, so this has to be its own top-level node rather than nested inside
+ * the connector.
+ */
+function findConnectorLabel(connectorId: string): FrameNode | null {
+  const found = figma.currentPage
+    .findAllWithCriteria({ pluginData: { keys: [LABEL_OWNER_KEY] } })
+    .filter(
+      (node): node is FrameNode =>
+        node.type === 'FRAME' && node.getPluginData(LABEL_OWNER_KEY) === connectorId
+    )
+  if (found.length <= 1) return found[0] ?? null
+  // Same dedupe-and-recreate reasoning as annotation's rendered nodes — no
+  // reliable way to tell which duplicate is "correct", so clear the slate.
+  for (const node of found) node.remove()
+  return null
+}
+
+/** Removes a connector's label, if it has one — used when the connector itself is deleted. */
+export function removeConnectorLabel(connectorId: string): void {
+  const label = findConnectorLabel(connectorId)
+  if (label !== null) label.remove()
+}
+
+const LABEL_FONT: FontName = { family: 'Inter', style: 'Regular' }
+const LABEL_PADDING_X = 8
+const LABEL_PADDING_Y = 4
+
+/**
+ * Renders (or removes) a connector's label at `midpoint` — a small white
+ * pill, Autoflow-style, sitting on the route rather than off to one side.
+ * Locked and fully derived, same discipline as the badge/leader used to be:
+ * its only source of truth is `record.label` plus the route just drawn, so
+ * editing it has to go through the plugin, not a direct double-click.
+ */
+async function ensureConnectorLabel(
+  connectorId: string,
+  existing: FrameNode | null,
+  text: string,
+  midpoint: Point
+): Promise<void> {
+  const trimmed = text.trim()
+  if (trimmed === '') {
+    if (existing !== null) existing.remove()
+    return
+  }
+
+  const pill = existing ?? figma.createFrame()
+  if (existing === null) {
+    pill.layoutMode = 'HORIZONTAL'
+    pill.primaryAxisSizingMode = 'AUTO'
+    pill.counterAxisSizingMode = 'AUTO'
+    pill.paddingLeft = LABEL_PADDING_X
+    pill.paddingRight = LABEL_PADDING_X
+    pill.paddingTop = LABEL_PADDING_Y
+    pill.paddingBottom = LABEL_PADDING_Y
+    pill.cornerRadius = 6
+    pill.strokeWeight = 1
+    pill.locked = true
+    pill.setPluginData(LABEL_OWNER_KEY, connectorId)
+  }
+  pill.name = trimmed
+  pill.fills = [figma.util.solidPaint('#FFFFFF')]
+  pill.strokes = [figma.util.solidPaint('#E1E1E6')]
+
+  let label = pill.children.find((child): child is TextNode => child.type === 'TEXT')
+  if (typeof label === 'undefined') {
+    label = figma.createText()
+    await figma.loadFontAsync(LABEL_FONT)
+    label.fontName = LABEL_FONT
+    label.fontSize = 11
+    label.fills = [figma.util.solidPaint('#1E1E24')]
+    pill.appendChild(label)
+  }
+  if (label.characters !== trimmed) {
+    await figma.loadFontAsync(LABEL_FONT)
+    label.characters = trimmed
+  }
+
+  figma.currentPage.appendChild(pill)
+  pill.x = midpoint.x - pill.width / 2
+  pill.y = midpoint.y - pill.height / 2
 }
 
 interface EndpointBoxes {
@@ -187,31 +277,32 @@ async function syncConnectorBody(
         ? frameGapMidpoint(startBoxes.frameRect, endBoxes.frameRect, axis)
         : null
 
-    if (record.lineStyle === 'CURVE') {
-      await positionCurve(
-        node,
-        start,
-        end,
-        geometry.startSide,
-        geometry.endSide,
-        startClearance,
-        endClearance,
-        record
-      )
-    } else {
-      await positionPolyline(
-        node,
-        start,
-        end,
-        geometry.startSide,
-        geometry.endSide,
-        startClearance,
-        endClearance,
-        preferredMid,
-        record
-      )
-    }
+    const midpoint =
+      record.lineStyle === 'CURVE'
+        ? await positionCurve(
+            node,
+            start,
+            end,
+            geometry.startSide,
+            geometry.endSide,
+            startClearance,
+            endClearance,
+            record
+          )
+        : await positionPolyline(
+            node,
+            start,
+            end,
+            geometry.startSide,
+            geometry.endSide,
+            startClearance,
+            endClearance,
+            preferredMid,
+            record
+          )
     figma.currentPage.appendChild(node)
+
+    await ensureConnectorLabel(node.id, findConnectorLabel(node.id), record.label, midpoint)
   })
 }
 
@@ -225,7 +316,7 @@ async function positionPolyline(
   endClearance: number,
   preferredMid: number | null,
   record: ConnectorRecord
-): Promise<void> {
+): Promise<Point> {
   const points = connectorRoutePoints(
     start,
     end,
@@ -258,6 +349,7 @@ async function positionPolyline(
     segments: points.slice(1).map((_point, index) => ({ start: index, end: index + 1 })),
     regions: []
   })
+  return pointAlongPolyline(points, 0.5)
 }
 
 /**
@@ -277,15 +369,9 @@ async function positionCurve(
   startClearance: number,
   endClearance: number,
   record: ConnectorRecord
-): Promise<void> {
-  const { tangentStart, tangentEnd } = connectorCurveTangents(
-    start,
-    end,
-    startSide,
-    endSide,
-    startClearance,
-    endClearance
-  )
+): Promise<Point> {
+  const curve = connectorCurveTangents(start, end, startSide, endSide, startClearance, endClearance)
+  const { tangentStart, tangentEnd } = curve
   const controlStart = { x: start.x + tangentStart.x, y: start.y + tangentStart.y }
   const controlEnd = { x: end.x + tangentEnd.x, y: end.y + tangentEnd.y }
   const originX = Math.min(start.x, end.x, controlStart.x, controlEnd.x)
@@ -300,6 +386,7 @@ async function positionCurve(
     segments: [{ start: 0, end: 1, tangentStart, tangentEnd }],
     regions: []
   })
+  return pointOnCurve(start, end, curve, 0.5)
 }
 
 /** Creates a connector between two nodes and renders it immediately. */
@@ -312,13 +399,20 @@ export async function createConnector(start: SceneNode, end: SceneNode): Promise
   return node
 }
 
-/** Applies a style change (colour, opacity, weight, either end's cap, line style, or corner radius) and re-renders. */
+/** Applies a style change (colour, opacity, weight, either end's cap, line style, corner radius, or label) and re-renders. */
 export async function updateConnectorStyle(
   node: VectorNode,
   changes: Partial<
     Pick<
       ConnectorRecord,
-      'color' | 'opacity' | 'strokeWeight' | 'startCap' | 'endCap' | 'lineStyle' | 'cornerRadius'
+      | 'color'
+      | 'opacity'
+      | 'strokeWeight'
+      | 'startCap'
+      | 'endCap'
+      | 'lineStyle'
+      | 'cornerRadius'
+      | 'label'
     >
   >
 ): Promise<void> {
@@ -352,6 +446,15 @@ function yieldToMainThread(): Promise<void> {
 
 const CHUNK_SIZE = 20
 
+/** Removes any connector label whose owning connector no longer exists. */
+function removeOrphanConnectorLabels(liveConnectorIds: ReadonlySet<string>): void {
+  const labels = figma.currentPage.findAllWithCriteria({ pluginData: { keys: [LABEL_OWNER_KEY] } })
+  for (const node of labels) {
+    const ownerId = node.getPluginData(LABEL_OWNER_KEY)
+    if (ownerId !== '' && !liveConnectorIds.has(ownerId) && !node.removed) node.remove()
+  }
+}
+
 /** Re-renders every connector on the current page. */
 export async function reconcileAllConnectors(): Promise<{ synced: number }> {
   const connectors = findAllConnectors()
@@ -361,5 +464,6 @@ export async function reconcileAllConnectors(): Promise<{ synced: number }> {
     synced += 1
     if (synced % CHUNK_SIZE === 0) await yieldToMainThread()
   }
+  removeOrphanConnectorLabels(new Set(connectors.map((connector) => connector.id)))
   return { synced }
 }

@@ -3,12 +3,9 @@ import {
   Button,
   Container,
   Divider,
-  Dropdown,
-  type DropdownOption,
   IconButton,
   IconClose16,
   Muted,
-  SegmentedControl,
   Tabs,
   Text,
   Textbox,
@@ -21,7 +18,7 @@ import { emit, on } from '@create-figma-plugin/utilities'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
 import type { Magnet } from './core/anchor.js'
-import { CATEGORY_PALETTE, type Category } from './core/category.js'
+import { CATEGORY_PALETTE, type Category, contrastingTextColor } from './core/category.js'
 import { CONNECTOR_CAPS, type ConnectorCap, type ConnectorLineStyle } from './core/connector.js'
 import { ICON_DATA_URL } from './icon.js'
 import type {
@@ -45,8 +42,6 @@ interface PluginProps {
   selection: ReadonlyArray<SelectionSummary>
   categories: ReadonlyArray<Category>
 }
-
-const NO_CATEGORY = '__none__'
 
 function SelectionReadout({ selection }: { selection: ReadonlyArray<SelectionSummary> }) {
   if (selection.length === 0) {
@@ -101,11 +96,45 @@ function Swatch({
 
 function SwatchPicker({ value, onChange }: { value: string; onChange: (color: string) => void }) {
   return (
-    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
       {CATEGORY_PALETTE.map((color) => (
         <Swatch key={color} color={color} onClick={() => onChange(color)} selected={color === value} />
       ))}
     </div>
+  )
+}
+
+/** One selectable pill — coloured for a real category, neutral for "None". Same colour+label shape as the pill rendered on the canvas card, so picking one previews what it'll look like there. */
+function CategoryPill({
+  color,
+  label,
+  selected,
+  onClick
+}: {
+  color: string | null
+  label: string
+  selected: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: color ?? 'var(--figma-color-bg-secondary)',
+        border: selected ? '1.5px solid var(--figma-color-border-selected)' : '1.5px solid transparent',
+        borderRadius: '999px',
+        color: color === null ? 'var(--figma-color-text-secondary)' : contrastingTextColor(color),
+        cursor: 'pointer',
+        fontSize: '11px',
+        fontWeight: 600,
+        height: '22px',
+        opacity: selected ? 1 : 0.68,
+        padding: '0 10px'
+      }}
+      type="button"
+    >
+      {label}
+    </button>
   )
 }
 
@@ -118,18 +147,28 @@ function CategoryPicker({
   categories: ReadonlyArray<Category>
   onChange: (categoryId: string | null) => void
 }) {
-  const options: Array<DropdownOption> = [
-    { value: NO_CATEGORY, text: 'No category' },
-    ...categories.map((category) => ({ value: category.id, text: category.name }))
-  ]
   return (
-    <Dropdown
-      onValueChange={(value) => {
-        onChange(value === NO_CATEGORY ? null : value)
-      }}
-      options={options}
-      value={categoryId ?? NO_CATEGORY}
-    />
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+      <CategoryPill
+        color={null}
+        label="None"
+        onClick={() => {
+          onChange(null)
+        }}
+        selected={categoryId === null}
+      />
+      {categories.map((category) => (
+        <CategoryPill
+          color={category.color}
+          key={category.id}
+          label={category.name}
+          onClick={() => {
+            onChange(category.id)
+          }}
+          selected={categoryId === category.id}
+        />
+      ))}
+    </div>
   )
 }
 
@@ -144,46 +183,317 @@ const CAP_LABELS: Record<ConnectorCap, string> = {
   CIRCLE_FILLED: 'Circle'
 }
 
-const CAP_OPTIONS: Array<DropdownOption> = CONNECTOR_CAPS.map((cap) => ({
-  value: cap,
-  text: CAP_LABELS[cap]
-}))
+/**
+ * A short stub line ending in the cap's actual shape — not a generic icon,
+ * a preview of what the connector end will look like — so picking a cap
+ * doesn't require reading eight near-identical-length labels apart.
+ */
+function CapGlyph({ cap, color, size = 14 }: { cap: ConnectorCap; color: string; size?: number }) {
+  const content = (() => {
+    switch (cap) {
+      case 'NONE':
+        return <line stroke={color} strokeWidth="1.4" x1="2" x2="14" y1="8" y2="8" />
+      case 'ROUND':
+        return (
+          <>
+            <line stroke={color} strokeWidth="1.4" x1="2" x2="9" y1="8" y2="8" />
+            <circle cx="12" cy="8" fill={color} r="2.6" />
+          </>
+        )
+      case 'SQUARE':
+        return (
+          <>
+            <line stroke={color} strokeWidth="1.4" x1="2" x2="9" y1="8" y2="8" />
+            <rect fill={color} height="5" width="5" x="9.5" y="5.5" />
+          </>
+        )
+      case 'ARROW_LINES':
+        return (
+          <>
+            <line stroke={color} strokeWidth="1.4" x1="1" x2="10" y1="8" y2="8" />
+            <path
+              d="M7 4.5L11 8L7 11.5"
+              fill="none"
+              stroke={color}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.4"
+            />
+          </>
+        )
+      case 'ARROW_EQUILATERAL':
+        return (
+          <>
+            <line stroke={color} strokeWidth="1.4" x1="1" x2="8" y1="8" y2="8" />
+            <path d="M8 5L13 8L8 11Z" fill={color} />
+          </>
+        )
+      case 'DIAMOND_FILLED':
+        return (
+          <>
+            <line stroke={color} strokeWidth="1.4" x1="1" x2="8" y1="8" y2="8" />
+            <path d="M11 5L14 8L11 11L8 8Z" fill={color} />
+          </>
+        )
+      case 'TRIANGLE_FILLED':
+        return (
+          <>
+            <line stroke={color} strokeWidth="1.4" x1="1" x2="8" y1="8" y2="8" />
+            <path d="M8 5.5L14 8L8 10.5Z" fill={color} />
+          </>
+        )
+      case 'CIRCLE_FILLED':
+        return (
+          <>
+            <line stroke={color} strokeWidth="1.4" x1="2" x2="9" y1="8" y2="8" />
+            <circle cx="12" cy="8" fill={color} r="3" />
+          </>
+        )
+    }
+  })()
+  return (
+    <svg height={size} style={{ flexShrink: 0 }} viewBox="0 0 16 16" width={size}>
+      {content}
+    </svg>
+  )
+}
 
-function CapPicker({
+/**
+ * The cap picker as an icon button + flyout grid, Autoflow-style, instead
+ * of a text `Dropdown` — the button previews the selected cap directly
+ * rather than naming it. Sized to `--space-24`/`--border-radius-4`, the
+ * same tokens `Dropdown` and `TextboxNumeric` use, so it lines up with the
+ * Weight/Opacity/Corner-radius rows above it in this same panel.
+ */
+function CapIconPicker({
   label,
   value,
+  isOpen,
+  onToggle,
   onChange
 }: {
   label: string
   value: ConnectorCap
+  isOpen: boolean
+  onToggle: () => void
   onChange: (cap: ConnectorCap) => void
 }) {
   return (
-    <div style={{ flex: '1 1 0' }}>
+    <div style={{ flex: '1 1 0', position: 'relative' }}>
       <Text>
         <Muted>{label}</Muted>
       </Text>
       <VerticalSpace space="extraSmall" />
-      <Dropdown
-        onValueChange={(next) => {
-          onChange(next as ConnectorCap)
+      <button
+        onClick={onToggle}
+        style={{
+          alignItems: 'center',
+          background: 'var(--figma-color-bg)',
+          border: `1px solid ${isOpen ? 'var(--figma-color-border-selected)' : 'var(--figma-color-border)'}`,
+          borderRadius: 'var(--border-radius-4)',
+          cursor: 'pointer',
+          display: 'flex',
+          gap: '6px',
+          height: 'var(--space-24)',
+          justifyContent: 'center',
+          padding: '0 6px',
+          width: '100%'
         }}
-        options={CAP_OPTIONS}
-        value={value}
-      />
+        title={CAP_LABELS[value]}
+        type="button"
+      >
+        <CapGlyph cap={value} color="var(--figma-color-icon)" />
+        <svg
+          height="7"
+          style={{
+            color: 'var(--figma-color-icon-tertiary)',
+            flexShrink: 0,
+            transform: isOpen ? 'rotate(180deg)' : 'none'
+          }}
+          viewBox="0 0 10 10"
+          width="7"
+        >
+          <path
+            d="M2 3.5L5 6.5L8 3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.3"
+          />
+        </svg>
+      </button>
+      {isOpen ? (
+        <>
+          {/* Closes the flyout on an outside click without stealing focus from whatever's clicked. */}
+          <div
+            onClick={onToggle}
+            style={{ bottom: 0, left: 0, position: 'fixed', right: 0, top: 0, zIndex: 5 }}
+          />
+          <div
+            style={{
+              background: 'var(--figma-color-bg)',
+              border: '1px solid var(--figma-color-border)',
+              borderRadius: 'var(--border-radius-4)',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.18)',
+              display: 'grid',
+              gap: '2px',
+              gridTemplateColumns: 'repeat(4, var(--space-24))',
+              left: 0,
+              padding: '4px',
+              position: 'absolute',
+              top: 'calc(100% + 4px)',
+              zIndex: 6
+            }}
+          >
+            {CONNECTOR_CAPS.map((cap) => {
+              const selected = cap === value
+              return (
+                <button
+                  key={cap}
+                  onClick={() => {
+                    onChange(cap)
+                  }}
+                  style={{
+                    alignItems: 'center',
+                    background: selected ? 'var(--figma-color-bg-selected)' : 'transparent',
+                    border: 'none',
+                    borderRadius: 'var(--border-radius-2)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    height: 'var(--space-24)',
+                    justifyContent: 'center',
+                    width: 'var(--space-24)'
+                  }}
+                  title={CAP_LABELS[cap]}
+                  type="button"
+                >
+                  <CapGlyph
+                    cap={cap}
+                    color={selected ? 'var(--figma-color-icon-selected)' : 'var(--figma-color-icon)'}
+                  />
+                </button>
+              )
+            })}
+          </div>
+        </>
+      ) : null}
     </div>
   )
 }
 
-const MAGNET_OPTIONS: Array<DropdownOption> = [
-  { value: 'AUTO', text: 'Auto' },
-  { value: 'TOP', text: 'Top' },
-  { value: 'RIGHT', text: 'Right' },
-  { value: 'BOTTOM', text: 'Bottom' },
-  { value: 'LEFT', text: 'Left' }
-]
+const LINE_STYLE_LABELS: Record<ConnectorLineStyle, string> = {
+  STRAIGHT: 'Straight',
+  CURVE: 'Curve',
+  ELBOW: 'Elbow'
+}
 
-function MagnetPicker({
+const LINE_STYLES: ReadonlyArray<ConnectorLineStyle> = ['STRAIGHT', 'CURVE', 'ELBOW']
+
+/** A small preview of what the route itself will look like, not a name. */
+function LineStyleGlyph({ style, color }: { style: ConnectorLineStyle; color: string }) {
+  const content = (() => {
+    switch (style) {
+      case 'STRAIGHT':
+        return <line stroke={color} strokeLinecap="round" strokeWidth="1.6" x1="4" x2="14" y1="14" y2="4" />
+      case 'CURVE':
+        return (
+          <path
+            d="M4 14C4 14 5 4 9 4C13 4 10 14 14 14"
+            fill="none"
+            stroke={color}
+            strokeLinecap="round"
+            strokeWidth="1.6"
+          />
+        )
+      case 'ELBOW':
+        return (
+          <path
+            d="M4 14H10V4H14"
+            fill="none"
+            stroke={color}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.6"
+          />
+        )
+    }
+  })()
+  return (
+    <svg height="16" style={{ flexShrink: 0 }} viewBox="0 0 18 18" width="16">
+      {content}
+    </svg>
+  )
+}
+
+/** Three icon toggles instead of `SegmentedControl`'s text labels — the route shape previews itself, Autoflow-style. */
+function LineStylePicker({
+  value,
+  onChange
+}: {
+  value: ConnectorLineStyle
+  onChange: (style: ConnectorLineStyle) => void
+}) {
+  return (
+    <div
+      style={{
+        border: '1px solid var(--figma-color-border)',
+        borderRadius: 'var(--border-radius-4)',
+        display: 'flex',
+        overflow: 'hidden'
+      }}
+    >
+      {LINE_STYLES.map((style, index) => {
+        const selected = style === value
+        return (
+          <button
+            key={style}
+            onClick={() => {
+              onChange(style)
+            }}
+            style={{
+              alignItems: 'center',
+              background: selected ? 'var(--figma-color-bg-selected)' : 'var(--figma-color-bg)',
+              border: 'none',
+              borderLeft: index === 0 ? 'none' : '1px solid var(--figma-color-border)',
+              cursor: 'pointer',
+              display: 'flex',
+              height: 'var(--space-24)',
+              justifyContent: 'center',
+              width: 'var(--space-24)'
+            }}
+            title={LINE_STYLE_LABELS[style]}
+            type="button"
+          >
+            <LineStyleGlyph
+              color={selected ? 'var(--figma-color-icon-selected)' : 'var(--figma-color-icon)'}
+              style={style}
+            />
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+type MagnetSide = 'TOP' | 'RIGHT' | 'BOTTOM' | 'LEFT'
+
+const RESOLVED_MAGNET_SIDES: ReadonlyArray<MagnetSide> = ['TOP', 'RIGHT', 'BOTTOM', 'LEFT']
+
+const MAGNET_DOT_POSITION: Record<MagnetSide, { top: string; left: string }> = {
+  TOP: { top: '0%', left: '50%' },
+  RIGHT: { top: '50%', left: '100%' },
+  BOTTOM: { top: '100%', left: '50%' },
+  LEFT: { top: '50%', left: '0%' }
+}
+
+/**
+ * The exit/entry side as a small clickable diagram — a square standing in
+ * for "the shape", with a dot at each edge to pick a fixed side, instead of
+ * naming sides in a text dropdown. Clicking the square itself (not a dot)
+ * picks `AUTO`, whose ring lights up the same way a chosen dot would.
+ */
+function MagnetGraphicPicker({
   label,
   value,
   onChange
@@ -198,13 +508,56 @@ function MagnetPicker({
         <Muted>{label}</Muted>
       </Text>
       <VerticalSpace space="extraSmall" />
-      <Dropdown
-        onValueChange={(next) => {
-          onChange(next as Magnet)
-        }}
-        options={MAGNET_OPTIONS}
-        value={value}
-      />
+      <div style={{ alignItems: 'center', display: 'flex', height: '40px', justifyContent: 'center' }}>
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => {
+              onChange('AUTO')
+            }}
+            style={{
+              background: 'var(--figma-color-bg-secondary)',
+              border: `1.5px solid ${
+                value === 'AUTO' ? 'var(--figma-color-border-selected)' : 'var(--figma-color-border-strong)'
+              }`,
+              borderRadius: '3px',
+              cursor: 'pointer',
+              display: 'block',
+              height: '26px',
+              width: '26px'
+            }}
+            title="Auto"
+            type="button"
+          />
+          {RESOLVED_MAGNET_SIDES.map((side) => {
+            const selected = value === side
+            const position = MAGNET_DOT_POSITION[side]
+            return (
+              <button
+                key={side}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onChange(side)
+                }}
+                style={{
+                  background: selected ? 'var(--figma-color-bg-brand)' : 'var(--figma-color-icon-tertiary)',
+                  border: selected ? '1.5px solid var(--figma-color-bg)' : 'none',
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  height: selected ? '10px' : '7px',
+                  left: position.left,
+                  padding: 0,
+                  position: 'absolute',
+                  top: position.top,
+                  transform: 'translate(-50%, -50%)',
+                  width: selected ? '10px' : '7px'
+                }}
+                title={side.charAt(0) + side.slice(1).toLowerCase()}
+                type="button"
+              />
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }
@@ -216,6 +569,9 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
   const [opacityText, setOpacityText] = useState<string>(
     String(Math.round((style?.opacity ?? 1) * 100))
   )
+  const [labelText, setLabelText] = useState<string>(style?.label ?? '')
+  // Only one flyout open at a time across the whole panel — colour and both cap pickers share this.
+  const [openFlyout, setOpenFlyout] = useState<'color' | 'startCap' | 'endCap' | null>(null)
   if (style === null) return null
 
   const update = (
@@ -227,6 +583,7 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
       endCap: ConnectorCap
       lineStyle: ConnectorLineStyle
       cornerRadius: number
+      label: string
     }>
   ) => {
     emit<UpdateConnectorStyleHandler>('UPDATE_CONNECTOR_STYLE', { targetId: node.id, ...changes })
@@ -243,58 +600,29 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
         <Bold>Connector style</Bold>
       </Text>
       <VerticalSpace space="small" />
-      <Text>
-        <Muted>Line</Muted>
-      </Text>
-      <VerticalSpace space="extraSmall" />
-      <SegmentedControl
-        onValueChange={(value) => {
-          update({ lineStyle: value as ConnectorLineStyle })
-        }}
-        options={[
-          { children: 'Straight', value: 'STRAIGHT' },
-          { children: 'Curve', value: 'CURVE' },
-          { children: 'Elbow', value: 'ELBOW' }
-        ]}
-        value={style.lineStyle}
-      />
-      {style.lineStyle === 'ELBOW' ? (
-        <>
-          <VerticalSpace space="small" />
-          <Text>
-            <Muted>Corner radius</Muted>
-          </Text>
-          <VerticalSpace space="extraSmall" />
-          <TextboxNumeric
-            minimum={0}
-            onBlur={() => {
-              const parsed = Number.parseFloat(radiusText)
-              if (Number.isFinite(parsed) && parsed >= 0) update({ cornerRadius: parsed })
-            }}
-            onValueInput={setRadiusText}
-            suffix="px"
-            value={radiusText}
-          />
-        </>
-      ) : null}
-      <VerticalSpace space="small" />
-      <Text>
-        <Muted>Colour</Muted>
-      </Text>
-      <VerticalSpace space="extraSmall" />
-      <SwatchPicker
-        onChange={(color) => {
-          update({ color })
-        }}
-        value={style.color}
-      />
-      <VerticalSpace space="small" />
       <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ position: 'relative' }}>
+          <ColorSwatchTrigger
+            color={style.color}
+            isOpen={openFlyout === 'color'}
+            onToggle={() => {
+              setOpenFlyout(openFlyout === 'color' ? null : 'color')
+            }}
+            size={24}
+          />
+          {openFlyout === 'color' ? (
+            <ColorFlyout
+              onChange={(color) => {
+                update({ color })
+              }}
+              onClose={() => {
+                setOpenFlyout(null)
+              }}
+              value={style.color}
+            />
+          ) : null}
+        </div>
         <div style={{ flex: '1 1 0' }}>
-          <Text>
-            <Muted>Weight</Muted>
-          </Text>
-          <VerticalSpace space="extraSmall" />
           <TextboxNumeric
             minimum={0.5}
             onBlur={() => {
@@ -307,10 +635,6 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
           />
         </div>
         <div style={{ flex: '1 1 0' }}>
-          <Text>
-            <Muted>Opacity</Muted>
-          </Text>
-          <VerticalSpace space="extraSmall" />
           <TextboxNumeric
             maximum={100}
             minimum={0}
@@ -327,20 +651,60 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
             value={opacityText}
           />
         </div>
+        <LineStylePicker
+          onChange={(lineStyle) => {
+            update({ lineStyle })
+          }}
+          value={style.lineStyle}
+        />
       </div>
+      {style.lineStyle === 'ELBOW' ? (
+        <>
+          <VerticalSpace space="small" />
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ flex: '1 1 0' }}>
+              <Text>
+                <Muted>Corner radius</Muted>
+              </Text>
+              <VerticalSpace space="extraSmall" />
+              <TextboxNumeric
+                minimum={0}
+                onBlur={() => {
+                  const parsed = Number.parseFloat(radiusText)
+                  if (Number.isFinite(parsed) && parsed >= 0) update({ cornerRadius: parsed })
+                }}
+                onValueInput={setRadiusText}
+                suffix="px"
+                value={radiusText}
+              />
+            </div>
+            <div style={{ flex: '1 1 0' }} />
+          </div>
+        </>
+      ) : null}
       <VerticalSpace space="small" />
       <div style={{ display: 'flex', gap: '8px' }}>
-        <CapPicker
+        <CapIconPicker
+          isOpen={openFlyout === 'startCap'}
           label="Start"
           onChange={(startCap) => {
             update({ startCap })
+            setOpenFlyout(null)
+          }}
+          onToggle={() => {
+            setOpenFlyout(openFlyout === 'startCap' ? null : 'startCap')
           }}
           value={style.startCap}
         />
-        <CapPicker
+        <CapIconPicker
+          isOpen={openFlyout === 'endCap'}
           label="End"
           onChange={(endCap) => {
             update({ endCap })
+            setOpenFlyout(null)
+          }}
+          onToggle={() => {
+            setOpenFlyout(openFlyout === 'endCap' ? null : 'endCap')
           }}
           value={style.endCap}
         />
@@ -349,16 +713,15 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
       <Text>
         <Muted>Exit / entry side</Muted>
       </Text>
-      <VerticalSpace space="extraSmall" />
       <div style={{ display: 'flex', gap: '8px' }}>
-        <MagnetPicker
+        <MagnetGraphicPicker
           label="Start"
           onChange={(magnet) => {
             updateAnchor('start', magnet)
           }}
           value={style.startMagnet}
         />
-        <MagnetPicker
+        <MagnetGraphicPicker
           label="End"
           onChange={(magnet) => {
             updateAnchor('end', magnet)
@@ -366,6 +729,19 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
           value={style.endMagnet}
         />
       </div>
+      <VerticalSpace space="small" />
+      <Text>
+        <Muted>Label</Muted>
+      </Text>
+      <VerticalSpace space="extraSmall" />
+      <Textbox
+        onBlur={() => {
+          update({ label: labelText })
+        }}
+        onValueInput={setLabelText}
+        placeholder="Add text…"
+        value={labelText}
+      />
       <VerticalSpace space="medium" />
     </Container>
   )
@@ -413,32 +789,127 @@ function AnnotateEditor({
   )
 }
 
+/**
+ * A colour, shown as a small round trigger rather than the full swatch grid
+ * sitting permanently open — with several rows (categories, or the
+ * connector style panel's own colour field), a whole grid each was most of
+ * what made those areas feel heavy. Opens the grid in a flyout instead, the
+ * same interaction shape as `CapIconPicker`'s cap flyout, so recolouring
+ * reuses a pattern this panel already teaches elsewhere.
+ */
+function ColorSwatchTrigger({
+  color,
+  isOpen,
+  onToggle,
+  size = 18
+}: {
+  color: string
+  isOpen: boolean
+  onToggle: () => void
+  size?: number
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      style={{
+        background: color,
+        border: `1px solid ${isOpen ? 'var(--figma-color-border-selected)' : 'transparent'}`,
+        borderRadius: '50%',
+        boxShadow: isOpen ? 'none' : '0 0 0 1px rgba(0, 0, 0, 0.1) inset',
+        cursor: 'pointer',
+        flexShrink: 0,
+        height: `${size}px`,
+        padding: 0,
+        width: `${size}px`
+      }}
+      title="Change colour"
+      type="button"
+    />
+  )
+}
+
+/** The flyout `ColorSwatchTrigger` opens — an outside-click-to-close overlay plus the palette grid. */
+function ColorFlyout({
+  value,
+  onChange,
+  onClose
+}: {
+  value: string
+  onChange: (color: string) => void
+  onClose: () => void
+}) {
+  return (
+    <>
+      <div onClick={onClose} style={{ bottom: 0, left: 0, position: 'fixed', right: 0, top: 0, zIndex: 5 }} />
+      <div
+        style={{
+          background: 'var(--figma-color-bg)',
+          border: '1px solid var(--figma-color-border)',
+          borderRadius: 'var(--border-radius-4)',
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.18)',
+          left: 0,
+          padding: '8px',
+          position: 'absolute',
+          top: 'calc(100% + 4px)',
+          zIndex: 6
+        }}
+      >
+        <SwatchPicker
+          onChange={(next) => {
+            onChange(next)
+            onClose()
+          }}
+          value={value}
+        />
+      </div>
+    </>
+  )
+}
+
 function CategoryRow({
   category,
+  isColorOpen,
+  onToggleColor,
   onRename,
   onRecolor,
   onDelete
 }: {
   category: Category
+  isColorOpen: boolean
+  onToggleColor: () => void
   onRename: (name: string) => void
   onRecolor: (color: string) => void
   onDelete: () => void
 }) {
   const [name, setName] = useState<string>(category.name)
+  const [deleteHovered, setDeleteHovered] = useState<boolean>(false)
 
   return (
-    <Container space="medium">
-      <VerticalSpace space="small" />
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <div style={{ flex: '1 1 auto' }}>
-          <Textbox
-            onBlur={() => {
-              onRename(name)
-            }}
-            onValueInput={setName}
-            value={name}
-          />
-        </div>
+    <div style={{ alignItems: 'center', display: 'flex', gap: '8px', padding: '4px 0', position: 'relative' }}>
+      <ColorSwatchTrigger color={category.color} isOpen={isColorOpen} onToggle={onToggleColor} />
+      {isColorOpen ? (
+        <ColorFlyout onChange={onRecolor} onClose={onToggleColor} value={category.color} />
+      ) : null}
+      <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+        <Textbox
+          onBlur={() => {
+            onRename(name)
+          }}
+          onValueInput={setName}
+          value={name}
+        />
+      </div>
+      {/* Neutral by default, danger-red only on hover — a permanent delete
+          action shouldn't be a loud accent color sitting idle in every row. */}
+      <div
+        onMouseEnter={() => {
+          setDeleteHovered(true)
+        }}
+        onMouseLeave={() => {
+          setDeleteHovered(false)
+        }}
+        style={deleteHovered ? { color: 'var(--figma-color-icon-danger)' } : undefined}
+      >
         <IconButton
           onClick={() => {
             onDelete()
@@ -447,11 +918,7 @@ function CategoryRow({
           <IconClose16 />
         </IconButton>
       </div>
-      <VerticalSpace space="extraSmall" />
-      <SwatchPicker onChange={onRecolor} value={category.color} />
-      <VerticalSpace space="small" />
-      <Divider />
-    </Container>
+    </div>
   )
 }
 
@@ -460,12 +927,11 @@ function AddCategoryForm({ onAdd }: { onAdd: (name: string, color: string) => vo
   const [color, setColor] = useState<string>(CATEGORY_PALETTE[0] as string)
 
   return (
-    <Container space="medium">
-      <VerticalSpace space="medium" />
+    <>
       <Text>
-        <Bold>Add a category</Bold>
+        <Muted>Add a category</Muted>
       </Text>
-      <VerticalSpace space="small" />
+      <VerticalSpace space="extraSmall" />
       <Textbox onValueInput={setName} placeholder="Category name" value={name} />
       <VerticalSpace space="small" />
       <SwatchPicker onChange={setColor} value={color} />
@@ -481,43 +947,57 @@ function AddCategoryForm({ onAdd }: { onAdd: (name: string, color: string) => vo
       >
         Add category
       </Button>
-      <VerticalSpace space="medium" />
-    </Container>
+    </>
   )
 }
 
 function CategoryManager({ categories }: { categories: ReadonlyArray<Category> }) {
+  // Only one colour flyout open at a time, same rule as the cap pickers.
+  const [openColorId, setOpenColorId] = useState<string | null>(null)
+
   return (
     <Container space="medium">
+      <VerticalSpace space="medium" />
+      <Text>
+        <Muted>Categories</Muted>
+      </Text>
+      <VerticalSpace space="extraSmall" />
       {categories.length === 0 ? (
-        <>
-          <VerticalSpace space="medium" />
-          <Text>
-            <Muted>No categories yet. Add one below, then pick it from the Annotate tab.</Muted>
-          </Text>
-        </>
+        <Text>
+          <Muted>No categories yet. Add one below, then pick it from the Annotate tab.</Muted>
+        </Text>
       ) : (
-        categories.map((category) => (
-          <CategoryRow
-            category={category}
-            key={category.id}
-            onDelete={() => {
-              emit<DeleteCategoryHandler>('DELETE_CATEGORY', { id: category.id })
-            }}
-            onRecolor={(color) => {
-              emit<RecolorCategoryHandler>('RECOLOR_CATEGORY', { id: category.id, color })
-            }}
-            onRename={(name) => {
-              emit<RenameCategoryHandler>('RENAME_CATEGORY', { id: category.id, name })
-            }}
-          />
-        ))
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {categories.map((category) => (
+            <CategoryRow
+              category={category}
+              isColorOpen={openColorId === category.id}
+              key={category.id}
+              onDelete={() => {
+                emit<DeleteCategoryHandler>('DELETE_CATEGORY', { id: category.id })
+              }}
+              onRecolor={(color) => {
+                emit<RecolorCategoryHandler>('RECOLOR_CATEGORY', { id: category.id, color })
+              }}
+              onRename={(name) => {
+                emit<RenameCategoryHandler>('RENAME_CATEGORY', { id: category.id, name })
+              }}
+              onToggleColor={() => {
+                setOpenColorId(openColorId === category.id ? null : category.id)
+              }}
+            />
+          ))}
+        </div>
       )}
+      <VerticalSpace space="medium" />
+      <Divider />
+      <VerticalSpace space="medium" />
       <AddCategoryForm
         onAdd={(name, color) => {
           emit<AddCategoryHandler>('ADD_CATEGORY', { name, color })
         }}
       />
+      <VerticalSpace space="medium" />
     </Container>
   )
 }
@@ -578,9 +1058,14 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
           style={{ borderRadius: '5px', display: 'block' }}
           width={20}
         />
-        <Text>
-          <Bold>Annotate & Connect</Bold>
-        </Text>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <Text>
+            <Bold>ANNOCON</Bold>
+          </Text>
+          <Text>
+            <Muted>Annotate &amp; Connect</Muted>
+          </Text>
+        </div>
       </div>
       <VerticalSpace space="small" />
       <Tabs
