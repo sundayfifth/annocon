@@ -29,14 +29,32 @@
 - **จำสไตล์ล่าสุดที่ใช้ไว้ให้อัตโนมัติ** — ตั้งสีเทาไว้ครั้งนี้ เส้นเชื่อมเส้นต่อไปก็เริ่มจากสีเทาให้เลย
   ไม่ต้องตั้งใหม่ทุกครั้ง (จำข้ามการเปิด-ปิดปลั๊กอินได้ด้วย)
 
-## วิธีติดตั้ง (สำหรับ dev / ยังไม่ได้เผยแพร่บน Figma Community)
+## วิธีติดตั้ง (ยังไม่ได้เผยแพร่บน Figma Community)
 
-ต้องมี [Node.js](https://nodejs.org) เวอร์ชัน 22 ขึ้นไป และ **Figma desktop app**
-(ปลั๊กอินตัวนี้พัฒนา/ทดสอบบนเว็บเบราว์เซอร์ไม่ได้)
+ทุกวิธีต้องมี **Figma desktop app** เท่านั้น (พัฒนา/ทดสอบปลั๊กอินบนเว็บเบราว์เซอร์ไม่ได้)
+
+### วิธีง่าย — ดาวน์โหลดไฟล์ที่ build ไว้แล้ว (แนะนำสำหรับคนในทีมที่แค่อยากลองใช้)
+
+ไม่ต้องมี Node.js หรือ build เองเลย:
+
+1. ไปที่ **[หน้า Releases](https://github.com/sundayfifth/annocon/releases/latest)**
+   ดาวน์โหลด `annocon-plugin.zip`
+2. แตกไฟล์ zip ออกมา (จะได้โฟลเดอร์ `annocon` ที่มี `manifest.json` กับโฟลเดอร์ `build/`
+   อยู่ข้างใน) วางไว้ตรงไหนของเครื่องก็ได้ แค่**อย่าลบหรือย้ายโฟลเดอร์นี้ทีหลัง** เพราะ Figma
+   จะจำ path นี้ไว้เปิดปลั๊กอินทุกครั้ง
+3. เปิด Figma desktop app → เมนู **Plugins → Development → Import plugin from
+   manifest…** → เลือกไฟล์ `manifest.json` ที่อยู่ในโฟลเดอร์ที่แตกออกมา
+
+เท่านี้ก็ใช้งานได้เลย เวลามีอัปเดตเวอร์ชันใหม่ ดาวน์โหลด zip ใหม่มาแทนที่โฟลเดอร์เดิม
+แล้วเปิดปลั๊กอินใหม่อีกครั้งก็พอ
+
+### วิธี build เอง (สำหรับคนที่จะแก้โค้ดต่อ)
+
+ต้องมี [Node.js](https://nodejs.org) เวอร์ชัน 22 ขึ้นไปเพิ่มด้วย
 
 ```bash
-git clone https://github.com/sundayfifth/annotate-connect.git
-cd annotate-connect
+git clone https://github.com/sundayfifth/annocon.git
+cd annocon
 npm install
 npm run build
 ```
