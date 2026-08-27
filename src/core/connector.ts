@@ -27,11 +27,17 @@ export const CONNECTOR_VERSION = 1
  * styles, not just arrowheads, so "cap" rather than "arrowhead" throughout.
  * Kept as our own union (not importing the ambient Figma type) so this file
  * never has a reason to assume anything about the `figma` global exists.
+ *
+ * Figma's own `'ROUND'`/`'SQUARE'` deliberately left out: those are a subtle
+ * line-tip rounding/squaring-off, sized off the stroke weight itself (the
+ * same thing CSS/SVG's `stroke-linecap` does) — not a marker shape. At the
+ * thin weights a connector actually uses, they render as good as invisible,
+ * which just reads as "I picked this and nothing happened." The `_FILLED`
+ * caps are real marker shapes with their own visible size regardless of
+ * stroke weight, which is what a person picking a "cap" actually expects.
  */
 export type ConnectorCap =
   | 'NONE'
-  | 'ROUND'
-  | 'SQUARE'
   | 'ARROW_LINES'
   | 'ARROW_EQUILATERAL'
   | 'DIAMOND_FILLED'
@@ -40,8 +46,6 @@ export type ConnectorCap =
 
 export const CONNECTOR_CAPS: ReadonlyArray<ConnectorCap> = [
   'NONE',
-  'ROUND',
-  'SQUARE',
   'ARROW_LINES',
   'ARROW_EQUILATERAL',
   'DIAMOND_FILLED',
@@ -83,18 +87,37 @@ export const DEFAULT_LINE_STYLE: ConnectorLineStyle = 'ELBOW'
 export const DEFAULT_CORNER_RADIUS = 20
 export const DEFAULT_LABEL = ''
 
-export function createConnectorRecord(startNodeId: string, endNodeId: string): ConnectorRecord {
+/** The style fields a new connector inherits from whatever was last set — everything in `ConnectorRecord` except its anchors and its (per-connector, never inherited) label. */
+export interface ConnectorStylePrefs {
+  readonly strokeWeight: number
+  readonly color: string
+  readonly opacity: number
+  readonly startCap: ConnectorCap
+  readonly endCap: ConnectorCap
+  readonly lineStyle: ConnectorLineStyle
+  readonly cornerRadius: number
+}
+
+export const DEFAULT_CONNECTOR_STYLE_PREFS: ConnectorStylePrefs = {
+  strokeWeight: DEFAULT_CONNECTOR_WEIGHT,
+  color: DEFAULT_CONNECTOR_COLOR,
+  opacity: DEFAULT_CONNECTOR_OPACITY,
+  startCap: DEFAULT_START_CAP,
+  endCap: DEFAULT_END_CAP,
+  lineStyle: DEFAULT_LINE_STYLE,
+  cornerRadius: DEFAULT_CORNER_RADIUS
+}
+
+export function createConnectorRecord(
+  startNodeId: string,
+  endNodeId: string,
+  stylePrefs: ConnectorStylePrefs = DEFAULT_CONNECTOR_STYLE_PREFS
+): ConnectorRecord {
   return {
     v: CONNECTOR_VERSION,
     start: { kind: 'magnet', nodeId: startNodeId, magnet: 'AUTO' },
     end: { kind: 'magnet', nodeId: endNodeId, magnet: 'AUTO' },
-    strokeWeight: DEFAULT_CONNECTOR_WEIGHT,
-    color: DEFAULT_CONNECTOR_COLOR,
-    opacity: DEFAULT_CONNECTOR_OPACITY,
-    startCap: DEFAULT_START_CAP,
-    endCap: DEFAULT_END_CAP,
-    lineStyle: DEFAULT_LINE_STYLE,
-    cornerRadius: DEFAULT_CORNER_RADIUS,
+    ...stylePrefs,
     label: DEFAULT_LABEL
   }
 }
@@ -109,6 +132,50 @@ function isCap(value: unknown): value is ConnectorCap {
 
 function isLineStyle(value: unknown): value is ConnectorLineStyle {
   return typeof value === 'string' && LINE_STYLES.has(value)
+}
+
+/**
+ * Decodes a `ConnectorStylePrefs` out of `clientStorage` — the "last style
+ * used" a new connector starts from (see `createConnector`). Same tolerant,
+ * field-by-field fallback as `parseConnectorRecord`; a stray or corrupted
+ * value here should degrade to the shipped defaults, not break connector
+ * creation.
+ */
+export function parseConnectorStylePrefs(raw: string): ConnectorStylePrefs {
+  if (raw === '') return DEFAULT_CONNECTOR_STYLE_PREFS
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return DEFAULT_CONNECTOR_STYLE_PREFS
+  }
+  if (typeof parsed !== 'object' || parsed === null) return DEFAULT_CONNECTOR_STYLE_PREFS
+  const candidate = parsed as Record<string, unknown>
+  return {
+    strokeWeight:
+      typeof candidate.strokeWeight === 'number' && candidate.strokeWeight > 0
+        ? candidate.strokeWeight
+        : DEFAULT_CONNECTOR_WEIGHT,
+    color:
+      typeof candidate.color === 'string' && HEX_COLOR.test(candidate.color)
+        ? candidate.color
+        : DEFAULT_CONNECTOR_COLOR,
+    opacity:
+      typeof candidate.opacity === 'number' && candidate.opacity >= 0 && candidate.opacity <= 1
+        ? candidate.opacity
+        : DEFAULT_CONNECTOR_OPACITY,
+    startCap: isCap(candidate.startCap) ? candidate.startCap : DEFAULT_START_CAP,
+    endCap: isCap(candidate.endCap) ? candidate.endCap : DEFAULT_END_CAP,
+    lineStyle: isLineStyle(candidate.lineStyle) ? candidate.lineStyle : DEFAULT_LINE_STYLE,
+    cornerRadius:
+      typeof candidate.cornerRadius === 'number' && candidate.cornerRadius >= 0
+        ? candidate.cornerRadius
+        : DEFAULT_CORNER_RADIUS
+  }
+}
+
+export function serialiseConnectorStylePrefs(prefs: ConnectorStylePrefs): string {
+  return JSON.stringify(prefs)
 }
 
 function isAnchor(value: unknown): value is Anchor {

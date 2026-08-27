@@ -4,7 +4,6 @@ import type {
   AddCategoryHandler,
   AddCategoryPayload,
   CategoriesChangedHandler,
-  CloseHandler,
   CreateConnectorHandler,
   CreateConnectorPayload,
   DeleteCategoryHandler,
@@ -25,10 +24,12 @@ import type {
   UpdateConnectorStylePayload
 } from './messages.js'
 import {
+  clearAnnotation,
   finalizeLayout,
   findAnnotationTargetsUnder,
   getAnnotationRecord,
   lastKnownOwnerOf,
+  lastKnownRoleOf,
   ownerIdOf,
   reconcileAllAnnotations,
   removeRenderedNodesForOwner,
@@ -311,13 +312,24 @@ async function resyncTouched({
     // person can click one directly and hit Delete without touching the
     // target at all. `id` won't match anything as an owner in that case
     // (nothing has `annotationOwner === id`), so `lastKnownOwnerOf` is how
-    // this traces back to the target that just lost half its annotation
-    // and re-syncs it, recreating whichever piece just vanished.
+    // this traces back to the target that just lost half its annotation.
+    // What happens next depends on *which* piece was deleted: losing the
+    // leader alone re-syncs to redraw it (it's derived, not a deliberate
+    // choice — deleting a locked dashed line by hand is vanishingly rare
+    // and not worth treating as intent). Losing the card is the substance
+    // of the annotation, though — a person deleting a visible note card is
+    // deleting the note, not asking for it to reappear on next reconcile,
+    // so that clears the record too instead of resurrecting it.
     const strandedOwnerId = lastKnownOwnerOf(id)
     if (strandedOwnerId !== null) {
+      const strandedRole = lastKnownRoleOf(id)
       const owner = await figma.getNodeByIdAsync(strandedOwnerId)
       if (owner !== null && 'absoluteBoundingBox' in owner && getAnnotationRecord(owner) !== null) {
-        await syncAnnotation(owner)
+        if (strandedRole === 'card') {
+          await clearAnnotation(owner)
+        } else {
+          await syncAnnotation(owner)
+        }
       }
     }
     for (const connector of findConnectorsInvolving(id)) {
@@ -395,10 +407,6 @@ export default function main(): void {
     fireAndForget(handleUpdateConnectorAnchor(payload))
   })
 
-  on<CloseHandler>('CLOSE', () => {
-    figma.closePlugin()
-  })
-
   figma.on('selectionchange', () => {
     emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
   })
@@ -415,7 +423,10 @@ export default function main(): void {
   fireAndForget(reconcileEverything())
 
   showUI(
-    { height: 440, width: 320 },
+    // Trimmed down from 440 — the Connect tab, the tallest one, only needs
+    // about this much; any real overflow (a long category list, say) still
+    // scrolls rather than clipping.
+    { height: 400, width: 320 },
     { selection: summariseSelection(), categories: getCategories() }
   )
 }

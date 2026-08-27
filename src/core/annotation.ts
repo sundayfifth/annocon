@@ -204,21 +204,40 @@ export function elbowPoints(from: Point, to: Point): ReadonlyArray<Point> | null
   return [from, { x: to.x, y: from.y }, to]
 }
 
+/** How far short of the card `leaderIntoCard`'s final approach starts — see there. */
+export const CARD_APPROACH_STUB = 10
+
 /**
- * Same idea as `elbowPoints`, but the vertical run happens at a caller-chosen
- * `laneX` instead of wherever `to` happens to be — so several leaders
- * converging on the same narrow margin corridor (several annotations routed
- * outside the same frame, on the same side) can be given distinct parallel
- * lanes instead of all overlapping on `to.x`. Degenerates to a plain
- * `elbowPoints`-shaped route when `laneX` already coincides with either
- * endpoint's x, so the common single-annotation case is unaffected.
+ * The "entering the card" counterpart to `elbowPoints`, for a leader
+ * approaching a vertical edge of the card horizontally (`to.x` is that
+ * edge's x) — same horizontal-out-then-vertical-drop shape, except the
+ * vertical run stops `stub` px short of the card instead of running flush
+ * along its edge. A vertical run positioned exactly at the card's own edge
+ * reads as the leader travelling *alongside* the card for however long that
+ * drop is, not entering it — floating it `stub` px off the card and closing
+ * the rest with one short, plainly perpendicular final segment is what
+ * actually reads as docking into it.
+ *
+ * Degrades to a plain `elbowPoints` bend when there isn't `stub` px of
+ * horizontal run to spare (the target is basically already at the card's x)
+ * or when `from` and `to` already share a y — nothing for the stub to buy
+ * in either case.
  */
-export function laneElbowPoints(edge: Point, laneX: number, cardEdge: Point): ReadonlyArray<Point> {
+export function leaderIntoCard(
+  from: Point,
+  to: Point,
+  stub: number = CARD_APPROACH_STUB
+): ReadonlyArray<Point> {
+  if (from.y === to.y || Math.abs(to.x - from.x) <= stub) {
+    return elbowPoints(from, to) ?? [from, to]
+  }
+  const sign = to.x >= from.x ? 1 : -1
+  const stubX = to.x - sign * stub
   const raw: ReadonlyArray<Point> = [
-    edge,
-    { x: laneX, y: edge.y },
-    { x: laneX, y: cardEdge.y },
-    cardEdge
+    from,
+    { x: stubX, y: from.y },
+    { x: stubX, y: to.y },
+    to
   ]
   const points: Array<Point> = []
   for (const point of raw) {
@@ -244,17 +263,30 @@ export function nearestPointOnRect(rect: Rect, from: Point): Point {
   }
 }
 
+// Right is the priority side — cards read left to right, so keeping them on
+// one consistent side makes a page of annotations easier to scan at a
+// glance. Left only overrides that when it's clearly the shorter crossing —
+// under half the distance right would need — since forcing right on a
+// target sitting deep in the frame's own left portion would run the leader
+// straight across most of the frame's content just to reach it.
+const LEFT_OVERRIDE_RATIO = 0.5
+
 /**
- * Which side of `frame` a card routed outside it should go on — whichever
- * gives the leader line less distance to cross. Exposed on its own so a
- * caller can work out which side *before* it knows the card's final width
- * (e.g. to check how much room that side actually has).
+ * Which side of `frame` a card routed outside it should go on.
+ *
+ * `crossingRight`/`crossingLeft` are how far the leader has to travel
+ * *within* `frame`, from the target out to that edge, before it's clear to
+ * head for the card outside — the less of that, the less of the frame's own
+ * content the line cuts across on the way. Right wins by default (see
+ * `LEFT_OVERRIDE_RATIO`); exposed on its own so a caller can work out which
+ * side *before* it knows the card's final width (e.g. to check how much
+ * room that side actually has).
  */
 export function resolveOutsideSide(target: Rect, frame: Rect): 'LEFT' | 'RIGHT' {
   const targetCenter = centerOf(target)
-  const roomOnRight = frame.x + frame.width - targetCenter.x
-  const roomOnLeft = targetCenter.x - frame.x
-  return roomOnRight >= roomOnLeft ? 'RIGHT' : 'LEFT'
+  const crossingRight = frame.x + frame.width - targetCenter.x
+  const crossingLeft = targetCenter.x - frame.x
+  return crossingLeft < crossingRight * LEFT_OVERRIDE_RATIO ? 'LEFT' : 'RIGHT'
 }
 
 /**

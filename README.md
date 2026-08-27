@@ -1,37 +1,85 @@
-# Annotate & Connect
+# ANNOCON
 
-A Figma plugin for Design files:
+ปลั๊กอิน Figma สำหรับใส่โน้ตอธิบาย (**Annotate**) และลากเส้นเชื่อม layer (**Connect**)
+แบบที่ผูกติดอยู่กับไฟล์จริง ไม่ใช่ overlay ชั่วคราวที่หายไปตอน export หรือ present —
+เปิดไฟล์ที่ไหน เห็นครบทุกคนที่ไหน ไม่ต้องเปิด Dev Mode หรือสลับโหมดดูอะไรเป็นพิเศษ
 
-- **Annotate** — notes drawn as real canvas nodes. No Dev Mode, no
-  View → Annotations toggle, and they show up in exports and presentation mode.
-- **Connect** — connectors between layers that stay attached, with adjustable
-  stroke weight, colour, dash, and separate head/tail arrow styles.
+## ฟีเจอร์เด่น
 
-## Install (development)
+### Annotate — โน้ตที่เป็น node จริงบน canvas
 
-Requires Node 22+ and the Figma **desktop app**.
+- เลือก layer แล้วพิมพ์โน้ตได้เลย ระบบจะสร้างการ์ดพร้อมเส้นประชี้ไปที่ layer นั้นให้อัตโนมัติ
+- จัดหมวดหมู่โน้ตด้วย **category** สีสันชัดเจน (มี preset ตั้งต้นให้ 3 แบบ: Note, Dev, Idea)
+  แก้ชื่อ/สี/เพิ่มลบ category เองได้ทั้งหมด
+- การ์ดวางตำแหน่งฉลาด — ถ้า layer อยู่ในเฟรม การ์ดจะหลบออกไปวางนอกเฟรมแทนที่จะทับเนื้อหาข้างใน
+  โดย**เลือกด้านขวาเป็นหลักก่อนเสมอ** เพื่อให้อ่านง่าย (สลับไปด้านซ้ายเฉพาะตอนที่ layer
+  อยู่ลึกเข้าไปทางซ้ายของเฟรมมากจริงๆ)
+- การ์ดหลายใบที่วางใกล้กันจะขยับหนีไม่ให้ทับกันเอง (auto-stacking)
+- เส้นประชี้ทางออกจาก layer ตรงๆ ก่อนเสมอ (ไม่หักมุมถ้าไม่จำเป็น) แล้วค่อยหักมุมเข้าการ์ดแบบตั้งฉาก
+  สวยงาม ไม่ตัดผ่านเนื้อหาอื่นในเฟรม
+
+### Connect — เส้นเชื่อมสไตล์ FigJam ที่ผูกติดกับ layer จริง
+
+- เลือก 2 layer พร้อมกัน ระบบสร้างเส้นเชื่อมให้ทันที และเส้นจะตามเมื่อ layer ไหนขยับ
+  (ไม่ต้องมานั่งลากเส้นเองแล้วคอยแก้ทีหลัง)
+- เส้นวิ่งออกจากด้านข้างของแต่ละ layer เป็นหลัก หลบไม่ให้ตัดผ่านเนื้อหาบนเฟรม
+- ปรับแต่งได้ครบ: สี, ความหนาเส้น, opacity, รูปแบบเส้น (ตรง/โค้ง/หักมุม), รัศมีมุมโค้ง,
+  หัว-ท้ายเส้น (ลูกศร/วงกลม/สี่เหลี่ยมข้าวหลามตัด/สามเหลี่ยม), ทิศทางออก-เข้าของแต่ละฝั่ง,
+  และใส่ข้อความกำกับเส้นได้
+- **จำสไตล์ล่าสุดที่ใช้ไว้ให้อัตโนมัติ** — ตั้งสีเทาไว้ครั้งนี้ เส้นเชื่อมเส้นต่อไปก็เริ่มจากสีเทาให้เลย
+  ไม่ต้องตั้งใหม่ทุกครั้ง (จำข้ามการเปิด-ปิดปลั๊กอินได้ด้วย)
+
+## วิธีติดตั้ง (สำหรับ dev / ยังไม่ได้เผยแพร่บน Figma Community)
+
+ต้องมี [Node.js](https://nodejs.org) เวอร์ชัน 22 ขึ้นไป และ **Figma desktop app**
+(ปลั๊กอินตัวนี้พัฒนา/ทดสอบบนเว็บเบราว์เซอร์ไม่ได้)
 
 ```bash
+git clone https://github.com/sundayfifth/annotate-connect.git
+cd annotate-connect
 npm install
 npm run build
 ```
 
-Then: Figma desktop app → Plugins → Development → **Import plugin from
-manifest…** → select the generated `manifest.json` in this folder.
+จากนั้นเปิด Figma desktop app → เมนู **Plugins → Development → Import plugin from
+manifest…** → เลือกไฟล์ `manifest.json` ที่ถูกสร้างขึ้นในโฟลเดอร์นี้
 
-While working on it, `npm run watch` rebuilds on save; re-run the plugin in
-Figma to pick up changes.
+ระหว่างพัฒนาต่อ ใช้ `npm run watch` ให้ build ใหม่อัตโนมัติทุกครั้งที่แก้โค้ด แล้วรัน
+ปลั๊กอินใหม่ในหน้า Figma เพื่อดึงโค้ดล่าสุดมาใช้
 
-## Known limitation
+## วิธีใช้งาน
 
-Figma plugins cannot run in the background. Connectors follow their layers live
-while the plugin window is open; if someone moves a layer with the plugin
-closed, the line stays put until the next re-sync — which happens automatically
-when the plugin is opened, or on demand via **Plugins → Development → Annotate &
-Connect → Re-sync this page**.
+1. เปิดปลั๊กอินจาก **Plugins → Development → ANNOCON → Annotate & Connect**
+2. **จะ Annotate**: เลือก layer 1 อัน → พิมพ์โน้ตในแท็บ Annotate → เลือก category (ถ้าต้องการ)
+   → พิมพ์เสร็จคลิกออกจากช่อง จะเห็นการ์ดขึ้นบน canvas ทันที
+3. **จะ Connect**: เลือก layer 2 อันพร้อมกัน (คลิกอันแรกก่อน แล้ว Shift/Cmd-คลิกอันที่สอง)
+   ปลั๊กอินจะสร้างเส้นเชื่อมให้เอง แล้วเด้งไปแท็บ Connect ให้ปรับแต่งสไตล์ได้เลย
+   หรือจะเลือกเส้นเชื่อมที่มีอยู่แล้วเพื่อแก้ไขสไตล์ทีหลังก็ได้
+4. **จัดการ category**: แท็บ Categories — เพิ่ม/แก้ชื่อ/เปลี่ยนสี/ลบได้ตามใจ
 
-## Project docs
+## ข้อควรระวัง
 
-- `docs/adr/` — architecture decisions
-- `docs/spikes.md` — open questions the Figma docs do not answer
-- `docs/qa-checklist.md` — manual verification steps
+**ปลั๊กอินต้องเปิดอยู่ ระบบถึงจะทำงานแบบ real-time ได้** — นี่เป็นข้อจำกัดของแพลตฟอร์ม Figma
+เอง ไม่ใช่ปลั๊กอินไหนก็ทำได้ทั้งนั้น: โค้ดปลั๊กอินจะทำงานได้เฉพาะตอนหน้าต่างปลั๊กอินเปิดค้างอยู่
+(ต่อให้ไม่ได้โฟกัสหน้าต่างนั้นก็ยังนับว่า "เปิดอยู่") พอปิดปลั๊กอินจริงๆ (กดกากบาท หรือ Esc)
+โค้ดจะหยุดทำงานทันที ไม่มีทางดักจับการขยับ/แก้ไข layer ได้เลยจนกว่าจะเปิดใหม่
+
+ผลคือ:
+
+- **ขยับ layer ที่มี annotate หรือ connector ผูกอยู่ ตอนปิดปลั๊กอิน** — เส้น/การ์ดจะ "ค้าง"
+  อยู่ตำแหน่งเดิมชั่วคราว ไม่ได้พังถาวร แค่รอ sync รอบถัดไปเท่านั้น พอเปิดปลั๊กอินใหม่มันจะขยับตาม
+  ให้ถูกต้องเองอัตโนมัติ หรือถ้าไม่อยากเปิดปลั๊กอินเต็มๆ ก็คลิกขวาบน canvas →
+  **Plugins → ANNOCON → Re-sync this page** ได้เลย ไม่ต้องเปิดหน้าต่างปลั๊กอิน
+- **การลบการ์ด Annotate** — ลบการ์ดบน canvas ได้ตลอดเวลา แต่การเคลียร์ข้อมูลที่ผูกไว้
+  (เส้นประ + ข้อมูลโน้ต) ให้ครบจะเกิด**ทันที**ถ้าปลั๊กอินเปิดอยู่ ถ้าปิดอยู่ตอนลบ ต้องรอเปิดปลั๊กอิน
+  อีกครั้ง (หรือกด Re-sync this page) ระบบถึงจะเคลียร์ให้ครบให้เอง — ไม่ต้องทำอะไรเพิ่มเติมเอง
+  แค่รอ sync รอบหน้า
+- **การลบเส้น Connector** — ลบได้เลยทันที **ไม่ว่าปลั๊กอินจะเปิดหรือปิดอยู่ก็ตาม** เพราะข้อมูล
+  ทั้งหมดผูกอยู่กับตัวเส้นเองโดยตรง ลบเส้น = ข้อมูลหายไปพร้อมกันในตัว ไม่มีอะไรค้าง (ถ้าเส้นนั้น
+  มีข้อความกำกับไว้ด้วย ป้ายข้อความจะถูกเก็บกวาดตอน sync รอบถัดไป)
+
+## เอกสารเพิ่มเติม
+
+- `docs/adr/` — บันทึกการตัดสินใจด้านสถาปัตยกรรม (architecture decisions)
+- `docs/spikes.md` — คำถามเปิดที่เอกสาร Figma ไม่ได้ตอบไว้ชัดเจน
+- `docs/qa-checklist.md` — ขั้นตอนตรวจสอบด้วยมือก่อนปล่อยของ

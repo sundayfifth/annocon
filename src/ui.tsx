@@ -24,7 +24,6 @@ import { ICON_DATA_URL } from './icon.js'
 import type {
   AddCategoryHandler,
   CategoriesChangedHandler,
-  CloseHandler,
   CreateConnectorHandler,
   DeleteCategoryHandler,
   RecolorCategoryHandler,
@@ -42,13 +41,15 @@ interface PluginProps {
   categories: ReadonlyArray<Category>
 }
 
+/**
+ * Nothing when there's no selection at all — every caller already follows
+ * this with its own more specific guidance ("Select a layer, then type a
+ * note…"), so a generic "Select a layer" line right above it was just
+ * saying the same thing twice.
+ */
 function SelectionReadout({ selection }: { selection: ReadonlyArray<SelectionSummary> }) {
   if (selection.length === 0) {
-    return (
-      <Text>
-        <Muted>Select a layer on the canvas.</Muted>
-      </Text>
-    )
+    return null
   }
   if (selection.length === 1) {
     const node = selection[0] as SelectionSummary
@@ -126,7 +127,7 @@ function CategoryPill({
         cursor: 'pointer',
         fontSize: '11px',
         fontWeight: 600,
-        height: '22px',
+        height: 'var(--space-24)',
         opacity: selected ? 1 : 0.68,
         padding: '0 10px'
       }}
@@ -173,8 +174,6 @@ function CategoryPicker({
 
 const CAP_LABELS: Record<ConnectorCap, string> = {
   NONE: 'None',
-  ROUND: 'Round',
-  SQUARE: 'Square',
   ARROW_LINES: 'Arrow (lines)',
   ARROW_EQUILATERAL: 'Arrow (filled)',
   DIAMOND_FILLED: 'Diamond',
@@ -192,20 +191,6 @@ function CapGlyph({ cap, color, size = 14 }: { cap: ConnectorCap; color: string;
     switch (cap) {
       case 'NONE':
         return <line stroke={color} strokeWidth="1.4" x1="2" x2="14" y1="8" y2="8" />
-      case 'ROUND':
-        return (
-          <>
-            <line stroke={color} strokeWidth="1.4" x1="2" x2="9" y1="8" y2="8" />
-            <circle cx="12" cy="8" fill={color} r="2.6" />
-          </>
-        )
-      case 'SQUARE':
-        return (
-          <>
-            <line stroke={color} strokeWidth="1.4" x1="2" x2="9" y1="8" y2="8" />
-            <rect fill={color} height="5" width="5" x="9.5" y="5.5" />
-          </>
-        )
       case 'ARROW_LINES':
         return (
           <>
@@ -337,7 +322,9 @@ function CapIconPicker({
               boxShadow: '0 4px 16px rgba(0, 0, 0, 0.18)',
               display: 'grid',
               gap: '2px',
-              gridTemplateColumns: 'repeat(4, var(--space-24))',
+              // 3 columns × 2 rows fills exactly — 6 caps now that Round/Square
+              // (see `ConnectorCap`) are gone, no trailing empty cells.
+              gridTemplateColumns: 'repeat(3, var(--space-24))',
               left: 0,
               padding: '4px',
               position: 'absolute',
@@ -439,6 +426,11 @@ function LineStylePicker({
         border: '1px solid var(--figma-color-border)',
         borderRadius: 'var(--border-radius-4)',
         display: 'flex',
+        // `height` (not just the children's own) so this lines up exactly
+        // with the 24px-tall inputs beside it — box-sizing: border-box (the
+        // global reset) keeps the 1px border inside that height rather than
+        // adding to it.
+        height: 'var(--space-24)',
         overflow: 'hidden'
       }}
     >
@@ -457,7 +449,7 @@ function LineStylePicker({
               borderLeft: index === 0 ? 'none' : '1px solid var(--figma-color-border)',
               cursor: 'pointer',
               display: 'flex',
-              height: 'var(--space-24)',
+              height: '100%',
               justifyContent: 'center',
               width: 'var(--space-24)'
             }}
@@ -507,7 +499,7 @@ function MagnetGraphicPicker({
         <Muted>{label}</Muted>
       </Text>
       <VerticalSpace space="extraSmall" />
-      <div style={{ alignItems: 'center', display: 'flex', height: '40px', justifyContent: 'center' }}>
+      <div style={{ alignItems: 'center', display: 'flex', height: '52px', justifyContent: 'center' }}>
         <div style={{ position: 'relative' }}>
           <button
             onClick={() => {
@@ -518,11 +510,11 @@ function MagnetGraphicPicker({
               border: `1.5px solid ${
                 value === 'AUTO' ? 'var(--figma-color-border-selected)' : 'var(--figma-color-border-strong)'
               }`,
-              borderRadius: '3px',
+              borderRadius: 'var(--border-radius-4)',
               cursor: 'pointer',
               display: 'block',
-              height: '26px',
-              width: '26px'
+              height: '36px',
+              width: '36px'
             }}
             title="Auto"
             type="button"
@@ -542,13 +534,13 @@ function MagnetGraphicPicker({
                   border: selected ? '1.5px solid var(--figma-color-bg)' : 'none',
                   borderRadius: '50%',
                   cursor: 'pointer',
-                  height: selected ? '10px' : '7px',
+                  height: selected ? '13px' : '9px',
                   left: position.left,
                   padding: 0,
                   position: 'absolute',
                   top: position.top,
                   transform: 'translate(-50%, -50%)',
-                  width: selected ? '10px' : '7px'
+                  width: selected ? '13px' : '9px'
                 }}
                 title={side.charAt(0) + side.slice(1).toLowerCase()}
                 type="button"
@@ -561,12 +553,35 @@ function MagnetGraphicPicker({
   )
 }
 
+/**
+ * A section heading, visually distinct from the `Muted` item-level labels
+ * (`CapIconPicker`'s "Start"/"End", say) sitting right underneath it — bold
+ * and full-opacity text against their lighter, secondary-coloured captions,
+ * so the hierarchy between "what this group of controls is" and "which one
+ * of the pair this particular control is" actually reads at a glance.
+ */
+function SectionLabel({ children }: { children: string }) {
+  return (
+    <Text>
+      <Bold>{children}</Bold>
+    </Text>
+  )
+}
+
 function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
   const style = node.connectorStyle
-  const [weightText, setWeightText] = useState<string>(String(style?.strokeWeight ?? ''))
-  const [radiusText, setRadiusText] = useState<string>(String(style?.cornerRadius ?? ''))
+  // `TextboxNumeric`'s `suffix` only gets appended to what's on screen once
+  // the field has actually been blurred — baking it into the very first
+  // value here is what makes the unit visible immediately, before anyone's
+  // touched the field at all, instead of it looking unfinished until they do.
+  const [weightText, setWeightText] = useState<string>(
+    typeof style?.strokeWeight === 'undefined' ? '' : `${style.strokeWeight}px`
+  )
+  const [radiusText, setRadiusText] = useState<string>(
+    typeof style?.cornerRadius === 'undefined' ? '' : `${style.cornerRadius}px`
+  )
   const [opacityText, setOpacityText] = useState<string>(
-    String(Math.round((style?.opacity ?? 1) * 100))
+    `${Math.round((style?.opacity ?? 1) * 100)}%`
   )
   const [labelText, setLabelText] = useState<string>(style?.label ?? '')
   // Only one flyout open at a time across the whole panel — colour and both cap pickers share this.
@@ -593,25 +608,22 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
   }
 
   return (
-    <Container space="medium">
-      <VerticalSpace space="medium" />
-      <Text>
-        <Bold>Connector style</Bold>
-      </Text>
+    <>
       <VerticalSpace space="small" />
       <Text>
-        <Muted>Colour, weight, opacity, and line style</Muted>
+        <Bold>{node.name}</Bold> <Muted>{node.type}</Muted>
       </Text>
+      <VerticalSpace space="medium" />
+      <SectionLabel>Style</SectionLabel>
       <VerticalSpace space="extraSmall" />
-      <div style={{ display: 'flex', gap: '8px' }}>
-        <div style={{ position: 'relative' }}>
+      <div style={{ alignItems: 'center', display: 'flex', gap: '6px' }}>
+        <div style={{ flex: '0 0 auto', position: 'relative' }}>
           <ColorSwatchTrigger
             color={style.color}
             isOpen={openFlyout === 'color'}
             onToggle={() => {
               setOpenFlyout(openFlyout === 'color' ? null : 'color')
             }}
-            size={24}
           />
           {openFlyout === 'color' ? (
             <ColorFlyout
@@ -654,38 +666,30 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
             value={opacityText}
           />
         </div>
-        <LineStylePicker
-          onChange={(lineStyle) => {
-            update({ lineStyle })
-          }}
-          value={style.lineStyle}
-        />
-      </div>
-      {style.lineStyle === 'ELBOW' ? (
-        <>
-          <VerticalSpace space="small" />
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <div style={{ flex: '1 1 0' }}>
-              <Text>
-                <Muted>Corner radius</Muted>
-              </Text>
-              <VerticalSpace space="extraSmall" />
-              <TextboxNumeric
-                minimum={0}
-                onBlur={() => {
-                  const parsed = Number.parseFloat(radiusText)
-                  if (Number.isFinite(parsed) && parsed >= 0) update({ cornerRadius: parsed })
-                }}
-                onValueInput={setRadiusText}
-                suffix="px"
-                value={radiusText}
-              />
-            </div>
-            <div style={{ flex: '1 1 0' }} />
+        <div style={{ flex: '0 0 auto' }}>
+          <LineStylePicker
+            onChange={(lineStyle) => {
+              update({ lineStyle })
+            }}
+            value={style.lineStyle}
+          />
+        </div>
+        {style.lineStyle === 'ELBOW' ? (
+          <div style={{ flex: '1 1 0' }}>
+            <TextboxNumeric
+              minimum={0}
+              onBlur={() => {
+                const parsed = Number.parseFloat(radiusText)
+                if (Number.isFinite(parsed) && parsed >= 0) update({ cornerRadius: parsed })
+              }}
+              onValueInput={setRadiusText}
+              suffix="px"
+              value={radiusText}
+            />
           </div>
-        </>
-      ) : null}
-      <VerticalSpace space="small" />
+        ) : null}
+      </div>
+      <VerticalSpace space="medium" />
       <div style={{ display: 'flex', gap: '8px' }}>
         <CapIconPicker
           isOpen={openFlyout === 'startCap'}
@@ -712,11 +716,7 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
           value={style.endCap}
         />
       </div>
-      <VerticalSpace space="small" />
-      <Text>
-        <Muted>Exit / entry side</Muted>
-      </Text>
-      <VerticalSpace space="extraSmall" />
+      <VerticalSpace space="medium" />
       <div style={{ display: 'flex', gap: '8px' }}>
         <MagnetGraphicPicker
           label="Start"
@@ -733,10 +733,8 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
           value={style.endMagnet}
         />
       </div>
-      <VerticalSpace space="small" />
-      <Text>
-        <Muted>Label</Muted>
-      </Text>
+      <VerticalSpace space="medium" />
+      <SectionLabel>Label</SectionLabel>
       <VerticalSpace space="extraSmall" />
       <Textbox
         onBlur={() => {
@@ -747,7 +745,7 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
         value={labelText}
       />
       <VerticalSpace space="medium" />
-    </Container>
+    </>
   )
 }
 
@@ -761,8 +759,8 @@ function AnnotateEditor({
   const [text, setText] = useState<string>(node.annotationText ?? '')
 
   return (
-    <Container space="medium">
-      <VerticalSpace space="medium" />
+    <>
+      <VerticalSpace space="small" />
       <Text>
         <Bold>{node.name}</Bold> <Muted>{node.type}</Muted>
       </Text>
@@ -789,7 +787,7 @@ function AnnotateEditor({
         <Muted>Renders as a leader line and note card on the canvas.</Muted>
       </Text>
       <VerticalSpace space="medium" />
-    </Container>
+    </>
   )
 }
 
@@ -805,7 +803,7 @@ function ColorSwatchTrigger({
   color,
   isOpen,
   onToggle,
-  size = 18
+  size = 20
 }: {
   color: string
   isOpen: boolean
@@ -968,11 +966,9 @@ function CategoryManager({ categories }: { categories: ReadonlyArray<Category> }
   const [openColorId, setOpenColorId] = useState<string | null>(null)
 
   return (
-    <Container space="medium">
-      <VerticalSpace space="medium" />
-      <Text>
-        <Muted>Categories</Muted>
-      </Text>
+    <>
+      <VerticalSpace space="small" />
+      <SectionLabel>Categories</SectionLabel>
       <VerticalSpace space="extraSmall" />
       {categories.length === 0 ? (
         <Text>
@@ -1010,7 +1006,7 @@ function CategoryManager({ categories }: { categories: ReadonlyArray<Category> }
         }}
       />
       <VerticalSpace space="medium" />
-    </Container>
+    </>
   )
 }
 
@@ -1070,13 +1066,15 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
           style={{ borderRadius: '5px', display: 'block' }}
           width={20}
         />
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <Text>
-            <Bold>ANNOCON</Bold>
-          </Text>
-          <Text>
-            <Muted>Annotate &amp; Connect</Muted>
-          </Text>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          {/* Two stacked `<Text>`s here used to overlap: `Text`'s CSS leans on a
+              translateY/negative-margin trick meant for lining it up next to a
+              24px control in a single row, not for stacking two of them
+              directly — so plain, unhacked spans instead. */}
+          <span style={{ fontSize: 'var(--font-size-12)', fontWeight: 'var(--font-weight-bold)' }}>
+            ANNOCON
+          </span>
+          <span style={{ color: 'var(--figma-color-text-secondary)' }}>Annotate &amp; Connect</span>
         </div>
       </div>
       <VerticalSpace space="small" />
@@ -1097,10 +1095,14 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
                   node={selection[0] as SelectionSummary}
                 />
               ) : (
-                <Container space="medium">
-                  <VerticalSpace space="medium" />
-                  <SelectionReadout selection={selection} />
+                <>
                   <VerticalSpace space="small" />
+                  {selection.length > 0 ? (
+                    <>
+                      <SelectionReadout selection={selection} />
+                      <VerticalSpace space="small" />
+                    </>
+                  ) : null}
                   <Text>
                     <Muted>
                       {selection.length === 0
@@ -1109,7 +1111,7 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
                     </Muted>
                   </Text>
                   <VerticalSpace space="medium" />
-                </Container>
+                </>
               )
           },
           {
@@ -1121,10 +1123,14 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
                   node={selection[0] as SelectionSummary}
                 />
               ) : (
-                <Container space="medium">
-                  <VerticalSpace space="medium" />
-                  <SelectionReadout selection={selection} />
+                <>
                   <VerticalSpace space="small" />
+                  {selection.length > 0 ? (
+                    <>
+                      <SelectionReadout selection={selection} />
+                      <VerticalSpace space="small" />
+                    </>
+                  ) : null}
                   <Text>
                     <Muted>
                       {selection.length === 2
@@ -1133,7 +1139,7 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
                     </Muted>
                   </Text>
                   <VerticalSpace space="medium" />
-                </Container>
+                </>
               )
           },
           {
@@ -1142,18 +1148,6 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
           }
         ]}
       />
-      <Divider />
-      <VerticalSpace space="small" />
-      <Button
-        fullWidth
-        secondary
-        onClick={() => {
-          emit<CloseHandler>('CLOSE')
-        }}
-      >
-        Close
-      </Button>
-      <VerticalSpace space="small" />
     </Container>
   )
 }

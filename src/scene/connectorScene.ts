@@ -11,6 +11,7 @@
 import type { Anchor, Magnet, Point, Rect, ResolvedMagnet } from '../core/anchor.js'
 import {
   type ConnectorRecord,
+  type ConnectorStylePrefs,
   connectorAxisOf,
   connectorCurveTangents,
   connectorRoutePoints,
@@ -18,10 +19,12 @@ import {
   createConnectorRecord,
   frameGapMidpoint,
   parseConnectorRecord,
+  parseConnectorStylePrefs,
   pointAlongPolyline,
   pointOnCurve,
   resolveConnectorGeometry,
-  serialiseConnectorRecord
+  serialiseConnectorRecord,
+  serialiseConnectorStylePrefs
 } from '../core/connector.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import { findEnclosingFrame } from './frames.js'
@@ -30,6 +33,25 @@ import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './plugi
 const CONNECTOR_KEY = 'connector'
 const BROKEN_COLOR = '#E5484D'
 const LABEL_OWNER_KEY = 'connectorLabelOwner'
+const LAST_STYLE_KEY = 'lastConnectorStyle'
+
+/**
+ * The style (colour, weight, opacity, caps, line style, corner radius —
+ * everything but the anchors and the label, which is per-connector rather
+ * than a preference) a person last set on any connector, in `clientStorage`
+ * so it's remembered across files and even across plugin sessions, not just
+ * in memory. Without this every new connector reset to the shipped
+ * defaults, so picking grey once meant picking grey again for every
+ * connector after it.
+ */
+async function loadLastConnectorStyle(): Promise<ConnectorStylePrefs> {
+  const raw: unknown = await figma.clientStorage.getAsync(LAST_STYLE_KEY)
+  return parseConnectorStylePrefs(typeof raw === 'string' ? raw : '')
+}
+
+async function saveLastConnectorStyle(prefs: ConnectorStylePrefs): Promise<void> {
+  await figma.clientStorage.setAsync(LAST_STYLE_KEY, serialiseConnectorStylePrefs(prefs))
+}
 
 export function getConnectorRecord(node: SceneNode): ConnectorRecord | null {
   return parseConnectorRecord(node.getPluginData(CONNECTOR_KEY))
@@ -390,11 +412,12 @@ async function positionCurve(
   return pointOnCurve(start, end, curve, 0.5)
 }
 
-/** Creates a connector between two nodes and renders it immediately. */
+/** Creates a connector between two nodes and renders it immediately, starting from whatever style was last used. */
 export async function createConnector(start: SceneNode, end: SceneNode): Promise<VectorNode> {
   const node = figma.createVector()
   node.name = 'Connector'
-  const record = createConnectorRecord(start.id, end.id)
+  const stylePrefs = await loadLastConnectorStyle()
+  const record = createConnectorRecord(start.id, end.id, stylePrefs)
   writeConnectorRecord(node, record)
   await syncConnector(node)
   return node
@@ -419,8 +442,21 @@ export async function updateConnectorStyle(
 ): Promise<void> {
   const record = getConnectorRecord(node)
   if (record === null) return
-  writeConnectorRecord(node, { ...record, ...changes })
+  const next = { ...record, ...changes }
+  writeConnectorRecord(node, next)
   await syncConnector(node)
+  // Remembered for the next connector someone creates — see
+  // `loadLastConnectorStyle`. The label is deliberately excluded: it's this
+  // connector's own text, not a style preference to carry forward.
+  await saveLastConnectorStyle({
+    strokeWeight: next.strokeWeight,
+    color: next.color,
+    opacity: next.opacity,
+    startCap: next.startCap,
+    endCap: next.endCap,
+    lineStyle: next.lineStyle,
+    cornerRadius: next.cornerRadius
+  })
 }
 
 /**

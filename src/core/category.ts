@@ -19,17 +19,20 @@ export interface Category {
   readonly color: string
 }
 
+// Kept small on purpose — 7 colours reads as a deliberate, curated set on a
+// swatch grid; more than that starts to feel like a colour picker instead of
+// a category picker. Black and grey stay no matter what (grey is the
+// default "Note" category's colour, black is the default connector colour),
+// leaving 5 hues that cover warm to cool without needing near-duplicates
+// like a second green.
 export const CATEGORY_PALETTE: ReadonlyArray<string> = [
-  '#000000', // black — the default connector colour; kept in the palette so it stays reachable, not just a starting value that vanishes once changed
-  '#8C8C8C', // grey — the neutral option
+  '#000000', // black
+  '#8C8C8C', // grey — the neutral option, and the default "Note" category's colour
   '#E5484D', // red
   '#F76B15', // orange
-  '#FFC53D', // yellow
+  '#FECC00', // yellow — the default "Idea" category's colour
   '#46A758', // green
-  '#12A594', // teal
-  '#0091FF', // blue
-  '#7B61FF', // purple
-  '#E93D82' // pink
+  '#0091FF' // blue — the default "Dev" category's colour
 ]
 
 export const DEFAULT_CATEGORY_COLOR: string = CATEGORY_PALETTE[0] as string
@@ -46,8 +49,8 @@ export const DEFAULT_CATEGORY_ID = 'cat-note'
 
 export const DEFAULT_CATEGORIES: ReadonlyArray<Category> = [
   { id: DEFAULT_CATEGORY_ID, name: 'Note', color: '#8C8C8C' },
-  { id: 'cat-idea', name: 'Idea', color: '#FFC53D' },
-  { id: 'cat-requirement', name: 'Requirement', color: '#F76B15' }
+  { id: 'cat-dev', name: 'Dev', color: '#0091FF' },
+  { id: 'cat-idea', name: 'Idea', color: '#FECC00' }
 ]
 
 function isNonEmptyString(value: unknown): value is string {

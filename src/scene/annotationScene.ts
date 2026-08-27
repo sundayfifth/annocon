@@ -25,7 +25,7 @@ import {
   annotationLayoutOutsideFrame,
   createAnnotationRecord,
   elbowPoints,
-  laneElbowPoints,
+  leaderIntoCard,
   nearestPointOnRect,
   parseAnnotationRecord,
   resolveCardStacking,
@@ -150,15 +150,18 @@ function eraseAnnotationRecord(node: SceneNode): void {
 // queryable. Without this, deleting a card or leader directly (both are
 // real, selectable, unlocked-or-not nodes a person can click and hit
 // Delete on) leaves the target's record and the other rendered node
-// dangling, with nothing left able to trace back to who owned it. This is
-// an in-memory, session-only cache — reconciliation on open rebuilds
-// everything from scratch anyway, so nothing is lost by not persisting it.
+// dangling, with nothing left able to trace back to who owned it — or, for
+// the role, what kind of deletion just happened (see `lastKnownRoleOf`).
+// Both are in-memory, session-only caches — reconciliation on open rebuilds
+// everything from scratch anyway, so nothing is lost by not persisting them.
 const ownerIdByRenderedNodeId = new Map<string, string>()
+const roleByRenderedNodeId = new Map<string, Role>()
 
 function tag(node: SceneNode, ownerId: string, role: Role): void {
   node.setPluginData(OWNER_KEY, ownerId)
   node.setPluginData(ROLE_KEY, role)
   ownerIdByRenderedNodeId.set(node.id, ownerId)
+  roleByRenderedNodeId.set(node.id, role)
 }
 
 /**
@@ -170,6 +173,11 @@ function tag(node: SceneNode, ownerId: string, role: Role): void {
  */
 export function lastKnownOwnerOf(nodeId: string): string | null {
   return ownerIdByRenderedNodeId.get(nodeId) ?? null
+}
+
+/** The role a now-deleted card or leader used to have — see `lastKnownOwnerOf`. */
+export function lastKnownRoleOf(nodeId: string): Role | null {
+  return roleByRenderedNodeId.get(nodeId) ?? null
 }
 
 interface RenderedNodes {
@@ -232,6 +240,7 @@ function removeIfPresent(node: BaseNode | null): void {
     // Harmless no-op for anything that was never in the cache (a text
     // child, say) — only card/leader ids are ever actually present.
     ownerIdByRenderedNodeId.delete(node.id)
+    roleByRenderedNodeId.delete(node.id)
   }
 }
 
@@ -390,7 +399,14 @@ function ensureLeader(existing: VectorNode | null, ownerId: string, color: strin
   leader.name = 'Annotation leader'
   leader.strokes = [figma.util.solidPaint(color)]
   leader.strokeWeight = 1.5
-  leader.dashPattern = [4, 4]
+  // A near-zero dash length plus a round cap is the standard way to draw a
+  // fine dotted line rather than short dashes — the round cap balloons each
+  // near-zero-length dash into a small circle. There's no separate "dash cap"
+  // in the plugin API (Figma's own Stroke panel splits dash cap from end-of-
+  // path cap; the API exposes only the latter, `strokeCap`, which happens to
+  // still round every dash segment along the way, not just the two true ends).
+  leader.dashPattern = [0.5, 5]
+  leader.strokeCap = 'ROUND'
   leader.locked = true
   tag(leader, ownerId, 'leader')
   return leader
@@ -425,8 +441,7 @@ function leaderToCardCenter(points: ReadonlyArray<Point>, card: FrameNode): Read
   const from = points[0]
   const cardEdge = points[points.length - 1]
   if (typeof from === 'undefined' || typeof cardEdge === 'undefined') return points
-  const centered = elbowPoints(from, { x: cardEdge.x, y: card.y + card.height / 2 })
-  return centered ?? points
+  return leaderIntoCard(from, { x: cardEdge.x, y: card.y + card.height / 2 })
 }
 
 /**
@@ -660,11 +675,6 @@ async function syncAnnotationBody(
 // that label overlapping the card above it.
 const CARD_STACK_GAP = 28
 
-// The margin corridor (`OUTSIDE_MARGIN`) is only 20px wide, so this has to
-// stay small — enough to visibly separate a handful of leaders sharing the
-// same side without running the innermost lane back into the frame itself.
-const LEADER_LANE_GAP = 5
-
 interface StackItem {
   readonly ownerId: string
   readonly card: FrameNode
@@ -720,24 +730,11 @@ export async function applyCardStacking(): Promise<void> {
 
   let processed = 0
   let failures = 0
-  for (const [side, list] of groups.entries()) {
+  for (const list of groups.values()) {
     const stacked = resolveCardStacking(
       list.map((item) => ({ id: item.ownerId, top: item.naturalTop, height: item.card.height })),
       CARD_STACK_GAP
     )
-    // Every leader in this group shares the same `nearEdgeX` — bending
-    // all of them there at once is what made several leaders overlap
-    // into the same line through the margin. Lane them instead: sort
-    // top to bottom and give each one after the first a bend a little
-    // further into the margin, so they fan out instead of stacking on
-    // top of each other. `RIGHT` fans toward smaller x (back toward the
-    // frame); `LEFT` mirrors it toward larger x.
-    const laneSign = side === 'RIGHT' ? -1 : 1
-    const lanesOf = [...list].sort((a, b) => a.edgeStart.y - b.edgeStart.y)
-    const laneXById = new Map<string, number>(
-      lanesOf.map((item, index) => [item.ownerId, item.nearEdgeX + laneSign * index * LEADER_LANE_GAP])
-    )
-
     for (const item of list) {
       const top = stacked.get(item.ownerId)
       // A card (or its leader) can vanish between the read pass above and
@@ -763,9 +760,14 @@ export async function applyCardStacking(): Promise<void> {
           // fixed top-of-card inset `CARD_LEADER_INSET` still used as this
           // module's own before-the-real-height starting guess.
           const to: Point = { x: item.nearEdgeX, y: top + item.card.height / 2 }
-          const laneX = laneXById.get(item.ownerId) ?? item.nearEdgeX
-          const points = laneElbowPoints(item.edgeStart, laneX, to)
-          await positionLeader(item.leader, points)
+          // A single clean bend, not the old per-lane detour — that one only
+          // earned its keep by giving several leaders sharing this margin
+          // distinct lanes so they wouldn't overlap into one thick line; this
+          // doesn't have that problem (two leaders only ever share a path if
+          // their endpoints do), while still leaving the target's edge
+          // straight out horizontally and docking into the card with a
+          // short, clearly perpendicular final stub — see `leaderIntoCard`.
+          await positionLeader(item.leader, leaderIntoCard(item.edgeStart, to))
         })
       } catch (error) {
         failures += 1
@@ -884,7 +886,21 @@ export async function reconcileAllAnnotations(): Promise<{
 
   let synced = 0
   for (const target of targets) {
-    await syncAnnotation(target)
+    const rendered = findRenderedNodes(target.id)
+    if (rendered.badge === null && rendered.card === null && rendered.leader === null) {
+      // Nothing at all is rendered for a record that exists — the only way
+      // to reach that state is a person deleting the card and leader
+      // directly while the plugin wasn't open to catch it live (the
+      // `lastKnownRoleOf` cache in `resyncTouched` only helps mid-session).
+      // Every path that *writes* a record also renders it in the same call
+      // (`setAnnotationText`/`setAnnotationCategory`), so a full reconcile
+      // never otherwise finds a record with nothing rendered for it yet.
+      // Recreating here would be exactly the resurrection bug this was
+      // built to fix — clear the record instead, same as a live delete does.
+      eraseAnnotationRecord(target)
+    } else {
+      await syncAnnotation(target)
+    }
     synced += 1
     if (synced % CHUNK_SIZE === 0) await yieldToMainThread()
   }

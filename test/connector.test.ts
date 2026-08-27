@@ -6,6 +6,7 @@ import {
   type ConnectorRecord,
   DEFAULT_CONNECTOR_COLOR,
   DEFAULT_CONNECTOR_OPACITY,
+  DEFAULT_CONNECTOR_STYLE_PREFS,
   DEFAULT_CONNECTOR_WEIGHT,
   DEFAULT_CORNER_RADIUS,
   DEFAULT_END_CAP,
@@ -19,10 +20,12 @@ import {
   createConnectorRecord,
   frameGapMidpoint,
   parseConnectorRecord,
+  parseConnectorStylePrefs,
   pointAlongPolyline,
   pointOnCurve,
   resolveConnectorGeometry,
-  serialiseConnectorRecord
+  serialiseConnectorRecord,
+  serialiseConnectorStylePrefs
 } from '../src/core/connector.js'
 
 const startRect: Rect = { x: 0, y: 0, width: 100, height: 100 }
@@ -44,6 +47,50 @@ describe('createConnectorRecord', () => {
       cornerRadius: DEFAULT_CORNER_RADIUS,
       label: DEFAULT_LABEL
     })
+  })
+
+  it('starts from the given style prefs instead of the shipped defaults, but never inherits a label', () => {
+    const stylePrefs = {
+      strokeWeight: 3,
+      color: '#8C8C8C',
+      opacity: 0.5,
+      startCap: 'NONE' as const,
+      endCap: 'DIAMOND_FILLED' as const,
+      lineStyle: 'CURVE' as const,
+      cornerRadius: 8
+    }
+    const record = createConnectorRecord('a', 'b', stylePrefs)
+    expect(record).toEqual({
+      v: CONNECTOR_VERSION,
+      start: { kind: 'magnet', nodeId: 'a', magnet: 'AUTO' },
+      end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' },
+      ...stylePrefs,
+      label: DEFAULT_LABEL
+    })
+  })
+})
+
+describe('parseConnectorStylePrefs / serialiseConnectorStylePrefs', () => {
+  it('round-trips a full set of style prefs', () => {
+    const prefs = {
+      strokeWeight: 4,
+      color: '#0091FF',
+      opacity: 0.75,
+      startCap: 'DIAMOND_FILLED' as const,
+      endCap: 'TRIANGLE_FILLED' as const,
+      lineStyle: 'STRAIGHT' as const,
+      cornerRadius: 12
+    }
+    expect(parseConnectorStylePrefs(serialiseConnectorStylePrefs(prefs))).toEqual(prefs)
+  })
+
+  it('falls back to the shipped defaults for empty, malformed, or invalid-field data', () => {
+    expect(parseConnectorStylePrefs('')).toEqual(DEFAULT_CONNECTOR_STYLE_PREFS)
+    expect(parseConnectorStylePrefs('{oops')).toEqual(DEFAULT_CONNECTOR_STYLE_PREFS)
+    expect(parseConnectorStylePrefs('null')).toEqual(DEFAULT_CONNECTOR_STYLE_PREFS)
+    expect(
+      parseConnectorStylePrefs(JSON.stringify({ color: 'not-a-hex', strokeWeight: -1, lineStyle: 'ZIGZAG' }))
+    ).toEqual(DEFAULT_CONNECTOR_STYLE_PREFS)
   })
 })
 

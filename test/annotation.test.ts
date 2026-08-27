@@ -9,10 +9,11 @@ import {
   annotationLayoutOutsideFrame,
   createAnnotationRecord,
   elbowPoints,
-  laneElbowPoints,
+  leaderIntoCard,
   nearestPointOnRect,
   parseAnnotationRecord,
   resolveCardStacking,
+  resolveOutsideSide,
   resolveSide,
   serialiseAnnotationRecord
 } from '../src/core/annotation.js'
@@ -122,6 +123,27 @@ describe('annotationLayout', () => {
   })
 })
 
+describe('resolveOutsideSide', () => {
+  const frame: Rect = { x: 0, y: 0, width: 400, height: 100 }
+  const targetCenteredAt = (x: number): Rect => ({ x, y: 0, width: 0, height: 0 })
+
+  it('routes right on an exact tie', () => {
+    expect(resolveOutsideSide(targetCenteredAt(200), frame)).toBe('RIGHT')
+  })
+
+  it('routes right even when left is somewhat shorter — right is the priority', () => {
+    expect(resolveOutsideSide(targetCenteredAt(170), frame)).toBe('RIGHT')
+  })
+
+  it('routes left once the target sits deep enough in the frame’s own left portion', () => {
+    expect(resolveOutsideSide(targetCenteredAt(40), frame)).toBe('LEFT')
+  })
+
+  it('routes right when the target already sits near the frame’s right edge', () => {
+    expect(resolveOutsideSide(targetCenteredAt(380), frame)).toBe('RIGHT')
+  })
+})
+
 describe('annotationLayoutOutsideFrame', () => {
   const frame: Rect = { x: 0, y: 0, width: 400, height: 300 }
 
@@ -137,13 +159,13 @@ describe('annotationLayoutOutsideFrame', () => {
     ])
   })
 
-  it('routes to the left when the target sits closer to the right edge of the frame', () => {
-    const nearRightEdge: Rect = { x: 350, y: 100, width: 200, height: 100 }
-    const layout = annotationLayoutOutsideFrame(nearRightEdge, frame, record(), metrics)
-    expect(layout.badgeCenter).toEqual({ x: 330, y: 150 })
+  it('routes to the left when the target sits deep in the frame’s own left portion', () => {
+    const nearLeftEdge: Rect = { x: -350, y: 100, width: 200, height: 100 }
+    const layout = annotationLayoutOutsideFrame(nearLeftEdge, frame, record(), metrics)
+    expect(layout.badgeCenter).toEqual({ x: -370, y: 150 })
     expect(layout.cardTopLeft).toEqual({ x: -240, y: 140 })
     expect(layout.leader).toEqual([
-      { x: 350, y: 150 },
+      { x: -350, y: 150 },
       { x: -240 + metrics.cardWidth, y: 150 }
     ])
   })
@@ -200,25 +222,44 @@ describe('elbowPoints', () => {
   })
 })
 
-describe('laneElbowPoints', () => {
-  it('bends at the given lane x, not at the card edge x', () => {
-    const points = laneElbowPoints({ x: 0, y: 0 }, 40, { x: 100, y: 50 })
-    expect(points).toEqual([
+describe('leaderIntoCard', () => {
+  it('floats the vertical run stub px short of the card, then closes with a straight final approach', () => {
+    expect(leaderIntoCard({ x: 0, y: 0 }, { x: 100, y: 50 })).toEqual([
       { x: 0, y: 0 },
-      { x: 40, y: 0 },
-      { x: 40, y: 50 },
+      { x: 90, y: 0 },
+      { x: 90, y: 50 },
       { x: 100, y: 50 }
     ])
   })
 
-  it('degenerates to a single-bend elbow when the lane already sits at the edge x', () => {
-    expect(laneElbowPoints({ x: 0, y: 0 }, 0, { x: 100, y: 50 })).toEqual([
+  it('mirrors the same shape approaching from the right', () => {
+    expect(leaderIntoCard({ x: 100, y: 0 }, { x: 0, y: 50 })).toEqual([
+      { x: 100, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 50 },
+      { x: 0, y: 50 }
+    ])
+  })
+
+  it('honours a custom stub distance', () => {
+    expect(leaderIntoCard({ x: 0, y: 0 }, { x: 100, y: 40 }, 20)).toEqual([
       { x: 0, y: 0 },
+      { x: 80, y: 0 },
+      { x: 80, y: 40 },
+      { x: 100, y: 40 }
+    ])
+  })
+
+  it('falls back to a plain elbow bend when the points already share a y', () => {
+    expect(leaderIntoCard({ x: 0, y: 50 }, { x: 100, y: 50 })).toEqual([
       { x: 0, y: 50 },
       { x: 100, y: 50 }
     ])
-    expect(laneElbowPoints({ x: 0, y: 0 }, 100, { x: 100, y: 50 })).toEqual([
-      { x: 0, y: 0 },
+  })
+
+  it('falls back to a plain elbow bend when there is no room for the stub', () => {
+    expect(leaderIntoCard({ x: 95, y: 0 }, { x: 100, y: 50 })).toEqual([
+      { x: 95, y: 0 },
       { x: 100, y: 0 },
       { x: 100, y: 50 }
     ])

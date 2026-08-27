@@ -66,11 +66,6 @@ export interface CreateConnectorHandler {
   handler: (payload: CreateConnectorPayload) => void
 }
 
-export interface CloseHandler {
-  name: 'CLOSE'
-  handler: () => void
-}
-
 export interface CategoriesChangedHandler {
   name: 'CATEGORIES_CHANGED'
   handler: (categories: ReadonlyArray<Category>) => void
