@@ -10,7 +10,8 @@ import {
   ratioPoint,
   resolveAnchor,
   resolveAnchorPair,
-  resolveMagnet
+  resolveMagnet,
+  resolveMagnetPreferringSides
 } from '../src/core/anchor.js'
 
 const box: Rect = { x: 100, y: 200, width: 40, height: 20 }
@@ -52,6 +53,36 @@ describe('resolveMagnet', () => {
   it('breaks exact ties horizontally', () => {
     const square: Rect = { x: 0, y: 0, width: 100, height: 100 }
     expect(resolveMagnet(square, { x: 250, y: 250 })).toBe('RIGHT')
+  })
+})
+
+describe('resolveMagnetPreferringSides', () => {
+  it('picks a side even when the plain gap comparison would go vertical', () => {
+    // Genuinely offset both ways, but much further below than to the side —
+    // `resolveMagnet`'s raw gap comparison picks BOTTOM; this should still
+    // pick RIGHT, since there's real horizontal separation to route through.
+    const box: Rect = { x: 0, y: 0, width: 100, height: 20 }
+    expect(resolveMagnet(box, { x: 200, y: 500 })).toBe('BOTTOM')
+    expect(resolveMagnetPreferringSides(box, { x: 200, y: 500 })).toBe('RIGHT')
+  })
+
+  it('still goes vertical when there is no real horizontal separation at all', () => {
+    const box: Rect = { x: 0, y: 0, width: 100, height: 100 }
+    expect(resolveMagnetPreferringSides(box, { x: 50, y: 900 })).toBe('BOTTOM')
+    expect(resolveMagnetPreferringSides(box, { x: 50, y: -900 })).toBe('TOP')
+  })
+
+  it('picks a side for any genuine horizontal offset, however small relative to the box', () => {
+    const wide: Rect = { x: 0, y: 0, width: 1000, height: 20 }
+    // The counterpart is barely to the right and far below — old logic
+    // would call this vertical; a side exit still makes sense here since
+    // there is a real (if small) horizontal offset to route through.
+    expect(resolveMagnetPreferringSides(wide, { x: 1100, y: 900 })).toBe('RIGHT')
+  })
+
+  it('falls back to RIGHT when the counterpart sits exactly on the centre', () => {
+    const box: Rect = { x: 0, y: 0, width: 100, height: 100 }
+    expect(resolveMagnetPreferringSides(box, { x: 50, y: 50 })).toBe('RIGHT')
   })
 })
 

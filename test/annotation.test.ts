@@ -10,6 +10,7 @@ import {
   createAnnotationRecord,
   elbowPoints,
   laneElbowPoints,
+  nearestPointOnRect,
   parseAnnotationRecord,
   resolveCardStacking,
   resolveSide,
@@ -221,6 +222,20 @@ describe('laneElbowPoints', () => {
       { x: 100, y: 0 },
       { x: 100, y: 50 }
     ])
+  })
+})
+
+describe('nearestPointOnRect', () => {
+  const rect: Rect = { x: 100, y: 100, width: 50, height: 30 }
+
+  it('clamps straight onto the nearest edge when aligned on one axis', () => {
+    expect(nearestPointOnRect(rect, { x: 120, y: 50 })).toEqual({ x: 120, y: 100 }) // above
+    expect(nearestPointOnRect(rect, { x: 200, y: 110 })).toEqual({ x: 150, y: 110 }) // right
+  })
+
+  it('clamps to the nearest corner when the point is diagonal', () => {
+    expect(nearestPointOnRect(rect, { x: 50, y: 50 })).toEqual({ x: 100, y: 100 })
+    expect(nearestPointOnRect(rect, { x: 300, y: 300 })).toEqual({ x: 150, y: 130 })
   })
 })
 

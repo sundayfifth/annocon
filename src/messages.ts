@@ -56,11 +56,6 @@ export interface SetAnnotationTextHandler {
   handler: (payload: SetAnnotationTextPayload) => void
 }
 
-export interface ResyncPageHandler {
-  name: 'RESYNC_PAGE'
-  handler: () => void
-}
-
 export interface CreateConnectorPayload {
   readonly startId: string
   readonly endId: string

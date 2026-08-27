@@ -14,6 +14,8 @@ import {
   type Point,
   type Rect,
   type ResolvedMagnet,
+  isMagnet,
+  isPoint,
   outwardNormal,
   resolveAnchorPair
 } from './anchor.js'
@@ -126,23 +128,6 @@ function isAnchor(value: unknown): value is Anchor {
     return typeof candidate.nodeId === 'string' && candidate.nodeId !== '' && isPoint(candidate.ratio)
   }
   return false
-}
-
-const MAGNETS = new Set(['AUTO', 'TOP', 'RIGHT', 'BOTTOM', 'LEFT', 'CENTER'])
-
-function isMagnet(value: unknown): boolean {
-  return typeof value === 'string' && MAGNETS.has(value)
-}
-
-function isPoint(value: unknown): value is Point {
-  if (typeof value !== 'object' || value === null) return false
-  const candidate = value as Record<string, unknown>
-  return (
-    typeof candidate.x === 'number' &&
-    typeof candidate.y === 'number' &&
-    Number.isFinite(candidate.x) &&
-    Number.isFinite(candidate.y)
-  )
 }
 
 /**
@@ -444,6 +429,14 @@ export function frameGapMidpoint(startFrame: Rect | null, endFrame: Rect | null,
  * `connectorStubClearance` instead to clear an enclosing frame.
  * `preferredMid` (optional, from `frameGapMidpoint`) is a cosmetic hint for
  * where the bend should land when there's a choice.
+ *
+ * Deliberately does *not* shortcut to a bare `[start, end]` just because the
+ * two points happen to share an x or y — with both sides known, that
+ * coincidence says nothing about whether a straight line actually leaves
+ * and arrives perpendicular to each side, or clears whatever frame either
+ * end is nested in. `dominantAxisElbow` and `sidedElbow` each already
+ * collapse to a straight line themselves, exactly when doing so is still
+ * correct for the case they're handling.
  */
 export function connectorRoutePoints(
   start: Point,
@@ -455,7 +448,7 @@ export function connectorRoutePoints(
   endClearance: number = ELBOW_STUB,
   preferredMid: number | null = null
 ): ReadonlyArray<Point> {
-  if (lineStyle !== 'ELBOW' || start.x === end.x || start.y === end.y) {
+  if (lineStyle !== 'ELBOW') {
     return [start, end]
   }
   if (startSide === null || endSide === null) {

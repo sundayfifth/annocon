@@ -7,7 +7,17 @@
  * off the rendered nodes.
  */
 
-import { type Magnet, type Point, type Rect, centerOf, magnetPoint, resolveMagnet } from './anchor.js'
+import {
+  type Magnet,
+  type Point,
+  type Rect,
+  centerOf,
+  isMagnet,
+  isPoint,
+  magnetPoint,
+  outwardNormal,
+  resolveMagnet
+} from './anchor.js'
 
 export const ANNOTATION_VERSION = 1
 
@@ -107,25 +117,6 @@ export function serialiseAnnotationRecord(record: AnnotationRecord): string {
   return JSON.stringify(record)
 }
 
-const MAGNETS: ReadonlyArray<Magnet> = ['AUTO', 'TOP', 'RIGHT', 'BOTTOM', 'LEFT', 'CENTER']
-
-function isMagnet(value: unknown): value is Magnet {
-  return typeof value === 'string' && MAGNETS.includes(value as Magnet)
-}
-
-function isPoint(value: unknown): value is Point {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-  const candidate = value as Record<string, unknown>
-  return (
-    typeof candidate.x === 'number' &&
-    typeof candidate.y === 'number' &&
-    Number.isFinite(candidate.x) &&
-    Number.isFinite(candidate.y)
-  )
-}
-
 // A card offset this large can only be corruption, not a real preference —
 // e.g. a card offset accidentally captured while the card was still parented
 // inside some other frame (relative coordinates read as absolute) before
@@ -135,22 +126,6 @@ const MAX_SANE_CARD_OFFSET = 4000
 
 function isSaneCardOffset(point: Point): boolean {
   return Math.abs(point.x) <= MAX_SANE_CARD_OFFSET && Math.abs(point.y) <= MAX_SANE_CARD_OFFSET
-}
-
-/** Unit vector pointing out of the target, away from the chosen side. */
-function outwardNormal(side: Exclude<Magnet, 'AUTO'>): Point {
-  switch (side) {
-    case 'TOP':
-      return { x: 0, y: -1 }
-    case 'BOTTOM':
-      return { x: 0, y: 1 }
-    case 'LEFT':
-      return { x: -1, y: 0 }
-    case 'RIGHT':
-      return { x: 1, y: 0 }
-    case 'CENTER':
-      return { x: 0, y: 0 }
-  }
 }
 
 /**
@@ -252,6 +227,21 @@ export function laneElbowPoints(edge: Point, laneX: number, cardEdge: Point): Re
     points.push(point)
   }
   return points
+}
+
+/**
+ * The closest point on `rect`'s boundary to `from`. Assumes `from` sits
+ * outside `rect`, which is always true here — a target and its own card
+ * never overlap. Used to aim a leader at wherever a card's edge actually
+ * faces the target, regardless of which direction `cardOffset` happens to
+ * place the card in (the near-target layout has no fixed "outside which
+ * side" the way the outside-frame layout does).
+ */
+export function nearestPointOnRect(rect: Rect, from: Point): Point {
+  return {
+    x: Math.min(Math.max(from.x, rect.x), rect.x + rect.width),
+    y: Math.min(Math.max(from.y, rect.y), rect.y + rect.height)
+  }
 }
 
 /**

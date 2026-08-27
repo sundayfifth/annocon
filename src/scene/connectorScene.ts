@@ -23,6 +23,7 @@ import {
   resolveConnectorGeometry,
   serialiseConnectorRecord
 } from '../core/connector.js'
+import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import { findEnclosingFrame } from './frames.js'
 import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
 
@@ -439,12 +440,6 @@ export async function updateConnectorAnchorSide(
   writeConnectorRecord(node, { ...record, [side]: { ...anchor, magnet } })
   await syncConnector(node)
 }
-
-function yieldToMainThread(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0))
-}
-
-const CHUNK_SIZE = 20
 
 /** Removes any connector label whose owning connector no longer exists. */
 function removeOrphanConnectorLabels(liveConnectorIds: ReadonlySet<string>): void {

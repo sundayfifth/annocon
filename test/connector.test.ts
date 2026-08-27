@@ -329,6 +329,16 @@ describe('connectorRoutePoints', () => {
       { x: 200, y: 40 }
     ])
   })
+
+  it('still routes around a clearance requirement when the raw points coincidentally share an axis', () => {
+    // Same x by coincidence (0), but BOTTOM/RIGHT means a bare straight
+    // line would neither leave the start moving downward nor arrive at the
+    // end moving leftward — it should still detour, not go straight.
+    const points = connectorRoutePoints({ x: 0, y: 0 }, { x: 0, y: 100 }, 'ELBOW', 'BOTTOM', 'RIGHT')
+    expect(points.length).toBeGreaterThan(2)
+    expect(points[0]).toEqual({ x: 0, y: 0 })
+    expect(points[points.length - 1]).toEqual({ x: 0, y: 100 })
+  })
 })
 
 function dominantAxisPoints(dx: number, dy: number): ReadonlyArray<{ x: number; y: number }> {

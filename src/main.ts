@@ -13,7 +13,6 @@ import type {
   RecolorCategoryPayload,
   RenameCategoryHandler,
   RenameCategoryPayload,
-  ResyncPageHandler,
   SelectionChangedHandler,
   SelectionSummary,
   SetAnnotationCategoryHandler,
@@ -29,6 +28,7 @@ import {
   finalizeLayout,
   findAnnotationTargetsUnder,
   getAnnotationRecord,
+  lastKnownOwnerOf,
   ownerIdOf,
   reconcileAllAnnotations,
   removeRenderedNodesForOwner,
@@ -137,17 +137,6 @@ async function reconcileEverything(): Promise<ReconcileResult> {
   }
 }
 
-function reportReconcile(prefix: string, result: ReconcileResult): void {
-  const parts = [
-    `${result.annotationsSynced} annotation${result.annotationsSynced === 1 ? '' : 's'} synced`,
-    `${result.connectorsSynced} connector${result.connectorsSynced === 1 ? '' : 's'} synced`
-  ]
-  if (result.orphansRemoved > 0) {
-    parts.push(`${result.orphansRemoved} orphan${result.orphansRemoved === 1 ? '' : 's'} removed`)
-  }
-  figma.notify(`${prefix}: ${parts.join(', ')}.`)
-}
-
 async function handleSetAnnotationText({ targetId, text }: SetAnnotationTextPayload): Promise<void> {
   const node = await figma.getNodeByIdAsync(targetId)
   if (node === null || !('absoluteBoundingBox' in node)) return
@@ -175,14 +164,21 @@ function handleAddCategory({ name, color }: AddCategoryPayload): void {
   broadcastCategories()
 }
 
-function handleRenameCategory({ id, name }: RenameCategoryPayload): void {
+async function handleRenameCategory({ id, name }: RenameCategoryPayload): Promise<void> {
   renameCategory(id, name)
   broadcastCategories()
+  // Every card pill showing this category's old name needs to catch up —
+  // same reasoning as the delete handler below: cheaper to re-sync
+  // everything than to hunt down which annotations reference this category.
+  await reconcileEverything()
 }
 
-function handleRecolorCategory({ id, color }: RecolorCategoryPayload): void {
+async function handleRecolorCategory({ id, color }: RecolorCategoryPayload): Promise<void> {
   recolorCategory(id, color)
   broadcastCategories()
+  // Same reasoning as rename — every badge/pill/leader using this
+  // category's old colour needs to re-render with the new one.
+  await reconcileEverything()
 }
 
 async function handleDeleteCategory({ id }: DeleteCategoryPayload): Promise<void> {
@@ -208,10 +204,20 @@ async function handleCreateConnector({ startId, endId }: CreateConnectorPayload)
   const existing = findConnectorBetween(startId, endId)
   const node = existing ?? (await createConnector(start, end))
   if (existing === null) figma.notify('Connector created.')
+
   // Jump straight to its style panel — the point of auto-connecting is one
-  // fewer step, not one fewer step *and* still having to go find it.
-  figma.currentPage.selection = [node]
-  emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
+  // fewer step, not one fewer step *and* still having to go find it. But
+  // only when the user is still looking at the same pair that triggered
+  // this: this whole handler is fire-and-forget from the UI, so someone
+  // can click a third layer while the connector is still being created —
+  // snapping selection back to it at that point would yank focus away
+  // from whatever they've already moved on to.
+  const currentIds = new Set(figma.currentPage.selection.map((selected) => selected.id))
+  const stillOnTriggeringPair = currentIds.size === 2 && currentIds.has(startId) && currentIds.has(endId)
+  if (stillOnTriggeringPair) {
+    figma.currentPage.selection = [node]
+    emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
+  }
 }
 
 async function handleUpdateConnectorStyle({
@@ -301,6 +307,19 @@ async function resyncTouched({
     // its label is a separate top-level node that would otherwise be left
     // stranded, orphaned but not swept up until the next full reconcile.
     removeConnectorLabel(id)
+    // Cards and leaders are real, selectable, unlocked-or-not nodes — a
+    // person can click one directly and hit Delete without touching the
+    // target at all. `id` won't match anything as an owner in that case
+    // (nothing has `annotationOwner === id`), so `lastKnownOwnerOf` is how
+    // this traces back to the target that just lost half its annotation
+    // and re-syncs it, recreating whichever piece just vanished.
+    const strandedOwnerId = lastKnownOwnerOf(id)
+    if (strandedOwnerId !== null) {
+      const owner = await figma.getNodeByIdAsync(strandedOwnerId)
+      if (owner !== null && 'absoluteBoundingBox' in owner && getAnnotationRecord(owner) !== null) {
+        await syncAnnotation(owner)
+      }
+    }
     for (const connector of findConnectorsInvolving(id)) {
       await syncConnector(connector)
     }
@@ -354,8 +373,12 @@ export default function main(): void {
   })
 
   on<AddCategoryHandler>('ADD_CATEGORY', handleAddCategory)
-  on<RenameCategoryHandler>('RENAME_CATEGORY', handleRenameCategory)
-  on<RecolorCategoryHandler>('RECOLOR_CATEGORY', handleRecolorCategory)
+  on<RenameCategoryHandler>('RENAME_CATEGORY', (payload) => {
+    fireAndForget(handleRenameCategory(payload))
+  })
+  on<RecolorCategoryHandler>('RECOLOR_CATEGORY', (payload) => {
+    fireAndForget(handleRecolorCategory(payload))
+  })
   on<DeleteCategoryHandler>('DELETE_CATEGORY', (payload) => {
     fireAndForget(handleDeleteCategory(payload))
   })
@@ -372,14 +395,6 @@ export default function main(): void {
     fireAndForget(handleUpdateConnectorAnchor(payload))
   })
 
-  on<ResyncPageHandler>('RESYNC_PAGE', () => {
-    fireAndForget(
-      reconcileEverything().then((result) => {
-        reportReconcile('Re-sync', result)
-      })
-    )
-  })
-
   on<CloseHandler>('CLOSE', () => {
     figma.closePlugin()
   })
@@ -390,8 +405,14 @@ export default function main(): void {
 
   figma.currentPage.on('nodechange', handleNodeChange)
 
-  fireAndForget(reconcileEverything())
+  // Must run before `reconcileEverything` starts — calling an async
+  // function runs its body synchronously up to its first real `await`, and
+  // that first sync stretch already reaches all the way into
+  // `syncAnnotationExclusive`'s `getCategories()` lookup for the first
+  // annotated target. Seeding the defaults after `fireAndForget` here would
+  // still lose that race on a file with an unseeded category list.
   ensureDefaultCategories()
+  fireAndForget(reconcileEverything())
 
   showUI(
     { height: 440, width: 320 },

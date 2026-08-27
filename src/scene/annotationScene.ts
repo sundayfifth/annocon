@@ -26,6 +26,7 @@ import {
   createAnnotationRecord,
   elbowPoints,
   laneElbowPoints,
+  nearestPointOnRect,
   parseAnnotationRecord,
   resolveCardStacking,
   resolveOutsideSide,
@@ -38,6 +39,7 @@ import {
   findCategory
 } from '../core/category.js'
 import { getCategories } from './categoryScene.js'
+import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import { findEnclosingFrame } from './frames.js'
 import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
 
@@ -88,17 +90,13 @@ function resolveCardFont(): Promise<FontName> {
   })()
   return resolvedCardFont
 }
-/**
- * The card and leader's own layer name — just the note's text, not a
- * generic "Annotation" label. Card/leader would otherwise be named
- * identically across every annotation, which is useless clutter once
- * there's more than one on the canvas (Figma floats layer names above
- * nodes when zoomed out).
- */
-function truncate(text: string, max: number): string {
-  const trimmed = text.trim()
-  return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed
-}
+// Card and leader both get a short, fixed, uninteresting layer name — not
+// the note's own text. That was tried the other way (see git history) and
+// turned out worse: a long note makes for a long, cluttered-looking layer
+// name, and every annotation showing different text of a different length
+// reads as noisier than all of them sharing one quiet, generic name.
+const CARD_LAYER_NAME = 'Annotation'
+const LEADER_LAYER_NAME = 'Annotation leader'
 
 const CARD_SHADOW: DropShadowEffect = {
   type: 'DROP_SHADOW',
@@ -109,8 +107,6 @@ const CARD_SHADOW: DropShadowEffect = {
   visible: true,
   blendMode: 'NORMAL'
 }
-
-const CHUNK_SIZE = 20
 
 export function getAnnotationRecord(node: SceneNode): AnnotationRecord | null {
   return parseAnnotationRecord(node.getPluginData(ANNOTATION_KEY))
@@ -149,9 +145,31 @@ function eraseAnnotationRecord(node: SceneNode): void {
   })
 }
 
+// A deleted node's pluginData is gone by the time `nodechange` reports the
+// DELETE — Figma hands back only a `RemovedNode` (id/type/removed), nothing
+// queryable. Without this, deleting a card or leader directly (both are
+// real, selectable, unlocked-or-not nodes a person can click and hit
+// Delete on) leaves the target's record and the other rendered node
+// dangling, with nothing left able to trace back to who owned it. This is
+// an in-memory, session-only cache — reconciliation on open rebuilds
+// everything from scratch anyway, so nothing is lost by not persisting it.
+const ownerIdByRenderedNodeId = new Map<string, string>()
+
 function tag(node: SceneNode, ownerId: string, role: Role): void {
   node.setPluginData(OWNER_KEY, ownerId)
   node.setPluginData(ROLE_KEY, role)
+  ownerIdByRenderedNodeId.set(node.id, ownerId)
+}
+
+/**
+ * The owner a now-deleted card or leader used to belong to, from the
+ * cache `tag` maintains — `null` if `nodeId` was never one of ours, or we
+ * simply don't remember it (a fresh plugin session that hasn't touched
+ * this node yet). See `ownerIdByRenderedNodeId` for why this can't just
+ * read the node's own pluginData instead.
+ */
+export function lastKnownOwnerOf(nodeId: string): string | null {
+  return ownerIdByRenderedNodeId.get(nodeId) ?? null
 }
 
 interface RenderedNodes {
@@ -211,6 +229,9 @@ function dedupeTextChild(parent: FrameNode): TextNode | undefined {
 function removeIfPresent(node: BaseNode | null): void {
   if (node !== null && !node.removed) {
     node.remove()
+    // Harmless no-op for anything that was never in the cache (a text
+    // child, say) — only card/leader ids are ever actually present.
+    ownerIdByRenderedNodeId.delete(node.id)
   }
 }
 
@@ -408,6 +429,21 @@ function leaderToCardCenter(points: ReadonlyArray<Point>, card: FrameNode): Read
   return centered ?? points
 }
 
+/**
+ * The near-target layout's leader-to-card counterpart to
+ * `leaderToCardCenter`: aims at whichever point on the card's own box is
+ * actually closest to `from`, since a near-target card can sit in any
+ * direction from its badge (there's no fixed left/right side the way the
+ * outside-frame layout has to route around).
+ */
+function leaderToCardBoundary(from: Point, card: FrameNode): ReadonlyArray<Point> | null {
+  const boundary = nearestPointOnRect(
+    { x: card.x, y: card.y, width: card.width, height: card.height },
+    from
+  )
+  return elbowPoints(from, boundary)
+}
+
 async function positionLeader(leader: VectorNode, points: ReadonlyArray<Point>): Promise<void> {
   const { x, y, vectorNetwork } = polylineNetwork(points)
   leader.x = x
@@ -529,10 +565,8 @@ async function syncAnnotationExclusive(target: SceneNode): Promise<void> {
   const category = findCategory(getCategories(), record.categoryId)
   const color = category?.color ?? DEFAULT_ANNOTATION_COLOR
 
-  const label = truncate(record.text, 24)
-
   try {
-    await syncAnnotationBody(target, rect, record, rendered, category, color, label)
+    await syncAnnotationBody(target, rect, record, rendered, category, color)
   } catch (error) {
     // A throw partway through leaves whatever ran before it half-applied —
     // a card created but never positioned, say — and used to vanish into
@@ -552,8 +586,7 @@ async function syncAnnotationBody(
   record: AnnotationRecord,
   rendered: RenderedNodes,
   category: Category | null,
-  color: string,
-  label: string
+  color: string
 ): Promise<void> {
   await withSuppressedNodeChangeAsync(async () => {
     // Reparent to the page *before* touching anything else. Every x/y
@@ -577,10 +610,7 @@ async function syncAnnotationBody(
     const { layout } = resolved
 
     const { card, text } = await ensureCard(rendered.card, target.id, resolved.cardWidth, category)
-    // The note's own text, not a generic "Annotation — " prefix — every
-    // layer already reads as an annotation from its type/position, so
-    // spelling that out on each one was clutter of its own.
-    card.name = label
+    card.name = CARD_LAYER_NAME
     card.x = layout.cardTopLeft.x
     card.y = layout.cardTopLeft.y
     if (text.characters !== record.text) {
@@ -591,17 +621,31 @@ async function syncAnnotationBody(
     if (layout.leader === null) {
       removeIfPresent(rendered.leader)
     } else {
-      const leader = ensureLeader(rendered.leader, target.id, color)
-      leader.name = label
       // `layout.leader`'s card-side endpoint was computed before the card's
-      // real height was known (a fixed inset from the top, as a stand-in).
-      // Now that `card.height` reflects the actual rendered card, retarget
-      // it at the card's vertical centre instead — only meaningful for the
-      // outside-frame layout, where the leader actually reaches the card;
-      // the near-target layout's leader just docks at the target's edge.
+      // real height (and, for the near-target layout, the card's actual
+      // position) was known. Now that `card` is real, retarget the leader
+      // at wherever the card's own boundary actually ends up: the vertical
+      // centre of its facing edge for the outside-frame layout (which
+      // always approaches from a known left/right side), or the closest
+      // point on the card's box for the near-target layout (whose card can
+      // sit in any direction, not just left/right).
       const points =
-        resolved.side === null ? layout.leader : leaderToCardCenter(layout.leader, card)
-      await positionLeader(leader, points)
+        resolved.side === null
+          ? leaderToCardBoundary(layout.leader[0] ?? layout.badgeCenter, card)
+          : leaderToCardCenter(layout.leader, card)
+      // `leaderToCardBoundary` returns `null` when the target's edge and
+      // the card's own boundary land on the exact same point — a genuine
+      // zero-length line, not a bug to paper over. Falling back to
+      // `layout.leader` there used to show a stale placeholder line headed
+      // toward where the badge used to be, nowhere near the card's actual
+      // position — worse than just not drawing a leader for that one sync.
+      if (points === null) {
+        removeIfPresent(rendered.leader)
+      } else {
+        const leader = ensureLeader(rendered.leader, target.id, color)
+        leader.name = LEADER_LAYER_NAME
+        await positionLeader(leader, points)
+      }
     }
 
     // Re-parenting to the same page moves a node to the front of the
@@ -674,36 +718,45 @@ export async function applyCardStacking(): Promise<void> {
     groups.set(resolved.side, list)
   }
 
-  try {
-    // Suppressed for the same reason as in `syncAnnotationExclusive`: moving
-    // a card here to avoid overlap must not look like a person dragging it.
-    await withSuppressedNodeChangeAsync(async () => {
-      for (const [side, list] of groups.entries()) {
-        const stacked = resolveCardStacking(
-          list.map((item) => ({ id: item.ownerId, top: item.naturalTop, height: item.card.height })),
-          CARD_STACK_GAP
-        )
-        // Every leader in this group shares the same `nearEdgeX` — bending
-        // all of them there at once is what made several leaders overlap
-        // into the same line through the margin. Lane them instead: sort
-        // top to bottom and give each one after the first a bend a little
-        // further into the margin, so they fan out instead of stacking on
-        // top of each other. `RIGHT` fans toward smaller x (back toward the
-        // frame); `LEFT` mirrors it toward larger x.
-        const laneSign = side === 'RIGHT' ? -1 : 1
-        const lanesOf = [...list].sort((a, b) => a.edgeStart.y - b.edgeStart.y)
-        const laneXById = new Map<string, number>(
-          lanesOf.map((item, index) => [item.ownerId, item.nearEdgeX + laneSign * index * LEADER_LANE_GAP])
-        )
+  let processed = 0
+  let failures = 0
+  for (const [side, list] of groups.entries()) {
+    const stacked = resolveCardStacking(
+      list.map((item) => ({ id: item.ownerId, top: item.naturalTop, height: item.card.height })),
+      CARD_STACK_GAP
+    )
+    // Every leader in this group shares the same `nearEdgeX` — bending
+    // all of them there at once is what made several leaders overlap
+    // into the same line through the margin. Lane them instead: sort
+    // top to bottom and give each one after the first a bend a little
+    // further into the margin, so they fan out instead of stacking on
+    // top of each other. `RIGHT` fans toward smaller x (back toward the
+    // frame); `LEFT` mirrors it toward larger x.
+    const laneSign = side === 'RIGHT' ? -1 : 1
+    const lanesOf = [...list].sort((a, b) => a.edgeStart.y - b.edgeStart.y)
+    const laneXById = new Map<string, number>(
+      lanesOf.map((item, index) => [item.ownerId, item.nearEdgeX + laneSign * index * LEADER_LANE_GAP])
+    )
 
-        for (const item of list) {
-          const top = stacked.get(item.ownerId)
-          if (typeof top !== 'number') continue
+    for (const item of list) {
+      const top = stacked.get(item.ownerId)
+      // A card (or its leader) can vanish between the read pass above and
+      // here — deleted mid-batch by whatever else is touching the canvas.
+      // Skipping it here, instead of writing to a removed node and letting
+      // that throw, is what keeps one gone card from also stalling every
+      // other card still waiting in this same pass.
+      if (typeof top !== 'number' || item.card.removed) continue
+      try {
+        // Suppressed per card, not for the whole batch — moving a card to
+        // avoid overlap must not look like a person dragging it, but one
+        // suppression window spanning every annotation on the page would
+        // also drop genuine unrelated edits for as long as this ran.
+        await withSuppressedNodeChangeAsync(async () => {
           // Same reparent-before-position reasoning as `syncAnnotationExclusive`
           // — the card may have drifted into another frame since the last sync.
           figma.currentPage.appendChild(item.card)
           item.card.y = top
-          if (item.leader === null) continue
+          if (item.leader === null || item.leader.removed) return
           figma.currentPage.appendChild(item.leader)
 
           // Vertical centre of the card, same as the initial sync — not the
@@ -713,14 +766,22 @@ export async function applyCardStacking(): Promise<void> {
           const laneX = laneXById.get(item.ownerId) ?? item.nearEdgeX
           const points = laneElbowPoints(item.edgeStart, laneX, to)
           await positionLeader(item.leader, points)
-        }
+        })
+      } catch (error) {
+        failures += 1
+        console.error(error)
       }
-    })
-  } catch (error) {
-    // Same reasoning as `syncAnnotationExclusive`'s catch — a throw here
-    // used to vanish silently and leave cards stuck mid-reflow.
-    figma.notify(`Couldn't lay out annotation cards: ${String(error)}`, { error: true })
-    throw error
+      processed += 1
+      if (processed % CHUNK_SIZE === 0) await yieldToMainThread()
+    }
+  }
+  if (failures > 0) {
+    // One summary notification, not one per card — a whole frame's worth
+    // of annotations disappearing at once shouldn't spam the same message.
+    figma.notify(
+      `Couldn't lay out ${failures} annotation card${failures === 1 ? '' : 's'} — try re-syncing.`,
+      { error: true }
+    )
   }
 }
 
@@ -810,10 +871,6 @@ export async function updateCardOffsetFromDrag(target: SceneNode): Promise<void>
   writeAnnotationRecord(target, { ...record, side: 'AUTO', cardOffset: newOffset })
   await syncAnnotation(target)
   await finalizeLayout()
-}
-
-function yieldToMainThread(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0))
 }
 
 /** Re-renders every annotation on the current page and sweeps orphaned nodes. */

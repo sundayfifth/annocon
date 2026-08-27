@@ -20,7 +20,8 @@ export interface Category {
 }
 
 export const CATEGORY_PALETTE: ReadonlyArray<string> = [
-  '#8C8C8C', // grey — the neutral option; matches the default connector colour
+  '#000000', // black — the default connector colour; kept in the palette so it stays reachable, not just a starting value that vanishes once changed
+  '#8C8C8C', // grey — the neutral option
   '#E5484D', // red
   '#F76B15', // orange
   '#FFC53D', // yellow

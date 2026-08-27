@@ -29,7 +29,6 @@ import type {
   DeleteCategoryHandler,
   RecolorCategoryHandler,
   RenameCategoryHandler,
-  ResyncPageHandler,
   SelectionChangedHandler,
   SelectionSummary,
   SetAnnotationCategoryHandler,
@@ -600,6 +599,10 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
         <Bold>Connector style</Bold>
       </Text>
       <VerticalSpace space="small" />
+      <Text>
+        <Muted>Colour, weight, opacity, and line style</Muted>
+      </Text>
+      <VerticalSpace space="extraSmall" />
       <div style={{ display: 'flex', gap: '8px' }}>
         <div style={{ position: 'relative' }}>
           <ColorSwatchTrigger
@@ -713,6 +716,7 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
       <Text>
         <Muted>Exit / entry side</Muted>
       </Text>
+      <VerticalSpace space="extraSmall" />
       <div style={{ display: 'flex', gap: '8px' }}>
         <MagnetGraphicPicker
           label="Start"
@@ -782,7 +786,7 @@ function AnnotateEditor({
       />
       <VerticalSpace space="small" />
       <Text>
-        <Muted>Renders as a badge, leader line, and note card on the canvas.</Muted>
+        <Muted>Renders as a leader line and note card on the canvas.</Muted>
       </Text>
       <VerticalSpace space="medium" />
     </Container>
@@ -893,6 +897,14 @@ function CategoryRow({
       <div style={{ flex: '1 1 auto', minWidth: 0 }}>
         <Textbox
           onBlur={() => {
+            // The scene layer silently rejects a blank name (renameCategory
+            // no-ops on an empty trim) — without this, clearing the field
+            // and clicking away leaves this textbox showing blank forever,
+            // even though the stored name never actually changed.
+            if (name.trim() === '') {
+              setName(category.name)
+              return
+            }
             onRename(name)
           }}
           onValueInput={setName}
@@ -1120,16 +1132,6 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
                         : 'Select exactly two layers to connect them automatically, or select an existing connector to edit its style.'}
                     </Muted>
                   </Text>
-                  <VerticalSpace space="small" />
-                  <Button
-                    fullWidth
-                    secondary
-                    onClick={() => {
-                      emit<ResyncPageHandler>('RESYNC_PAGE')
-                    }}
-                  >
-                    Re-sync this page
-                  </Button>
                   <VerticalSpace space="medium" />
                 </Container>
               )
