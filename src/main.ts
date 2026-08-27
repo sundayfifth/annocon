@@ -49,16 +49,19 @@ import {
 } from './scene/categoryScene.js'
 import {
   createConnector,
+  findAllConnectorsOnPage,
   findConnectorBetween,
   findConnectorsInvolving,
   findConnectorsWithEndpointUnder,
   getConnectorRecord,
+  lastKnownLabelOwnerOf,
   reconcileAllConnectors,
   removeConnectorLabel,
   syncConnector,
   updateConnectorAnchorSide,
   updateConnectorStyle
 } from './scene/connectorScene.js'
+import { CHUNK_SIZE, yieldToMainThread } from './scene/chunking.js'
 import { isSuppressed } from './scene/pluginData.js'
 
 // `figma.currentPage.selection` is not in click order — Figma returns it in
@@ -300,6 +303,23 @@ async function resyncTouched({
   draggedCardOwnerIds
 }: TouchedNodes): Promise<void> {
   let touched = false
+  // One shared counter across all three loops below — a single nodechange
+  // event covering a large multi-select move or delete must still yield
+  // periodically, or it can stall the main thread long enough that a
+  // person can't even click Cancel (see the project's "chunk long work"
+  // rule; every other loop over a whole batch already follows it).
+  let processed = 0
+  const maybeYield = async (): Promise<void> => {
+    processed += 1
+    if (processed % CHUNK_SIZE === 0) await yieldToMainThread()
+  }
+  // Scanned once up front instead of once per touched id inside the loops
+  // below (`findConnectorsInvolving`/`findConnectorsWithEndpointUnder`
+  // otherwise each re-scan the whole page) — nothing in this function
+  // creates or deletes a connector node, so one snapshot stays valid for
+  // every id in this batch.
+  const allConnectors =
+    deletedIds.size > 0 || movedTargetIds.size > 0 ? findAllConnectorsOnPage() : []
 
   for (const id of deletedIds) {
     removeRenderedNodesForOwner(id)
@@ -326,16 +346,29 @@ async function resyncTouched({
       const owner = await figma.getNodeByIdAsync(strandedOwnerId)
       if (owner !== null && 'absoluteBoundingBox' in owner && getAnnotationRecord(owner) !== null) {
         if (strandedRole === 'card') {
-          await clearAnnotation(owner)
+          clearAnnotation(owner)
         } else {
           await syncAnnotation(owner)
         }
       }
     }
-    for (const connector of findConnectorsInvolving(id)) {
+    // Same idea as the card/leader handling above, for a connector's label
+    // pill — a real, selectable, unlocked node someone can delete directly
+    // without touching the connector line itself. Left unhandled, nothing
+    // clears `record.label`, so the next sync (any later nodechange, or the
+    // next reconcile) just recreates the very pill that was just deleted.
+    const strandedLabelOwnerId = lastKnownLabelOwnerOf(id)
+    if (strandedLabelOwnerId !== null) {
+      const connector = await figma.getNodeByIdAsync(strandedLabelOwnerId)
+      if (connector !== null && connector.type === 'VECTOR' && getConnectorRecord(connector) !== null) {
+        await updateConnectorStyle(connector, { label: '' })
+      }
+    }
+    for (const connector of findConnectorsInvolving(id, allConnectors)) {
       await syncConnector(connector)
     }
     touched = true
+    await maybeYield()
   }
 
   for (const id of movedTargetIds) {
@@ -344,7 +377,7 @@ async function resyncTouched({
       await syncAnnotation(node)
       touched = true
     }
-    for (const connector of findConnectorsInvolving(id)) {
+    for (const connector of findConnectorsInvolving(id, allConnectors)) {
       await syncConnector(connector)
       touched = true
     }
@@ -358,18 +391,23 @@ async function resyncTouched({
         await syncAnnotation(descendantTarget)
         touched = true
       }
-      for (const connector of findConnectorsWithEndpointUnder(node)) {
+      for (const connector of findConnectorsWithEndpointUnder(node, allConnectors)) {
         await syncConnector(connector)
         touched = true
       }
     }
+    await maybeYield()
   }
 
   for (const ownerId of draggedCardOwnerIds) {
     const node = await figma.getNodeByIdAsync(ownerId)
-    if (node === null || !('absoluteBoundingBox' in node)) continue
+    if (node === null || !('absoluteBoundingBox' in node)) {
+      await maybeYield()
+      continue
+    }
     await updateCardOffsetFromDrag(node)
     touched = true
+    await maybeYield()
   }
 
   if (touched) await finalizeLayout()

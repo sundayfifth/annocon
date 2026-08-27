@@ -135,22 +135,14 @@ function isLineStyle(value: unknown): value is ConnectorLineStyle {
 }
 
 /**
- * Decodes a `ConnectorStylePrefs` out of `clientStorage` — the "last style
- * used" a new connector starts from (see `createConnector`). Same tolerant,
- * field-by-field fallback as `parseConnectorRecord`; a stray or corrupted
- * value here should degrade to the shipped defaults, not break connector
- * creation.
+ * The style-field half of decoding a connector out of pluginData — shared by
+ * `parseConnectorRecord` (which adds the anchors and label on top) and
+ * `parseConnectorStylePrefs` (which is only ever the style fields, decoded
+ * from `clientStorage` rather than a connector node). Same tolerant,
+ * field-by-field fallback either way: a stray or corrupted value degrades to
+ * the shipped default for that one field instead of failing the whole decode.
  */
-export function parseConnectorStylePrefs(raw: string): ConnectorStylePrefs {
-  if (raw === '') return DEFAULT_CONNECTOR_STYLE_PREFS
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    return DEFAULT_CONNECTOR_STYLE_PREFS
-  }
-  if (typeof parsed !== 'object' || parsed === null) return DEFAULT_CONNECTOR_STYLE_PREFS
-  const candidate = parsed as Record<string, unknown>
+function stylePrefsFrom(candidate: Record<string, unknown>): ConnectorStylePrefs {
   return {
     strokeWeight:
       typeof candidate.strokeWeight === 'number' && candidate.strokeWeight > 0
@@ -172,6 +164,22 @@ export function parseConnectorStylePrefs(raw: string): ConnectorStylePrefs {
         ? candidate.cornerRadius
         : DEFAULT_CORNER_RADIUS
   }
+}
+
+/**
+ * Decodes a `ConnectorStylePrefs` out of `clientStorage` — the "last style
+ * used" a new connector starts from (see `createConnector`).
+ */
+export function parseConnectorStylePrefs(raw: string): ConnectorStylePrefs {
+  if (raw === '') return DEFAULT_CONNECTOR_STYLE_PREFS
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return DEFAULT_CONNECTOR_STYLE_PREFS
+  }
+  if (typeof parsed !== 'object' || parsed === null) return DEFAULT_CONNECTOR_STYLE_PREFS
+  return stylePrefsFrom(parsed as Record<string, unknown>)
 }
 
 export function serialiseConnectorStylePrefs(prefs: ConnectorStylePrefs): string {
@@ -217,24 +225,7 @@ export function parseConnectorRecord(raw: string): ConnectorRecord | null {
     v: CONNECTOR_VERSION,
     start: candidate.start,
     end: candidate.end,
-    strokeWeight:
-      typeof candidate.strokeWeight === 'number' && candidate.strokeWeight > 0
-        ? candidate.strokeWeight
-        : DEFAULT_CONNECTOR_WEIGHT,
-    color: typeof candidate.color === 'string' && HEX_COLOR.test(candidate.color)
-      ? candidate.color
-      : DEFAULT_CONNECTOR_COLOR,
-    opacity:
-      typeof candidate.opacity === 'number' && candidate.opacity >= 0 && candidate.opacity <= 1
-        ? candidate.opacity
-        : DEFAULT_CONNECTOR_OPACITY,
-    startCap: isCap(candidate.startCap) ? candidate.startCap : DEFAULT_START_CAP,
-    endCap: isCap(candidate.endCap) ? candidate.endCap : DEFAULT_END_CAP,
-    lineStyle: isLineStyle(candidate.lineStyle) ? candidate.lineStyle : DEFAULT_LINE_STYLE,
-    cornerRadius:
-      typeof candidate.cornerRadius === 'number' && candidate.cornerRadius >= 0
-        ? candidate.cornerRadius
-        : DEFAULT_CORNER_RADIUS,
+    ...stylePrefsFrom(candidate),
     label: typeof candidate.label === 'string' ? candidate.label : DEFAULT_LABEL
   }
 }

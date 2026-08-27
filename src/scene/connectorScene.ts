@@ -28,6 +28,7 @@ import {
 } from '../core/connector.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import { findEnclosingFrame } from './frames.js'
+import { removeOrphansByOwnerKey } from './orphans.js'
 import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
 
 const CONNECTOR_KEY = 'connector'
@@ -73,9 +74,22 @@ function findAllConnectors(): Array<VectorNode> {
     .filter((node): node is VectorNode => node.type === 'VECTOR')
 }
 
+/**
+ * The same full-page scan `findConnectorsInvolving`/`findConnectorsWithEndpointUnder`
+ * do internally by default, exposed so a caller touching several nodes in one
+ * batch (`resyncTouched`) can scan once and pass the result to each call via
+ * their `known` parameter, instead of paying for the scan once per node.
+ */
+export function findAllConnectorsOnPage(): ReadonlyArray<VectorNode> {
+  return findAllConnectors()
+}
+
 /** Every connector whose record references `nodeId` on either end. */
-export function findConnectorsInvolving(nodeId: string): ReadonlyArray<VectorNode> {
-  return findAllConnectors().filter((node) => {
+export function findConnectorsInvolving(
+  nodeId: string,
+  known?: ReadonlyArray<VectorNode>
+): ReadonlyArray<VectorNode> {
+  return (known ?? findAllConnectors()).filter((node) => {
     const record = getConnectorRecord(node)
     if (record === null) return false
     return anchorRefersTo(record.start, nodeId) || anchorRefersTo(record.end, nodeId)
@@ -116,11 +130,12 @@ function anchorIn(anchor: ConnectorRecord['start'], ids: ReadonlySet<string>): b
  * moves, so this is how a connector notices its anchor's frame was dragged.
  */
 export function findConnectorsWithEndpointUnder(
-  ancestor: SceneNode & ChildrenMixin
+  ancestor: SceneNode & ChildrenMixin,
+  known?: ReadonlyArray<VectorNode>
 ): ReadonlyArray<VectorNode> {
   const descendantIds = new Set(ancestor.findAll().map((node) => node.id))
   if (descendantIds.size === 0) return []
-  return findAllConnectors().filter((node) => {
+  return (known ?? findAllConnectors()).filter((node) => {
     const record = getConnectorRecord(node)
     if (record === null) return false
     return anchorIn(record.start, descendantIds) || anchorIn(record.end, descendantIds)
@@ -148,10 +163,26 @@ function findConnectorLabel(connectorId: string): FrameNode | null {
   return null
 }
 
+// A deleted label's pluginData is gone by the time `nodechange` reports the
+// DELETE — same reasoning as annotation's `ownerIdByRenderedNodeId`. Without
+// this, a person deleting a label pill directly (a real, selectable,
+// unlocked node) while the plugin is open has no way to trace back to which
+// connector it belonged to, so `record.label` never gets cleared and the
+// next sync recreates the very pill that was just deleted.
+const labelOwnerByRenderedNodeId = new Map<string, string>()
+
+/** The connector a now-deleted label used to belong to — see `labelOwnerByRenderedNodeId`. */
+export function lastKnownLabelOwnerOf(labelId: string): string | null {
+  return labelOwnerByRenderedNodeId.get(labelId) ?? null
+}
+
 /** Removes a connector's label, if it has one — used when the connector itself is deleted. */
 export function removeConnectorLabel(connectorId: string): void {
   const label = findConnectorLabel(connectorId)
-  if (label !== null) label.remove()
+  if (label !== null) {
+    label.remove()
+    labelOwnerByRenderedNodeId.delete(label.id)
+  }
 }
 
 const LABEL_FONT: FontName = { family: 'Inter', style: 'Regular' }
@@ -173,7 +204,10 @@ async function ensureConnectorLabel(
 ): Promise<void> {
   const trimmed = text.trim()
   if (trimmed === '') {
-    if (existing !== null) existing.remove()
+    if (existing !== null) {
+      existing.remove()
+      labelOwnerByRenderedNodeId.delete(existing.id)
+    }
     return
   }
 
@@ -190,6 +224,7 @@ async function ensureConnectorLabel(
     pill.strokeWeight = 1
     pill.locked = true
     pill.setPluginData(LABEL_OWNER_KEY, connectorId)
+    labelOwnerByRenderedNodeId.set(pill.id, connectorId)
   }
   pill.name = trimmed
   pill.fills = [figma.util.solidPaint('#FFFFFF')]
@@ -479,11 +514,7 @@ export async function updateConnectorAnchorSide(
 
 /** Removes any connector label whose owning connector no longer exists. */
 function removeOrphanConnectorLabels(liveConnectorIds: ReadonlySet<string>): void {
-  const labels = figma.currentPage.findAllWithCriteria({ pluginData: { keys: [LABEL_OWNER_KEY] } })
-  for (const node of labels) {
-    const ownerId = node.getPluginData(LABEL_OWNER_KEY)
-    if (ownerId !== '' && !liveConnectorIds.has(ownerId) && !node.removed) node.remove()
-  }
+  removeOrphansByOwnerKey(LABEL_OWNER_KEY, liveConnectorIds)
 }
 
 /** Re-renders every connector on the current page. */

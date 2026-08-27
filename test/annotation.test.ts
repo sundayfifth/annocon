@@ -264,6 +264,23 @@ describe('leaderIntoCard', () => {
       { x: 100, y: 50 }
     ])
   })
+
+  it('pushes the vertical run further out by laneOffset, without moving the point that touches the card', () => {
+    expect(leaderIntoCard({ x: 0, y: 0 }, { x: 100, y: 50 }, 10, 8)).toEqual([
+      { x: 0, y: 0 },
+      { x: 82, y: 0 },
+      { x: 82, y: 50 },
+      { x: 100, y: 50 }
+    ])
+  })
+
+  it('folds laneOffset into the same no-room fallback as stub', () => {
+    expect(leaderIntoCard({ x: 90, y: 0 }, { x: 100, y: 50 }, 5, 10)).toEqual([
+      { x: 90, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 50 }
+    ])
+  })
 })
 
 describe('nearestPointOnRect', () => {

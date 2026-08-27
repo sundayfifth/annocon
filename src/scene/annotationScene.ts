@@ -18,6 +18,7 @@ import type { Point, Rect } from '../core/anchor.js'
 import {
   type AnnotationLayout,
   type AnnotationRecord,
+  CARD_APPROACH_STUB,
   DEFAULT_METRICS,
   MIN_OUTSIDE_CARD_WIDTH,
   OUTSIDE_MARGIN,
@@ -41,6 +42,7 @@ import {
 import { getCategories } from './categoryScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import { findEnclosingFrame } from './frames.js'
+import { removeOrphansByOwnerKey } from './orphans.js'
 import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
 
 const ANNOTATION_KEY = 'annotation'
@@ -254,9 +256,14 @@ export function roleOf(node: SceneNode): Role | null {
   return value === 'badge' || value === 'card' || value === 'leader' ? value : null
 }
 
-/** Removes whatever rendered nodes an owner has, regardless of its record. */
-export function removeRenderedNodesForOwner(ownerId: string): void {
-  const rendered = findRenderedNodes(ownerId)
+/**
+ * Removes whatever rendered nodes an owner has, regardless of its record.
+ * Pass `known` when the caller already has a fresh `findRenderedNodes`
+ * result for this owner (e.g. `reconcileAllAnnotations`'s loop, which reads
+ * it once and would otherwise pay for the same full-page scan twice).
+ */
+export function removeRenderedNodesForOwner(ownerId: string, known?: RenderedNodes): void {
+  const rendered = known ?? findRenderedNodes(ownerId)
   removeIfPresent(rendered.badge)
   removeIfPresent(rendered.card)
   removeIfPresent(rendered.leader)
@@ -264,16 +271,7 @@ export function removeRenderedNodesForOwner(ownerId: string): void {
 
 /** Deletes rendered nodes whose owner is not in `liveTargetIds`. Returns the count removed. */
 export function removeOrphanRenderedNodes(liveTargetIds: ReadonlySet<string>): number {
-  const owned = figma.currentPage.findAllWithCriteria({ pluginData: { keys: [OWNER_KEY] } })
-  let removed = 0
-  for (const node of owned) {
-    const ownerId = node.getPluginData(OWNER_KEY)
-    if (ownerId !== '' && !liveTargetIds.has(ownerId) && !node.removed) {
-      node.remove()
-      removed += 1
-    }
-  }
-  return removed
+  return removeOrphansByOwnerKey(OWNER_KEY, liveTargetIds)
 }
 
 interface Card {
@@ -542,14 +540,20 @@ function computeLayout(target: SceneNode, rect: Rect, record: AnnotationRecord):
 // concurrent calls for the same target into the one already in flight.
 const inFlightSyncs = new Map<string, Promise<void>>()
 
-/** Renders (or updates) the annotation for one target node from its record. */
-export async function syncAnnotation(target: SceneNode): Promise<void> {
+/**
+ * Renders (or updates) the annotation for one target node from its record.
+ * Pass `known` when the caller already has a fresh `findRenderedNodes`
+ * result for this target (see `removeRenderedNodesForOwner`'s `known` for
+ * the same reasoning) — ignored if a sync for this target is already in
+ * flight, since that one already committed to whatever it read.
+ */
+export async function syncAnnotation(target: SceneNode, known?: RenderedNodes): Promise<void> {
   const inFlight = inFlightSyncs.get(target.id)
   if (typeof inFlight !== 'undefined') {
     await inFlight
     return
   }
-  const promise = syncAnnotationExclusive(target)
+  const promise = syncAnnotationExclusive(target, known)
   inFlightSyncs.set(target.id, promise)
   try {
     await promise
@@ -558,9 +562,9 @@ export async function syncAnnotation(target: SceneNode): Promise<void> {
   }
 }
 
-async function syncAnnotationExclusive(target: SceneNode): Promise<void> {
+async function syncAnnotationExclusive(target: SceneNode, known?: RenderedNodes): Promise<void> {
   const record = getAnnotationRecord(target)
-  const rendered = findRenderedNodes(target.id)
+  const rendered = known ?? findRenderedNodes(target.id)
   if (record === null) {
     removeIfPresent(rendered.badge)
     removeIfPresent(rendered.card)
@@ -675,6 +679,11 @@ async function syncAnnotationBody(
 // that label overlapping the card above it.
 const CARD_STACK_GAP = 28
 
+// How much further out each leader after the first in a shared margin gets
+// pushed, via `leaderIntoCard`'s `laneOffset` — see there for why every
+// leader on the same side needs a distinct one instead of 0.
+const LEADER_LANE_GAP = 8
+
 interface StackItem {
   readonly ownerId: string
   readonly card: FrameNode
@@ -706,8 +715,11 @@ export async function applyCardStacking(): Promise<void> {
   }
 
   const groups = new Map<'LEFT' | 'RIGHT', Array<StackItem>>()
+  let prepared = 0
   for (const [ownerId, card] of cardsByOwner) {
     const target = await figma.getNodeByIdAsync(ownerId)
+    prepared += 1
+    if (prepared % CHUNK_SIZE === 0) await yieldToMainThread()
     if (target === null || !('absoluteBoundingBox' in target)) continue
     const rect = target.absoluteBoundingBox
     if (rect === null) continue
@@ -735,6 +747,16 @@ export async function applyCardStacking(): Promise<void> {
       list.map((item) => ({ id: item.ownerId, top: item.naturalTop, height: item.card.height })),
       CARD_STACK_GAP
     )
+    // Every leader in this group shares the same `nearEdgeX` (`to.x` below),
+    // so with no offset their vertical runs would too — sort top to bottom
+    // and give each one after the first a bit more lane, so overlapping
+    // spans fan out instead of merging into one line. The first item still
+    // gets 0 (no unearned bend for the common single-annotation case).
+    const laneOffsetById = new Map<string, number>(
+      [...list]
+        .sort((a, b) => a.edgeStart.y - b.edgeStart.y)
+        .map((item, index) => [item.ownerId, index * LEADER_LANE_GAP])
+    )
     for (const item of list) {
       const top = stacked.get(item.ownerId)
       // A card (or its leader) can vanish between the read pass above and
@@ -760,14 +782,15 @@ export async function applyCardStacking(): Promise<void> {
           // fixed top-of-card inset `CARD_LEADER_INSET` still used as this
           // module's own before-the-real-height starting guess.
           const to: Point = { x: item.nearEdgeX, y: top + item.card.height / 2 }
-          // A single clean bend, not the old per-lane detour — that one only
-          // earned its keep by giving several leaders sharing this margin
-          // distinct lanes so they wouldn't overlap into one thick line; this
-          // doesn't have that problem (two leaders only ever share a path if
-          // their endpoints do), while still leaving the target's edge
-          // straight out horizontally and docking into the card with a
-          // short, clearly perpendicular final stub — see `leaderIntoCard`.
-          await positionLeader(item.leader, leaderIntoCard(item.edgeStart, to))
+          // Straight out from the target, docking into the card with a
+          // short, clearly perpendicular final stub — see `leaderIntoCard`
+          // — with each item's own lane offset keeping several leaders
+          // sharing this margin from merging into one line.
+          const laneOffset = laneOffsetById.get(item.ownerId) ?? 0
+          await positionLeader(
+            item.leader,
+            leaderIntoCard(item.edgeStart, to, CARD_APPROACH_STUB, laneOffset)
+          )
         })
       } catch (error) {
         failures += 1
@@ -792,18 +815,23 @@ export async function finalizeLayout(): Promise<void> {
   await applyCardStacking()
 }
 
-/** Removes the rendered nodes and the record for one target. */
-export async function clearAnnotation(target: SceneNode): Promise<void> {
+/**
+ * Removes the rendered nodes and the record for one target. Doesn't call
+ * `finalizeLayout` itself — callers batching several of these in one user
+ * action (`resyncTouched`'s delete loop) call it once after the whole
+ * batch instead of paying for a full-page stacking pass per target.
+ */
+export function clearAnnotation(target: SceneNode): void {
   removeRenderedNodesForOwner(target.id)
   eraseAnnotationRecord(target)
-  await finalizeLayout()
 }
 
 /** Sets or replaces the note text for a target, creating the record if needed. */
 export async function setAnnotationText(target: SceneNode, text: string): Promise<void> {
   const trimmed = text.trim()
   if (trimmed === '') {
-    await clearAnnotation(target)
+    clearAnnotation(target)
+    await finalizeLayout()
     return
   }
   const existing = getAnnotationRecord(target)
@@ -887,19 +915,26 @@ export async function reconcileAllAnnotations(): Promise<{
   let synced = 0
   for (const target of targets) {
     const rendered = findRenderedNodes(target.id)
-    if (rendered.badge === null && rendered.card === null && rendered.leader === null) {
-      // Nothing at all is rendered for a record that exists — the only way
-      // to reach that state is a person deleting the card and leader
-      // directly while the plugin wasn't open to catch it live (the
-      // `lastKnownRoleOf` cache in `resyncTouched` only helps mid-session).
-      // Every path that *writes* a record also renders it in the same call
+    if (rendered.card === null) {
+      // The card is gone — same "this counts as a delete" rule the live
+      // in-session path uses (`resyncTouched` treats losing the card,
+      // specifically, as the person deleting the annotation; losing just
+      // the leader is treated as damage to repair, not intent). A record
+      // can only reach this state by someone deleting the card directly
+      // while the plugin wasn't open to catch it live — every path that
+      // *writes* a record also renders it in the same call
       // (`setAnnotationText`/`setAnnotationCategory`), so a full reconcile
-      // never otherwise finds a record with nothing rendered for it yet.
-      // Recreating here would be exactly the resurrection bug this was
-      // built to fix — clear the record instead, same as a live delete does.
+      // never otherwise finds a record whose card was never rendered yet.
+      // Recreating it here would be exactly the resurrection bug this was
+      // built to fix. A leftover leader (or a retired badge from an older
+      // file) has nothing left to point at either, so it's swept along
+      // with the record instead of orphaned on the canvas forever — nothing
+      // else ever will, since the orphan sweep below only looks at whether
+      // the *target* node is still alive, not whether it still has a record.
+      removeRenderedNodesForOwner(target.id, rendered)
       eraseAnnotationRecord(target)
     } else {
-      await syncAnnotation(target)
+      await syncAnnotation(target, rendered)
     }
     synced += 1
     if (synced % CHUNK_SIZE === 0) await yieldToMainThread()

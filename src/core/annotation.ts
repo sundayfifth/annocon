@@ -218,21 +218,32 @@ export const CARD_APPROACH_STUB = 10
  * the rest with one short, plainly perpendicular final segment is what
  * actually reads as docking into it.
  *
- * Degrades to a plain `elbowPoints` bend when there isn't `stub` px of
- * horizontal run to spare (the target is basically already at the card's x)
- * or when `from` and `to` already share a y — nothing for the stub to buy
- * in either case.
+ * `laneOffset` (default 0, i.e. no lane) pushes the vertical run — but not
+ * `to` itself, which always stays flush on the card's real edge — further
+ * out still. Every leader routed to the same side of the same frame shares
+ * the same `to.x`, so with no offset their vertical runs (and the final
+ * stub's start point) would all land on the same x; several leaders whose
+ * vertical spans overlap would then render as one merged line instead of
+ * several distinct ones. Giving each one in a group a different
+ * `laneOffset` (see `applyCardStacking`) is what keeps them apart.
+ *
+ * Degrades to a plain `elbowPoints` bend when there isn't `stub + laneOffset`
+ * px of horizontal run to spare (the target is basically already at the
+ * card's x) or when `from` and `to` already share a y — nothing for the
+ * stub to buy in either case.
  */
 export function leaderIntoCard(
   from: Point,
   to: Point,
-  stub: number = CARD_APPROACH_STUB
+  stub: number = CARD_APPROACH_STUB,
+  laneOffset = 0
 ): ReadonlyArray<Point> {
-  if (from.y === to.y || Math.abs(to.x - from.x) <= stub) {
+  const reach = stub + laneOffset
+  if (from.y === to.y || Math.abs(to.x - from.x) <= reach) {
     return elbowPoints(from, to) ?? [from, to]
   }
   const sign = to.x >= from.x ? 1 : -1
-  const stubX = to.x - sign * stub
+  const stubX = to.x - sign * reach
   const raw: ReadonlyArray<Point> = [
     from,
     { x: stubX, y: from.y },
