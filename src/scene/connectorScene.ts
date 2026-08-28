@@ -359,7 +359,8 @@ export interface RouteObstacle {
 
 /**
  * The types that count as "another screen in the way". Deliberately only
- * top-level page children, and only container-ish types: the point is to
+ * the page's own children (groups aside, which are looked inside), and only
+ * container-ish types: the point is to
  * route around the *screens* on the page, which is what a person means by
  * "it doesn't dodge anything". Treating every layer as an obstacle would
  * make a route bend around a button inside a frame it was already routing
@@ -375,7 +376,8 @@ const OBSTACLE_TYPES: ReadonlySet<string> = new Set([
 ])
 
 /**
- * Every top-level box on the page a connector should route around.
+ * Every box on the page a connector should route around — the page's own
+ * children, plus whatever sits inside a group at that level.
  *
  * Our own rendered nodes are skipped: an annotation card and a connector's
  * label pill are both `FRAME`s sitting at the top level, and treating them
@@ -394,16 +396,38 @@ const OBSTACLE_TYPES: ReadonlySet<string> = new Set([
  */
 export function collectRouteObstacles(): ReadonlyArray<RouteObstacle> {
   const obstacles: Array<RouteObstacle> = []
-  for (const node of figma.currentPage.children) {
-    if (!OBSTACLE_TYPES.has(node.type)) continue
+  collectObstaclesFrom(figma.currentPage.children, obstacles)
+  return obstacles
+}
+
+/**
+ * Walks `nodes`, taking the boxes and descending into groups.
+ *
+ * Grouping a set of screens is ordinary tidying, and it used to switch
+ * avoidance off without a word: the group is not a type worth avoiding, and
+ * the screens inside it stopped being page children, so a page full of
+ * screens collected nothing at all. Descending only through `GROUP` keeps
+ * the ADR's intent — route around *screens*, and never pay for a deep
+ * `findAll` on every frame of a drag — while letting a group be what it is,
+ * a handle for moving several screens at once rather than a screen itself.
+ */
+function collectObstaclesFrom(
+  nodes: ReadonlyArray<SceneNode>,
+  into: Array<RouteObstacle>
+): void {
+  for (const node of nodes) {
     if (!node.visible) continue
+    if (node.type === 'GROUP') {
+      collectObstaclesFrom(node.children, into)
+      continue
+    }
+    if (!OBSTACLE_TYPES.has(node.type)) continue
     if (ownerIdOf(node) !== null) continue
     if (node.getPluginData(LABEL_OWNER_KEY) !== '') continue
     const rect = node.absoluteBoundingBox
     if (rect === null) continue
-    obstacles.push({ id: node.id, rect })
+    into.push({ id: node.id, rect })
   }
-  return obstacles
 }
 
 /**

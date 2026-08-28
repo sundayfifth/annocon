@@ -20,20 +20,30 @@ export function findEnclosingFrame(node: SceneNode): FrameNode | null {
 }
 
 /**
- * The page-level ancestor `node` sits under — `node` itself when it is
- * already a direct child of the page.
+ * The box `node` belongs to as far as routing is concerned — `node` itself
+ * when it is already one.
  *
  * Broader than `findEnclosingFrame` on purpose: that one deliberately only
  * counts `FRAME`s, because a "screen" is what a connector routes *around*.
- * This answers a different question — which top-level thing *is* this node —
- * so it has to follow every parent type, or a node inside a top-level
- * section or component reports itself and gets treated as a foreign obstacle
- * by its own connector.
+ * This answers a different question — which box *is* this node part of — so
+ * it follows sections and components too, or a node inside a top-level
+ * section reports itself and gets treated as a foreign obstacle by its own
+ * connector.
+ *
+ * `GROUP`s are stepped over rather than reported, matching
+ * `collectRouteObstacles`, which looks inside them for the screens instead
+ * of treating the group as one box. A group is a way of handling several
+ * things at once, not a thing in its own right — people group a set of
+ * screens and still mean the screens. Reporting the group here would name
+ * something that is never collected as an obstacle, so a connector's own
+ * screen would come back as a foreign box for it to avoid.
  */
 export function topLevelAncestorIdOf(node: SceneNode): string {
   let current: BaseNode = node
+  let outermost: BaseNode = node
   while (current.parent !== null && current.parent.type !== 'PAGE' && current.parent.type !== 'DOCUMENT') {
     current = current.parent
+    if (current.type !== 'GROUP') outermost = current
   }
-  return current.id
+  return outermost.id
 }
