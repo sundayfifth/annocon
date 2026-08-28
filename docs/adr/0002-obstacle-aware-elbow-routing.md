@@ -18,8 +18,10 @@ real scene node — visible to collaborators, selectable, deletable, and left
 stranded in the file if the plugin dies. And it is manual: twenty connectors in
 a flow is twenty nudges, thrown away the next time a frame moves.
 
-Whether a plugin-owned handle can even feel like direct manipulation is an open
-question, measured by spike S6 (`docs/spikes.md`).
+Whether a plugin-owned handle could even feel like direct manipulation was an
+open question at the time, tracked as spike S6 (`docs/spikes.md`). It was never
+measured: automatic avoidance turned out to be good enough on real files, so
+S6 closed as moot rather than answered.
 
 ## Decision
 
@@ -104,6 +106,6 @@ move, which is correct but is a change in behaviour on existing files.
 
 **Deferred.** Real pathfinding (a visibility graph, or A* over a grid) would
 handle the dense cases, at a cost we have no evidence is affordable on the
-editor's main thread. A manual handle is still on the table as an override for
-whatever the automatic version gets wrong — that is what S6 is for. Neither is
-worth building until this one has been used on real files.
+editor's main thread. A manual handle remains the obvious override for whatever
+the automatic version gets wrong, and would reopen the question S6 asked.
+Neither is worth building until this one has been used on real files.
