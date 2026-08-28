@@ -21,6 +21,7 @@ import {
   connectorRoutePoints,
   connectorStubClearance,
   obstaclesInPlay,
+  routeCost,
   routeCrossings,
   createConnectorRecord,
   frameGapMidpoint,
@@ -648,6 +649,62 @@ describe('obstaclesInPlay', () => {
       }
     })
     expect(filtered).toEqual(withNoise)
+  })
+})
+
+describe('routeCost', () => {
+  /** Two screens side by side with a gap, an endpoint nested in each. */
+  const leftScreen = { x: 0, y: 0, width: 100, height: 100 }
+  const rightScreen = { x: 110, y: 0, width: 100, height: 100 }
+  const own = { foreign: [], own: [leftScreen, rightScreen] }
+
+  it('charges nothing for leaving one screen and arriving in the other', () => {
+    const across = [
+      { x: 90, y: 50 },
+      { x: 105, y: 50 },
+      { x: 105, y: 60 },
+      { x: 130, y: 60 }
+    ]
+    expect(routeCost(across, own)).toBe(0)
+  })
+
+  /**
+   * Both own screens are exempt on the leaving and arriving segments,
+   * rather than each being paired with its own end. A route has to finish
+   * inside the screen it arrives in, so pairing them would charge a plain
+   * line between two adjacent screens for reaching its destination — and
+   * send the router off to find a detour instead. What is actually a defect
+   * is travelling *through* a screen mid-route, and every segment between
+   * the first and the last is still counted, which is what catches it.
+   */
+  it('charges for carrying on through a screen once inside it', () => {
+    const throughTheMiddle = [
+      { x: 90, y: 50 },
+      { x: 150, y: 50 },
+      { x: 150, y: 70 },
+      { x: 160, y: 70 }
+    ]
+    expect(routeCost(throughTheMiddle, own)).toBe(1)
+  })
+
+  it('charges for turning back through the screen it just left', () => {
+    const doublingBack = [
+      { x: 90, y: 50 },
+      { x: 105, y: 50 },
+      { x: 50, y: 50 },
+      { x: 50, y: 90 },
+      { x: 130, y: 90 }
+    ]
+    expect(routeCost(doublingBack, own)).toBe(1)
+  })
+
+  it('charges for a foreign box on any segment at all', () => {
+    const parked = { x: 40, y: 200, width: 100, height: 100 }
+    const through = [
+      { x: 90, y: 250 },
+      { x: 200, y: 250 }
+    ]
+    expect(routeCost(through, { foreign: [parked], own: [] })).toBe(1)
   })
 })
 

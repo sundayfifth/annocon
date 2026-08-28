@@ -438,8 +438,20 @@ function hasObstacles(obstacles: RouteObstacles): boolean {
   return obstacles.foreign.length > 0 || obstacles.own.length > 0
 }
 
-/** How bad a route is: every foreign box it crosses, plus every own frame it re-enters after having left. */
-function routeCost(points: ReadonlyArray<Point>, obstacles: RouteObstacles): number {
+/**
+ * How bad a route is: every foreign box it crosses, plus every own frame it
+ * re-enters after having left.
+ *
+ * The exemption covers the leaving and arriving segments against *both* own
+ * frames rather than pairing each frame with its own end, and that is
+ * deliberate. A route has to finish inside the frame it arrives in, so a
+ * first segment long enough to reach that frame early has done nothing
+ * wrong — charging it would make a plain straight line between two adjacent
+ * screens score worse than a detour around them. What is actually a defect
+ * is leaving a frame and turning back into it, and every segment in between
+ * is still counted, which is exactly what catches that.
+ */
+export function routeCost(points: ReadonlyArray<Point>, obstacles: RouteObstacles): number {
   return (
     routeCrossings(points, obstacles.foreign) +
     routeCrossings(points, obstacles.own, 1, points.length - 3)
