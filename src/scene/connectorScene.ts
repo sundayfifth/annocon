@@ -8,7 +8,7 @@
  * the record plus each endpoint's current box, never read back.
  */
 
-import type { Anchor, Magnet, Point, Rect, ResolvedMagnet } from '../core/anchor.js'
+import { type Anchor, type Magnet, type Point, type Rect, type ResolvedMagnet, sameRect } from '../core/anchor.js'
 import {
   type ConnectorRecord,
   type ConnectorStylePrefs,
@@ -454,9 +454,36 @@ export function collectRouteObstacles(): ReadonlyArray<RouteObstacle> {
 let obstacleRectsAtScan: ReadonlyMap<string, Rect> = new Map()
 let obstacleRectsBeforeScan: ReadonlyMap<string, Rect> = new Map()
 
-/** Where `id` sat at the scan before the current one — `null` if it wasn't a box then. */
-export function obstacleRectBeforeLastScan(id: string): Rect | null {
-  return obstacleRectsBeforeScan.get(id) ?? null
+/**
+ * Every rectangle that has to be re-examined because the last scan differs
+ * from the one before it: boxes that moved or resized (both the space they
+ * left and the space they took), boxes that appeared, and boxes that are no
+ * longer there.
+ *
+ * All three cases are the same question asked of the route — is anything
+ * different where this line passes — and only the first of them is a *move*.
+ * A screen can stop being in the way by being deleted, by being hidden, or
+ * by being dragged out of the page entirely, and none of those change a
+ * rectangle: the box simply stops being in the list. Reading the difference
+ * between two scans catches every one of them without the caller having to
+ * know which happened, or a `nodechange` having to describe it.
+ */
+export function boxesChangedInLastScan(): ReadonlyArray<Rect> {
+  const changed: Array<Rect> = []
+  for (const [id, rect] of obstacleRectsAtScan) {
+    const before = obstacleRectsBeforeScan.get(id)
+    if (typeof before === 'undefined') {
+      changed.push(rect)
+      continue
+    }
+    // Both rectangles: a move invalidates the lines it has just left alone
+    // as well as the ones it has just landed on.
+    if (!sameRect(before, rect)) changed.push(before, rect)
+  }
+  for (const [id, rect] of obstacleRectsBeforeScan) {
+    if (!obstacleRectsAtScan.has(id)) changed.push(rect)
+  }
+  return changed
 }
 
 /**
