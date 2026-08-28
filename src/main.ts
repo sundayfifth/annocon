@@ -86,7 +86,22 @@ function trackSelectionOrder(): void {
   }
 }
 
-const POSITIONAL_PROPERTIES = ['x', 'y', 'width', 'height', 'relativeTransform', 'rotation']
+/**
+ * The property changes worth re-rendering for. Position and size because
+ * that is what an anchor is derived from — and `visible`, because a hidden
+ * node stops being an obstacle (`collectRouteObstacles`), so toggling the
+ * eye on a screen parked between two connected screens has to re-route the
+ * lines passing it in both directions.
+ */
+const POSITIONAL_PROPERTIES = [
+  'x',
+  'y',
+  'width',
+  'height',
+  'relativeTransform',
+  'rotation',
+  'visible'
+]
 
 function summariseSelection(): Array<SelectionSummary> {
   trackSelectionOrder()

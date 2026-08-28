@@ -381,6 +381,12 @@ const OBSTACLE_TYPES: ReadonlySet<string> = new Set([
  * label pill are both `FRAME`s sitting at the top level, and treating them
  * as obstacles would have connectors swerving around their own labels.
  *
+ * Hidden nodes are skipped too. `absoluteBoundingBox` answers just the same
+ * for a node with the eye turned off, so without this a connector bends
+ * around a screen nobody can see — which reads as the line being broken,
+ * since the thing explaining its shape is invisible. Parking an old screen
+ * out of the way by hiding it is ordinary use, not an edge case.
+ *
  * Exported so a caller syncing several connectors in one batch
  * (`reconcileAllConnectors`, `resyncTouched`) can scan the page once and
  * hand the same list to each `syncConnector`, rather than rescanning per
@@ -390,6 +396,7 @@ export function collectRouteObstacles(): ReadonlyArray<RouteObstacle> {
   const obstacles: Array<RouteObstacle> = []
   for (const node of figma.currentPage.children) {
     if (!OBSTACLE_TYPES.has(node.type)) continue
+    if (!node.visible) continue
     if (ownerIdOf(node) !== null) continue
     if (node.getPluginData(LABEL_OWNER_KEY) !== '') continue
     const rect = node.absoluteBoundingBox
