@@ -30,8 +30,8 @@
     "vitest": "^4.1.11"
   },
   "figma-plugin": {
-    "id": "annotate-connect-avoid",
-    "name": "ANNOCON (avoidance)",
+    "id": "annotate-connect-dev",
+    "name": "ANNOCON",
     "editorType": [
       "figma"
     ],
