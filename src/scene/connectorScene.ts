@@ -397,7 +397,31 @@ const OBSTACLE_TYPES: ReadonlySet<string> = new Set([
 export function collectRouteObstacles(): ReadonlyArray<RouteObstacle> {
   const obstacles: Array<RouteObstacle> = []
   collectObstaclesFrom(figma.currentPage.children, obstacles)
+  obstacleRectsBeforeScan = obstacleRectsAtScan
+  obstacleRectsAtScan = new Map(obstacles.map((obstacle) => [obstacle.id, obstacle.rect]))
   return obstacles
+}
+
+/**
+ * Where each box was as of the *previous* scan, so a box that has since been
+ * deleted can still say where it used to sit.
+ *
+ * A `nodechange` for a deletion arrives after the node is gone: it is absent
+ * from the scan that batch runs, and a `RemovedNode` carries no
+ * `absoluteBoundingBox` to ask. Without the previous scan to consult there is
+ * nothing to hand `findConnectorsNearBoxes`, and every line that was bending
+ * around the deleted screen would keep bending around thin air until
+ * something else re-synced it.
+ *
+ * Two maps rather than a growing history: one scan back is all a deletion
+ * needs, and anything older is a box no batch will ever ask about again.
+ */
+let obstacleRectsAtScan: ReadonlyMap<string, Rect> = new Map()
+let obstacleRectsBeforeScan: ReadonlyMap<string, Rect> = new Map()
+
+/** Where `id` sat at the scan before the current one — `null` if it wasn't a box then. */
+export function obstacleRectBeforeLastScan(id: string): Rect | null {
+  return obstacleRectsBeforeScan.get(id) ?? null
 }
 
 /**

@@ -1,5 +1,6 @@
 import { emit, on, showUI } from '@create-figma-plugin/utilities'
 
+import type { Rect } from './core/anchor.js'
 import type {
   AddCategoryHandler,
   AddCategoryPayload,
@@ -57,6 +58,7 @@ import {
   findConnectorsWithEndpointUnder,
   getConnectorRecord,
   lastKnownLabelOwnerOf,
+  obstacleRectBeforeLastScan,
   reconcileAllConnectors,
   removeConnectorLabel,
   syncConnector,
@@ -364,6 +366,9 @@ async function resyncTouched({
   // every top-level box's current rect and a node's own id is the cheapest
   // thing to carry around in the meantime.
   const movedObstacleIds = new Set<string>()
+  // Where boxes that no longer exist used to be — collected in the delete
+  // loop below, since a deletion frees up space rather than occupying it.
+  const vacatedBoxes: Array<Rect> = []
 
   for (const id of deletedIds) {
     removeRenderedNodesForOwner(id)
@@ -408,6 +413,12 @@ async function resyncTouched({
         await updateConnectorStyle(connector, { label: '' })
       }
     }
+    // A deleted screen stops being in anyone's way, which changes the route
+    // of every line that was bending around it just as surely as dragging it
+    // clear would have. The current scan no longer has it, so this asks where
+    // it was as of the scan before.
+    const wasAt = obstacleRectBeforeLastScan(id)
+    if (wasAt !== null) vacatedBoxes.push(wasAt)
     for (const connector of findConnectorsInvolving(id, allConnectors)) {
       await syncConnectorOnce(connector)
     }
@@ -453,9 +464,12 @@ async function resyncTouched({
   // re-routes the ones merely in its way: an elbow bends around the top-level
   // boxes on the page, so a screen dragged into (or out of) a line's path
   // changes that line without touching either of its ends.
-  const movedBoxes = obstacles
-    .filter((obstacle) => movedObstacleIds.has(obstacle.id))
-    .map((obstacle) => obstacle.rect)
+  const movedBoxes = [
+    ...obstacles
+      .filter((obstacle) => movedObstacleIds.has(obstacle.id))
+      .map((obstacle) => obstacle.rect),
+    ...vacatedBoxes
+  ]
   for (const connector of findConnectorsNearBoxes(movedBoxes, allConnectors)) {
     if (syncedConnectorIds.has(connector.id)) continue
     await syncConnectorOnce(connector)
