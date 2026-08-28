@@ -3,6 +3,7 @@ import {
   Button,
   Container,
   Divider,
+  Dropdown,
   IconButton,
   IconClose16,
   Muted,
@@ -19,7 +20,12 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 
 import type { Magnet } from './core/anchor.js'
 import { CATEGORY_PALETTE, type Category, contrastingTextColor } from './core/category.js'
-import { CONNECTOR_CAPS, type ConnectorCap, type ConnectorLineStyle } from './core/connector.js'
+import {
+  CONNECTOR_CAPS,
+  type ConnectorCap,
+  type ConnectorDetour,
+  type ConnectorLineStyle
+} from './core/connector.js'
 import { ICON_DATA_URL } from './icon.js'
 import type {
   AddCategoryHandler,
@@ -560,6 +566,22 @@ function MagnetGraphicPicker({
  * so the hierarchy between "what this group of controls is" and "which one
  * of the pair this particular control is" actually reads at a glance.
  */
+/**
+ * Both axes' choices are offered at once rather than filtered to the pair
+ * that applies. Which pair that is depends on where the two anchored nodes
+ * currently sit, so it changes as they move — a picker whose options came
+ * and went underneath you would be worse than one with two entries that
+ * quietly mean "auto" for this line. `detourEdgeFor` in `core/connector.ts`
+ * is what makes picking an inapplicable one harmless.
+ */
+const DETOUR_OPTIONS: Array<{ value: ConnectorDetour; text: string }> = [
+  { text: 'Auto — shorter way, below if tied', value: 'AUTO' },
+  { text: 'Above', value: 'TOP' },
+  { text: 'Below', value: 'BOTTOM' },
+  { text: 'Left', value: 'LEFT' },
+  { text: 'Right', value: 'RIGHT' }
+]
+
 function SectionLabel({ children }: { children: string }) {
   return (
     <Text>
@@ -597,6 +619,7 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
       endCap: ConnectorCap
       lineStyle: ConnectorLineStyle
       cornerRadius: number
+      detour: ConnectorDetour
       label: string
     }>
   ) => {
@@ -733,6 +756,27 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
           value={style.endMagnet}
         />
       </div>
+      {style.lineStyle === 'ELBOW' ? (
+        <>
+          <VerticalSpace space="medium" />
+          <SectionLabel>Go around</SectionLabel>
+          <VerticalSpace space="extraSmall" />
+          <Dropdown
+            onChange={(event) => {
+              update({ detour: event.currentTarget.value as ConnectorDetour })
+            }}
+            options={DETOUR_OPTIONS}
+            value={style.detour}
+          />
+          <VerticalSpace space="extraSmall" />
+          <Text>
+            <Muted>
+              Which way this line passes anything parked between its two ends. Only one pair
+              applies — over/under for a line running across, either side for one running down.
+            </Muted>
+          </Text>
+        </>
+      ) : null}
       <VerticalSpace space="medium" />
       <SectionLabel>Label</SectionLabel>
       <VerticalSpace space="extraSmall" />

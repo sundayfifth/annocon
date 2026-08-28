@@ -48,6 +48,7 @@ import {
   renameCategory
 } from './scene/categoryScene.js'
 import {
+  collectRouteObstacles,
   createConnector,
   findAllConnectorsOnPage,
   findConnectorBetween,
@@ -63,6 +64,7 @@ import {
 } from './scene/connectorScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './scene/chunking.js'
 import { isSuppressed } from './scene/pluginData.js'
+import { explainSelectedRoute, startDragProbe } from './spikes.js'
 
 // `figma.currentPage.selection` is not in click order — Figma returns it in
 // layer/z-order regardless of which node was selected first. To let a
@@ -115,6 +117,7 @@ function summariseSelection(): Array<SelectionSummary> {
               endCap: connectorRecord.endCap,
               lineStyle: connectorRecord.lineStyle,
               cornerRadius: connectorRecord.cornerRadius,
+              detour: connectorRecord.detour,
               startMagnet: connectorRecord.start.kind === 'magnet' ? connectorRecord.start.magnet : 'AUTO',
               endMagnet: connectorRecord.end.kind === 'magnet' ? connectorRecord.end.magnet : 'AUTO',
               label: connectorRecord.label
@@ -320,6 +323,13 @@ async function resyncTouched({
   // every id in this batch.
   const allConnectors =
     deletedIds.size > 0 || movedTargetIds.size > 0 ? findAllConnectorsOnPage() : []
+  // Same one-scan-per-batch reasoning as `allConnectors` above: every
+  // connector in this batch routes around the same set of top-level boxes,
+  // and this runs on every frame of a drag, so scanning the page once per
+  // connector would be the most expensive thing in the loop. Re-read per
+  // batch rather than cached across them, because the node being dragged is
+  // itself one of the boxes everything else has to avoid.
+  const obstacles = allConnectors.length > 0 ? collectRouteObstacles() : []
 
   for (const id of deletedIds) {
     removeRenderedNodesForOwner(id)
@@ -365,7 +375,7 @@ async function resyncTouched({
       }
     }
     for (const connector of findConnectorsInvolving(id, allConnectors)) {
-      await syncConnector(connector)
+      await syncConnector(connector, obstacles)
     }
     touched = true
     await maybeYield()
@@ -378,7 +388,7 @@ async function resyncTouched({
       touched = true
     }
     for (const connector of findConnectorsInvolving(id, allConnectors)) {
-      await syncConnector(connector)
+      await syncConnector(connector, obstacles)
       touched = true
     }
 
@@ -392,7 +402,7 @@ async function resyncTouched({
         touched = true
       }
       for (const connector of findConnectorsWithEndpointUnder(node, allConnectors)) {
-        await syncConnector(connector)
+        await syncConnector(connector, obstacles)
         touched = true
       }
     }
@@ -483,4 +493,20 @@ export function resyncPage(): void {
     .catch((error: unknown) => {
       figma.closePlugin(`Re-sync failed: ${String(error)}`)
     })
+}
+
+/**
+ * Menu command for the S6 spike — see `src/spikes.ts` and `docs/spikes.md`.
+ * Temporary; goes away with the spike file once the question is answered.
+ */
+export function dragProbe(): void {
+  startDragProbe()
+}
+
+/**
+ * Menu command: explain why the selected connector routed the way it did.
+ * Temporary, same as `dragProbe` — see `src/spikes.ts`.
+ */
+export function explainRoute(): void {
+  explainSelectedRoute()
 }

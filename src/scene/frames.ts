@@ -18,3 +18,22 @@ export function findEnclosingFrame(node: SceneNode): FrameNode | null {
   }
   return outermost
 }
+
+/**
+ * The page-level ancestor `node` sits under — `node` itself when it is
+ * already a direct child of the page.
+ *
+ * Broader than `findEnclosingFrame` on purpose: that one deliberately only
+ * counts `FRAME`s, because a "screen" is what a connector routes *around*.
+ * This answers a different question — which top-level thing *is* this node —
+ * so it has to follow every parent type, or a node inside a top-level
+ * section or component reports itself and gets treated as a foreign obstacle
+ * by its own connector.
+ */
+export function topLevelAncestorIdOf(node: SceneNode): string {
+  let current: BaseNode = node
+  while (current.parent !== null && current.parent.type !== 'PAGE' && current.parent.type !== 'DOCUMENT') {
+    current = current.parent
+  }
+  return current.id
+}

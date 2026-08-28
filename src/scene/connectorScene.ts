@@ -12,6 +12,9 @@ import type { Anchor, Magnet, Point, Rect, ResolvedMagnet } from '../core/anchor
 import {
   type ConnectorRecord,
   type ConnectorStylePrefs,
+  type ElbowRouteOptions,
+  type RouteObstacles,
+  connectorAxisOf as connectorAxisOfSide,
   connectorAxisOf,
   connectorCurveTangents,
   connectorRoutePoints,
@@ -21,13 +24,16 @@ import {
   parseConnectorRecord,
   parseConnectorStylePrefs,
   pointAlongPolyline,
+  obstaclesInPlay,
   pointOnCurve,
+  routeCrossings,
   resolveConnectorGeometry,
   serialiseConnectorRecord,
   serialiseConnectorStylePrefs
 } from '../core/connector.js'
+import { ownerIdOf } from './annotationScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
-import { findEnclosingFrame } from './frames.js'
+import { findEnclosingFrame, topLevelAncestorIdOf } from './frames.js'
 import { removeOrphansByOwnerKey } from './orphans.js'
 import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
 
@@ -253,19 +259,135 @@ interface EndpointBoxes {
   readonly rect: Rect | null
   /** The enclosing frame's box, if the node sits inside one — used to route the connector clear of it before bending. */
   readonly frameRect: Rect | null
+  /** Which entry in `collectRouteObstacles` this endpoint lives in, so the route isn't asked to avoid its own screen. */
+  readonly obstacleId: string | null
 }
 
-const NO_ENDPOINT: EndpointBoxes = { rect: null, frameRect: null }
+const NO_ENDPOINT: EndpointBoxes = { rect: null, frameRect: null, obstacleId: null }
 
 async function boxesOf(nodeId: string): Promise<EndpointBoxes> {
   const node = await figma.getNodeByIdAsync(nodeId)
   if (node === null || !('absoluteBoundingBox' in node)) return NO_ENDPOINT
   const frame = findEnclosingFrame(node)
-  return { rect: node.absoluteBoundingBox, frameRect: frame?.absoluteBoundingBox ?? null }
+  return {
+    rect: node.absoluteBoundingBox,
+    frameRect: frame?.absoluteBoundingBox ?? null,
+    obstacleId: topLevelAncestorIdOf(node)
+  }
 }
 
-/** Renders (or updates) one connector node from its record. */
-export async function syncConnector(node: VectorNode): Promise<void> {
+const EMPTY_OBSTACLES: RouteObstacles = { foreign: [], own: [] }
+
+/**
+ * How far outside the box spanned by the two endpoints a route is allowed to
+ * bulge, and so how far out `obstaclesInPlay` still has to look. Generous
+ * enough to cover a detour that goes around a full screen sitting just past
+ * one end, which is the widest useful candidate the router ever generates.
+ */
+const ROUTE_SEARCH_MARGIN = 1200
+
+/**
+ * Sorts the page's boxes into the two kinds `RouteObstacles` distinguishes,
+ * and drops the ones too far away to matter.
+ *
+ * The endpoints' own frames used to be dropped entirely, on the grounds that
+ * a connector cannot avoid the screens it is attached to. True of the
+ * segments that leave and arrive, and false of everything in between — a
+ * route that leaves a screen by its nearest edge is otherwise free to turn
+ * straight back through the middle of that same screen, which is exactly the
+ * shape `resolveMagnetEscapingFrame` was added to stop producing.
+ */
+function splitRouteObstacles(
+  all: ReadonlyArray<RouteObstacle>,
+  geometry: ReturnType<typeof resolveConnectorGeometry>,
+  startBoxes: EndpointBoxes,
+  endBoxes: EndpointBoxes
+): RouteObstacles {
+  const start = geometry.start
+  const end = geometry.end
+  if (start === null || end === null) return EMPTY_OBSTACLES
+  const ownIds = new Set(
+    [startBoxes.obstacleId, endBoxes.obstacleId].filter((id): id is string => id !== null)
+  )
+  const near = obstaclesInPlay(
+    all.map((obstacle) => obstacle.rect),
+    start,
+    end,
+    ROUTE_SEARCH_MARGIN
+  )
+  const nearRects = new Set(near)
+  const foreign: Array<Rect> = []
+  const own: Array<Rect> = []
+  for (const obstacle of all) {
+    if (!nearRects.has(obstacle.rect)) continue
+    if (ownIds.has(obstacle.id)) own.push(obstacle.rect)
+    else foreign.push(obstacle.rect)
+  }
+  return { foreign, own }
+}
+
+/** A box an elbow route should bend around, tagged with the node it came from so an endpoint's own screen can be told apart. */
+export interface RouteObstacle {
+  readonly id: string
+  /** Only for the route diagnostic — nothing about routing depends on it. */
+  readonly name: string
+  readonly rect: Rect
+}
+
+/**
+ * The types that count as "another screen in the way". Deliberately only
+ * top-level page children, and only container-ish types: the point is to
+ * route around the *screens* on the page, which is what a person means by
+ * "it doesn't dodge anything". Treating every layer as an obstacle would
+ * make a route bend around a button inside a frame it was already routing
+ * around, and cost a full-page `findAll` per connector per drag frame to
+ * discover.
+ */
+const OBSTACLE_TYPES: ReadonlySet<string> = new Set([
+  'FRAME',
+  'COMPONENT',
+  'COMPONENT_SET',
+  'INSTANCE',
+  'SECTION'
+])
+
+/**
+ * Every top-level box on the page a connector should route around.
+ *
+ * Our own rendered nodes are skipped: an annotation card and a connector's
+ * label pill are both `FRAME`s sitting at the top level, and treating them
+ * as obstacles would have connectors swerving around their own labels.
+ *
+ * Exported so a caller syncing several connectors in one batch
+ * (`reconcileAllConnectors`, `resyncTouched`) can scan the page once and
+ * hand the same list to each `syncConnector`, rather than rescanning per
+ * connector.
+ */
+export function collectRouteObstacles(): ReadonlyArray<RouteObstacle> {
+  const obstacles: Array<RouteObstacle> = []
+  for (const node of figma.currentPage.children) {
+    if (!OBSTACLE_TYPES.has(node.type)) continue
+    if (ownerIdOf(node) !== null) continue
+    if (node.getPluginData(LABEL_OWNER_KEY) !== '') continue
+    const rect = node.absoluteBoundingBox
+    if (rect === null) continue
+    obstacles.push({ id: node.id, name: node.name, rect })
+  }
+  return obstacles
+}
+
+/**
+ * Renders (or updates) one connector node from its record.
+ *
+ * `known` is the page's obstacle list from `collectRouteObstacles`, for a
+ * caller syncing a batch that would otherwise rescan the page per connector.
+ * Left out, an `ELBOW` scans for itself; the scan is skipped entirely for
+ * the other line styles, which have no bend to re-aim.
+ */
+export async function syncConnector(
+  node: VectorNode,
+  known?: ReadonlyArray<RouteObstacle>
+): Promise<void> {
   const record = getConnectorRecord(node)
   if (record === null) return
 
@@ -273,10 +395,20 @@ export async function syncConnector(node: VectorNode): Promise<void> {
     record.start.kind === 'free' ? Promise.resolve(NO_ENDPOINT) : boxesOf(record.start.nodeId),
     record.end.kind === 'free' ? Promise.resolve(NO_ENDPOINT) : boxesOf(record.end.nodeId)
   ])
-  const geometry = resolveConnectorGeometry(record, startBoxes.rect, endBoxes.rect)
+  const geometry = resolveConnectorGeometry(
+    record,
+    startBoxes.rect,
+    endBoxes.rect,
+    startBoxes.frameRect,
+    endBoxes.frameRect
+  )
+  const obstacles =
+    record.lineStyle === 'ELBOW'
+      ? splitRouteObstacles(known ?? collectRouteObstacles(), geometry, startBoxes, endBoxes)
+      : EMPTY_OBSTACLES
 
   try {
-    await syncConnectorBody(node, record, geometry, startBoxes, endBoxes)
+    await syncConnectorBody(node, record, geometry, startBoxes, endBoxes, obstacles)
   } catch (error) {
     // Same reasoning as the annotation sync's catch — a throw partway
     // through used to leave a half-drawn connector with no visible
@@ -291,7 +423,8 @@ async function syncConnectorBody(
   record: ConnectorRecord,
   geometry: ReturnType<typeof resolveConnectorGeometry>,
   startBoxes: EndpointBoxes,
-  endBoxes: EndpointBoxes
+  endBoxes: EndpointBoxes,
+  obstacles: RouteObstacles
 ): Promise<void> {
   await withSuppressedNodeChangeAsync(async () => {
     // Same reparent-before-position reasoning as annotation cards — the
@@ -347,43 +480,40 @@ async function syncConnectorBody(
             endClearance,
             record
           )
-        : await positionPolyline(
-            node,
-            start,
-            end,
-            geometry.startSide,
-            geometry.endSide,
+        : await positionPolyline(node, start, end, record, {
+            startSide: geometry.startSide,
+            endSide: geometry.endSide,
             startClearance,
             endClearance,
             preferredMid,
-            record
-          )
+            detour: record.detour,
+            obstacles
+          })
     figma.currentPage.appendChild(node)
 
     await ensureConnectorLabel(node.id, findConnectorLabel(node.id), record.label, midpoint)
   })
 }
 
+interface PolylineRoute extends ElbowRouteOptions {
+  readonly startSide: ResolvedMagnet | null
+  readonly endSide: ResolvedMagnet | null
+}
+
 async function positionPolyline(
   node: VectorNode,
   start: Point,
   end: Point,
-  startSide: ResolvedMagnet | null,
-  endSide: ResolvedMagnet | null,
-  startClearance: number,
-  endClearance: number,
-  preferredMid: number | null,
-  record: ConnectorRecord
+  record: ConnectorRecord,
+  route: PolylineRoute
 ): Promise<Point> {
   const points = connectorRoutePoints(
     start,
     end,
     record.lineStyle,
-    startSide,
-    endSide,
-    startClearance,
-    endClearance,
-    preferredMid
+    route.startSide,
+    route.endSide,
+    route
   )
   const originX = Math.min(...points.map((point) => point.x))
   const originY = Math.min(...points.map((point) => point.y))
@@ -471,6 +601,7 @@ export async function updateConnectorStyle(
       | 'endCap'
       | 'lineStyle'
       | 'cornerRadius'
+      | 'detour'
       | 'label'
     >
   >
@@ -490,7 +621,8 @@ export async function updateConnectorStyle(
     startCap: next.startCap,
     endCap: next.endCap,
     lineStyle: next.lineStyle,
-    cornerRadius: next.cornerRadius
+    cornerRadius: next.cornerRadius,
+    detour: next.detour
   })
 }
 
@@ -520,12 +652,105 @@ function removeOrphanConnectorLabels(liveConnectorIds: ReadonlySet<string>): voi
 /** Re-renders every connector on the current page. */
 export async function reconcileAllConnectors(): Promise<{ synced: number }> {
   const connectors = findAllConnectors()
+  const obstacles = collectRouteObstacles()
   let synced = 0
   for (const connector of connectors) {
-    await syncConnector(connector)
+    await syncConnector(connector, obstacles)
     synced += 1
     if (synced % CHUNK_SIZE === 0) await yieldToMainThread()
   }
   removeOrphanConnectorLabels(new Set(connectors.map((connector) => connector.id)))
   return { synced }
+}
+
+/**
+ * Explains, in words, why a connector took the route it did — which sides it
+ * resolved to, which boxes it was given to avoid, and whether the route it
+ * settled on still crosses any of them.
+ *
+ * Exists because the failure this diagnoses is invisible from the canvas: a
+ * line cutting through a frame looks the same whether the router never saw
+ * that frame (it is nested, so `collectRouteObstacles` never collected it),
+ * saw it but had no shape that could clear it, or excluded it deliberately as
+ * one of the connector's own endpoint frames. Those want three different
+ * fixes, and guessing between them from a screenshot does not work.
+ */
+export async function explainConnectorRoute(node: VectorNode): Promise<string> {
+  const record = getConnectorRecord(node)
+  if (record === null) return 'Not a connector — no record on this node.'
+
+  const [startBoxes, endBoxes] = await Promise.all([
+    record.start.kind === 'free' ? Promise.resolve(NO_ENDPOINT) : boxesOf(record.start.nodeId),
+    record.end.kind === 'free' ? Promise.resolve(NO_ENDPOINT) : boxesOf(record.end.nodeId)
+  ])
+  const geometry = resolveConnectorGeometry(
+    record,
+    startBoxes.rect,
+    endBoxes.rect,
+    startBoxes.frameRect,
+    endBoxes.frameRect
+  )
+  const collected = collectRouteObstacles()
+  const obstacles = splitRouteObstacles(collected, geometry, startBoxes, endBoxes)
+  const nameOf = (rect: Rect): string =>
+    collected.find((obstacle) => obstacle.rect === rect)?.name ?? '?'
+
+  const lines = [
+    `Route diagnostic — "${node.name}"`,
+    '',
+    `line style: ${record.lineStyle}   go around: ${record.detour}`,
+    `sides: start ${geometry.startSide ?? 'none'} -> end ${geometry.endSide ?? 'none'}`,
+    `axis: start ${connectorAxisOfSide(geometry.startSide) ?? 'none'}, end ${connectorAxisOfSide(geometry.endSide) ?? 'none'}` +
+      (connectorAxisOfSide(geometry.startSide) !== null &&
+      connectorAxisOfSide(geometry.startSide) === connectorAxisOfSide(geometry.endSide)
+        ? '  (same axis — full avoidance)'
+        : '  (mixed or unsided — limited avoidance)'),
+    '',
+    `top-level boxes on this page: ${collected.length}`,
+    `  near enough to matter: ${obstacles.foreign.length + obstacles.own.length}`,
+    `  this connector's own screens (avoided except where it leaves/arrives): ${obstacles.own.map((rect) => `"${nameOf(rect)}"`).join(', ') || 'none'}`,
+    `  everything else it must clear: ${obstacles.foreign.length === 0 ? 'NOTHING' : obstacles.foreign.map((rect) => `"${nameOf(rect)}"`).join(', ')}`
+  ]
+
+  if (collected.length <= 2) {
+    lines.push(
+      '',
+      'Only a couple of top-level boxes exist, so almost nothing is being',
+      'avoided. If the frames you expect it to dodge are nested inside a',
+      'section, group, or a bigger frame, the router never sees them — it',
+      'only collects direct children of the page.'
+    )
+  }
+
+  if (geometry.start !== null && geometry.end !== null) {
+    const startClearance = connectorStubClearance(geometry.start, geometry.startSide, startBoxes.frameRect)
+    const endClearance = connectorStubClearance(geometry.end, geometry.endSide, endBoxes.frameRect)
+    const axis = connectorAxisOfSide(geometry.startSide)
+    const preferredMid =
+      axis !== null && axis === connectorAxisOfSide(geometry.endSide)
+        ? frameGapMidpoint(startBoxes.frameRect, endBoxes.frameRect, axis)
+        : null
+    const points = connectorRoutePoints(
+      geometry.start,
+      geometry.end,
+      record.lineStyle,
+      geometry.startSide,
+      geometry.endSide,
+      { startClearance, endClearance, preferredMid, detour: record.detour, obstacles }
+    )
+    const crossed = obstacles.foreign.filter((rect) => routeCrossings(points, [rect]) > 0)
+    // Same window `routeCost` scores on: re-entering your own screen after
+    // having left it counts, crossing it on the way out does not.
+    const reentered = obstacles.own.filter(
+      (rect) => routeCrossings(points, [rect], 1, points.length - 3) > 0
+    )
+    lines.push(
+      '',
+      `chosen route: ${points.length} points`,
+      `still crossing: ${crossed.length === 0 ? 'nothing' : crossed.map((rect) => `"${nameOf(rect)}"`).join(', ')}`,
+      `re-entering its own screens: ${reentered.length === 0 ? 'nothing' : reentered.map((rect) => `"${nameOf(rect)}"`).join(', ')}`
+    )
+  }
+
+  return lines.join('\n')
 }

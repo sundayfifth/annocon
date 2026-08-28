@@ -11,6 +11,7 @@ import {
   resolveAnchor,
   resolveAnchorPair,
   resolveMagnet,
+  resolveMagnetEscapingFrame,
   resolveMagnetPreferringSides
 } from '../src/core/anchor.js'
 
@@ -168,5 +169,38 @@ describe('anchorNodeId', () => {
     expect(anchorNodeId({ kind: 'magnet', nodeId: 'n1', magnet: 'AUTO' })).toBe('n1')
     expect(anchorNodeId({ kind: 'ratio', nodeId: 'n2', ratio: { x: 0, y: 0 } })).toBe('n2')
     expect(anchorNodeId({ kind: 'free', point: { x: 0, y: 0 } })).toBeNull()
+  })
+})
+
+describe('resolveMagnetEscapingFrame', () => {
+  // A phone-sized screen with a small control tucked into its bottom-left
+  // corner — the shape that motivated this rule.
+  const screen: Rect = { x: 0, y: 0, width: 1440, height: 960 }
+  const cornerControl: Rect = { x: 16, y: 900, width: 24, height: 24 }
+
+  it('leaves by the nearest edge instead of crossing its own screen to face the counterpart', () => {
+    const farRight = { x: 2400, y: 300 }
+    // The old rule only asked which way the counterpart lies, and answered
+    // RIGHT — dragging the line the full 1400px width of its own screen.
+    expect(resolveMagnetPreferringSides(cornerControl, farRight)).toBe('RIGHT')
+    expect(resolveMagnetEscapingFrame(cornerControl, screen, farRight)).not.toBe('RIGHT')
+  })
+
+  it('still leaves on the side it is heading when that costs little', () => {
+    const nearRightEdge: Rect = { x: 1380, y: 460, width: 24, height: 24 }
+    expect(resolveMagnetEscapingFrame(nearRightEdge, screen, { x: 2400, y: 470 })).toBe('RIGHT')
+  })
+
+  it('is unchanged from the plain rule for a node that is not nested in anything', () => {
+    const towards = { x: 2400, y: 300 }
+    expect(resolveMagnetEscapingFrame(cornerControl, null, towards)).toBe(
+      resolveMagnetPreferringSides(cornerControl, towards)
+    )
+  })
+
+  it('costs nothing extra for an anchor that fills its frame, so direction alone decides', () => {
+    expect(resolveMagnetEscapingFrame(screen, screen, { x: 2400, y: 480 })).toBe('RIGHT')
+    expect(resolveMagnetEscapingFrame(screen, screen, { x: -900, y: 480 })).toBe('LEFT')
+    expect(resolveMagnetEscapingFrame(screen, screen, { x: 720, y: 2400 })).toBe('BOTTOM')
   })
 })

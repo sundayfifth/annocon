@@ -54,6 +54,29 @@ export const CONNECTOR_CAPS: ReadonlyArray<ConnectorCap> = [
 ]
 
 /**
+ * Which way a connector goes around a box parked in its path.
+ *
+ * `AUTO` takes whichever way is shorter, which is right almost always and
+ * arbitrary when the two ways tie. The rest pin it, for the times a person
+ * looks at the automatic choice and wants the other one.
+ *
+ * Only one pair ever applies to a given connector: a route running left to
+ * right can go over or under it (`TOP`/`BOTTOM`), one running top to bottom
+ * can pass either side of it (`LEFT`/`RIGHT`). Picking one that doesn't
+ * apply to this connector's direction is not an error — there is simply
+ * nothing for it to pin, so the route falls back to `AUTO`.
+ */
+export type ConnectorDetour = 'AUTO' | 'TOP' | 'BOTTOM' | 'LEFT' | 'RIGHT'
+
+export const CONNECTOR_DETOURS: ReadonlyArray<ConnectorDetour> = [
+  'AUTO',
+  'TOP',
+  'BOTTOM',
+  'LEFT',
+  'RIGHT'
+]
+
+/**
  * `STRAIGHT` is a direct line; `ELBOW` routes with right-angled bends,
  * FigJam/Autoflow-style; `CURVE` is a smooth S-curve that still leaves and
  * arrives perpendicular to each end's side.
@@ -74,6 +97,8 @@ export interface ConnectorRecord {
   readonly lineStyle: ConnectorLineStyle
   /** How rounded an `ELBOW` bend is. Meaningless (and unused) for `STRAIGHT`/`CURVE`. */
   readonly cornerRadius: number
+  /** Which way an `ELBOW` goes around whatever is in its path. Meaningless for `STRAIGHT`/`CURVE`, which don't avoid anything. */
+  readonly detour: ConnectorDetour
   /** An optional label drawn at the midpoint of the route, FigJam/Autoflow-style. Empty string means no label. */
   readonly label: string
 }
@@ -85,6 +110,7 @@ export const DEFAULT_START_CAP: ConnectorCap = 'CIRCLE_FILLED'
 export const DEFAULT_END_CAP: ConnectorCap = 'ARROW_EQUILATERAL'
 export const DEFAULT_LINE_STYLE: ConnectorLineStyle = 'ELBOW'
 export const DEFAULT_CORNER_RADIUS = 20
+export const DEFAULT_DETOUR: ConnectorDetour = 'AUTO'
 export const DEFAULT_LABEL = ''
 
 /** The style fields a new connector inherits from whatever was last set — everything in `ConnectorRecord` except its anchors and its (per-connector, never inherited) label. */
@@ -96,6 +122,7 @@ export interface ConnectorStylePrefs {
   readonly endCap: ConnectorCap
   readonly lineStyle: ConnectorLineStyle
   readonly cornerRadius: number
+  readonly detour: ConnectorDetour
 }
 
 export const DEFAULT_CONNECTOR_STYLE_PREFS: ConnectorStylePrefs = {
@@ -105,7 +132,8 @@ export const DEFAULT_CONNECTOR_STYLE_PREFS: ConnectorStylePrefs = {
   startCap: DEFAULT_START_CAP,
   endCap: DEFAULT_END_CAP,
   lineStyle: DEFAULT_LINE_STYLE,
-  cornerRadius: DEFAULT_CORNER_RADIUS
+  cornerRadius: DEFAULT_CORNER_RADIUS,
+  detour: DEFAULT_DETOUR
 }
 
 export function createConnectorRecord(
@@ -125,6 +153,11 @@ export function createConnectorRecord(
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
 const CAP_SET = new Set<string>(CONNECTOR_CAPS)
 const LINE_STYLES: ReadonlySet<string> = new Set<ConnectorLineStyle>(['STRAIGHT', 'ELBOW', 'CURVE'])
+const DETOURS = new Set<string>(CONNECTOR_DETOURS)
+
+function isDetour(value: unknown): value is ConnectorDetour {
+  return typeof value === 'string' && DETOURS.has(value)
+}
 
 function isCap(value: unknown): value is ConnectorCap {
   return typeof value === 'string' && CAP_SET.has(value)
@@ -162,7 +195,8 @@ function stylePrefsFrom(candidate: Record<string, unknown>): ConnectorStylePrefs
     cornerRadius:
       typeof candidate.cornerRadius === 'number' && candidate.cornerRadius >= 0
         ? candidate.cornerRadius
-        : DEFAULT_CORNER_RADIUS
+        : DEFAULT_CORNER_RADIUS,
+    detour: isDetour(candidate.detour) ? candidate.detour : DEFAULT_DETOUR
   }
 }
 
@@ -244,13 +278,30 @@ export interface ConnectorGeometry {
   readonly endSide: ResolvedMagnet | null
 }
 
-/** Resolves a connector's endpoints given each anchored node's current box (or `null` if it's gone). */
+/**
+ * Resolves a connector's endpoints given each anchored node's current box
+ * (or `null` if it's gone).
+ *
+ * `startFrame`/`endFrame` are the frames those nodes sit inside, when they
+ * are nested in one. They only matter for an `AUTO` magnet, where they turn
+ * "which side faces the other end" into "which side gets out of this screen
+ * without ploughing through it" — see `resolveMagnetEscapingFrame`.
+ */
 export function resolveConnectorGeometry(
   record: ConnectorRecord,
   startRect: Rect | null,
-  endRect: Rect | null
+  endRect: Rect | null,
+  startFrame: Rect | null = null,
+  endFrame: Rect | null = null
 ): ConnectorGeometry {
-  const resolved = resolveAnchorPair(record.start, startRect, record.end, endRect)
+  const resolved = resolveAnchorPair(
+    record.start,
+    startRect,
+    record.end,
+    endRect,
+    startFrame,
+    endFrame
+  )
   return {
     start: resolved.start,
     end: resolved.end,
@@ -311,6 +362,328 @@ function simplifyRoute(points: ReadonlyArray<Point>): ReadonlyArray<Point> {
     collapsed.push(point)
   }
   return collapsed
+}
+
+/**
+ * Whether an axis-aligned segment passes through `rect`'s interior.
+ *
+ * Only correct for horizontal or vertical segments — an elbow route is
+ * nothing but those, and for them the segment *is* its own bounding box, so
+ * a box-overlap test is exact rather than conservative. A `CURVE` or a
+ * diagonal `STRAIGHT` would need real segment/rect intersection; neither has
+ * a bend to re-aim, so neither asks this question.
+ *
+ * Strict on every edge: a route that runs flush along a frame's edge, or
+ * clips its corner, is not cutting *through* it. Being lenient here would
+ * make the common case — a connector hugging the gap between two screens —
+ * report a crossing it does not have, and send the bend off somewhere worse.
+ */
+function segmentEntersRect(a: Point, b: Point, rect: Rect): boolean {
+  return (
+    Math.min(a.x, b.x) < rect.x + rect.width &&
+    Math.max(a.x, b.x) > rect.x &&
+    Math.min(a.y, b.y) < rect.y + rect.height &&
+    Math.max(a.y, b.y) > rect.y
+  )
+}
+
+/**
+ * How many of `obstacles` the route cuts through — counted per obstacle, not
+ * per segment, so a route that runs the length of one frame scores the same
+ * as one that just clips its corner. What matters when choosing between two
+ * candidate routes is how many things each one hits, not how hard.
+ */
+export function routeCrossings(
+  points: ReadonlyArray<Point>,
+  obstacles: ReadonlyArray<Rect>,
+  fromSegment = 0,
+  toSegment: number = Number.POSITIVE_INFINITY
+): number {
+  const last = Math.min(points.length - 2, toSegment)
+  let count = 0
+  for (const rect of obstacles) {
+    for (let i = Math.max(0, fromSegment); i <= last; i += 1) {
+      const from = points[i]
+      const to = points[i + 1]
+      if (typeof from === 'undefined' || typeof to === 'undefined') continue
+      if (segmentEntersRect(from, to, rect)) {
+        count += 1
+        break
+      }
+    }
+  }
+  return count
+}
+
+/**
+ * The boxes a route has to get past, split by how absolute that is.
+ *
+ * `foreign` is everything else on the page: crossing one is always a defect.
+ * `own` is the frames the two endpoints themselves live inside, where the
+ * rule is different rather than absent — a connector anchored to something
+ * nested in a frame has no choice but to cross that frame on its way out, so
+ * the segment that leaves and the segment that arrives are exempt, but
+ * everything in between is held to the same standard as any other frame.
+ * Without that second half, a route that carefully leaves by the nearest
+ * edge is free to turn straight back through the middle of the same screen.
+ */
+export interface RouteObstacles {
+  readonly foreign: ReadonlyArray<Rect>
+  readonly own: ReadonlyArray<Rect>
+}
+
+const NO_OBSTACLES: RouteObstacles = { foreign: [], own: [] }
+
+function hasObstacles(obstacles: RouteObstacles): boolean {
+  return obstacles.foreign.length > 0 || obstacles.own.length > 0
+}
+
+/** How bad a route is: every foreign box it crosses, plus every own frame it re-enters after having left. */
+function routeCost(points: ReadonlyArray<Point>, obstacles: RouteObstacles): number {
+  return (
+    routeCrossings(points, obstacles.foreign) +
+    routeCrossings(points, obstacles.own, 1, points.length - 3)
+  )
+}
+
+/** Every edge of every box, as a candidate coordinate on `axis`. Used to seed the search. */
+function edgesOn(obstacles: RouteObstacles, axis: 'x' | 'y'): ReadonlyArray<[number, number]> {
+  const size = axis === 'x' ? 'width' : 'height'
+  const edges: Array<[number, number]> = []
+  for (const rect of [...obstacles.foreign, ...obstacles.own]) {
+    edges.push([rect[axis] - OBSTACLE_CLEARANCE, rect[axis] + rect[size] + OBSTACLE_CLEARANCE])
+  }
+  return edges
+}
+
+/**
+ * Narrows a page's worth of boxes down to the ones that could plausibly
+ * matter for this connector: those overlapping the span between its two
+ * ends, with `margin` of slack for a route that bulges outside it.
+ *
+ * Purely a performance filter, and the reason it can be one is that every
+ * candidate route is generated *from* an obstacle's own edges — a box the
+ * route could never reach contributes candidates that are never chosen, so
+ * dropping it cannot change the answer, only how long it takes to get there.
+ * On a real file this is the difference between scoring ~100 boxes per
+ * connector per frame of a drag and scoring a handful.
+ */
+export function obstaclesInPlay(
+  obstacles: ReadonlyArray<Rect>,
+  start: Point,
+  end: Point,
+  margin: number
+): ReadonlyArray<Rect> {
+  const minX = Math.min(start.x, end.x) - margin
+  const maxX = Math.max(start.x, end.x) + margin
+  const minY = Math.min(start.y, end.y) - margin
+  const maxY = Math.max(start.y, end.y) + margin
+  return obstacles.filter(
+    (rect) =>
+      rect.x < maxX && rect.x + rect.width > minX && rect.y < maxY && rect.y + rect.height > minY
+  )
+}
+
+/** How far clear of an obstacle's edge a re-aimed route passes. */
+export const OBSTACLE_CLEARANCE = 20
+
+function clamp(value: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, value))
+}
+
+/** The other axis — the one a same-axis pair's route has to travel along to get anywhere. */
+function crossAxisOf(axis: 'x' | 'y'): 'x' | 'y' {
+  return axis === 'x' ? 'y' : 'x'
+}
+
+function pointOn(axis: 'x' | 'y', along: number, across: number): Point {
+  return axis === 'x' ? { x: along, y: across } : { x: across, y: along }
+}
+
+/**
+ * The Z-route: one shared crossing at `mid` on `axis`, a bend on each side
+ * of it. The default shape for a same-axis pair, and the one whose bend is a
+ * free parameter worth searching over.
+ *
+ * Collapses to a bare straight line whenever the two ends already sit at the
+ * same position on the cross axis — which is exactly why it is not enough on
+ * its own: two screens lined up in a row have no bend left to move, however
+ * much is sitting between them. That case needs `detourRoute`.
+ */
+function zRoute(start: Point, end: Point, axis: 'x' | 'y', mid: number): ReadonlyArray<Point> {
+  const across = crossAxisOf(axis)
+  return simplifyRoute([
+    start,
+    pointOn(axis, mid, start[across]),
+    pointOn(axis, mid, end[across]),
+    end
+  ])
+}
+
+/**
+ * The go-around route: out of each end far enough to clear it, then all the
+ * way over to `offset` on the cross axis, across, and back in. Six points
+ * before simplification.
+ *
+ * This is the shape that gets a connector *past* something rather than
+ * merely bending somewhere else — the answer to a screen parked directly
+ * between the two ends. Collapses back to the straight line when `offset`
+ * already matches both ends, so it costs nothing to offer as a candidate
+ * even when the direct route is fine.
+ */
+function detourRoute(
+  start: Point,
+  end: Point,
+  axis: 'x' | 'y',
+  startSign: 1 | -1,
+  endSign: 1 | -1,
+  startClearance: number,
+  endClearance: number,
+  offset: number
+): ReadonlyArray<Point> {
+  const across = crossAxisOf(axis)
+  const startOut = start[axis] + startSign * startClearance
+  const endOut = end[axis] + endSign * endClearance
+  return simplifyRoute([
+    start,
+    pointOn(axis, startOut, start[across]),
+    pointOn(axis, startOut, offset),
+    pointOn(axis, endOut, offset),
+    pointOn(axis, endOut, end[across]),
+    end
+  ])
+}
+
+function routeLength(points: ReadonlyArray<Point>): number {
+  let total = 0
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const from = points[i]
+    const to = points[i + 1]
+    if (typeof from === 'undefined' || typeof to === 'undefined') continue
+    total += Math.hypot(to.x - from.x, to.y - from.y)
+  }
+  return total
+}
+
+/**
+ * Picks between candidate routes: fewest obstacles crossed wins, then the
+ * shortest, then the one with the fewest bends, then whichever came first.
+ *
+ * The ordering is what keeps this from quietly redesigning routes that were
+ * already fine. Every Z-route whose bend lands between the two ends has the
+ * same length as every other, and a `detourRoute` that actually goes around
+ * something is always longer than the direct one — so with nothing in the
+ * way, the caller's own preferred route is passed in first and wins every
+ * tie-break, and the shape is bit-for-bit what it was before obstacles
+ * existed.
+ */
+function bestRoute(
+  candidates: ReadonlyArray<ReadonlyArray<Point>>,
+  obstacles: RouteObstacles
+): ReadonlyArray<Point> {
+  let best = candidates[0] ?? []
+  let bestCrossings = Number.POSITIVE_INFINITY
+  let bestLength = Number.POSITIVE_INFINITY
+  let bestBends = Number.POSITIVE_INFINITY
+  for (const points of candidates) {
+    const crossings = routeCost(points, obstacles)
+    const length = routeLength(points)
+    const bends = points.length
+    const better =
+      crossings !== bestCrossings
+        ? crossings < bestCrossings
+        : length !== bestLength
+          ? length < bestLength
+          : bends < bestBends
+    if (better) {
+      best = points
+      bestCrossings = crossings
+      bestLength = length
+      bestBends = bends
+    }
+    // Callers hand the route they would have drawn anyway in first, and
+    // already checked it — but a caller that hasn't should not pay to score
+    // alternatives to a route that is provably fine.
+    if (bestCrossings === 0 && points === candidates[0]) break
+  }
+  return best
+}
+
+/**
+ * Every distinct route worth considering for a same-axis pair, cheapest
+ * first.
+ *
+ * The route only changes shape as a bend crosses an obstacle boundary, so
+ * one candidate just outside each edge of each obstacle covers every
+ * outcome that exists — there is nothing to gain from a finer sweep. Both
+ * families are offered because they fail in opposite cases: a Z-route can
+ * slide its crossing into a clear gap but has nothing to move when the two
+ * ends line up, and a `detourRoute` can always go around but pays extra
+ * length to do it.
+ */
+/**
+ * Which edge of an obstacle a pinned `detour` means on the axis the route
+ * actually has room to move along — `'low'` for the smaller coordinate
+ * (`TOP` on y, `LEFT` on x), `'high'` for the larger.
+ *
+ * `null` when nothing is pinned, and equally when what *is* pinned belongs
+ * to the other axis: "go around the top" says nothing useful about a
+ * connector running top to bottom, so it degrades to `AUTO` rather than
+ * pretending to constrain something.
+ */
+function detourEdgeFor(detour: ConnectorDetour, across: 'x' | 'y'): 'low' | 'high' | null {
+  if (across === 'y') {
+    if (detour === 'TOP') return 'low'
+    if (detour === 'BOTTOM') return 'high'
+    return null
+  }
+  if (detour === 'LEFT') return 'low'
+  if (detour === 'RIGHT') return 'high'
+  return null
+}
+
+function sameAxisCandidates(
+  direct: ReadonlyArray<Point>,
+  start: Point,
+  end: Point,
+  axis: 'x' | 'y',
+  startSign: 1 | -1,
+  endSign: 1 | -1,
+  startClearance: number,
+  endClearance: number,
+  lo: number,
+  hi: number,
+  detour: ConnectorDetour,
+  obstacles: RouteObstacles
+): ReadonlyArray<ReadonlyArray<Point>> {
+  const candidates: Array<ReadonlyArray<Point>> = [direct]
+  const across = crossAxisOf(axis)
+  for (const [low, high] of edgesOn(obstacles, axis)) {
+    candidates.push(
+      zRoute(start, end, axis, clamp(low, lo, hi)),
+      zRoute(start, end, axis, clamp(high, lo, hi))
+    )
+  }
+  // A pinned direction drops the other way round entirely rather than merely
+  // ranking it lower: the whole point of pinning is to override the
+  // shorter-wins scoring that chose the way you didn't want.
+  const edge = detourEdgeFor(detour, across)
+  for (const [low, high] of edgesOn(obstacles, across)) {
+    // `high` first, so `AUTO` goes below (or right) when the two ways round
+    // are exactly as long as each other — which they are whenever the box in
+    // the way sits squarely between the two ends, i.e. constantly.
+    // `bestRoute` breaks that tie on which was offered first, so this is
+    // where the default gets decided, and below is the tidier default: a
+    // frame's name is drawn *above* it in Figma, so a route that goes over
+    // the top runs through the row of frame titles.
+    const offsets = edge === null ? [high, low] : edge === 'low' ? [low] : [high]
+    for (const offset of offsets) {
+      candidates.push(
+        detourRoute(start, end, axis, startSign, endSign, startClearance, endClearance, offset)
+      )
+    }
+  }
+  return candidates
 }
 
 /** How far past a frame's own edge a connector clears it by, on top of `ELBOW_STUB`. */
@@ -404,6 +777,14 @@ function detourElbow(
  * the middle of the gap between the two frames rather than the middle of
  * the two raw points, when that's available and still leaves both ends
  * enough room — purely cosmetic, clamped into whatever range stays valid.
+ * `obstacles` then gets the last word over that preference: the mid-line
+ * moves off it, still within the valid range, if that spares a screen the
+ * route would otherwise cut straight through. See `clearestMid`.
+ *
+ * Only the same-axis Z shape has a mid-line to move. The single-corner and
+ * `detourElbow` shapes below are fully determined by their two endpoints, so
+ * there is nothing to re-aim and `obstacles` cannot help them — a route that
+ * takes one of those shapes still crosses whatever is in its way.
  */
 function sidedElbow(
   start: Point,
@@ -412,7 +793,9 @@ function sidedElbow(
   endSide: ResolvedMagnet,
   startClearance: number,
   endClearance: number,
-  preferredMid: number | null
+  preferredMid: number | null,
+  detour: ConnectorDetour,
+  obstacles: RouteObstacles
 ): ReadonlyArray<Point> {
   const startAxis = connectorAxisOf(startSide)
   const endAxis = connectorAxisOf(endSide)
@@ -435,10 +818,31 @@ function sidedElbow(
 
     if (lo <= hi) {
       const natural = (start[axis] + end[axis]) / 2
-      const mid = Math.min(hi, Math.max(lo, preferredMid ?? natural))
-      const p1: Point = axis === 'x' ? { x: mid, y: start.y } : { x: start.x, y: mid }
-      const p2: Point = axis === 'x' ? { x: mid, y: end.y } : { x: end.x, y: mid }
-      return simplifyRoute([start, p1, p2, end])
+      const preferred = clamp(preferredMid ?? natural, lo, hi)
+      const direct = zRoute(start, end, axis, preferred)
+      // Checked before the alternatives are even built, not just before they
+      // are scored. Enumerating candidates allocates a route per obstacle
+      // edge, and this runs for every connector on every frame of a drag —
+      // on a clear page that is the entire cost of the feature, paid for
+      // nothing.
+      if (!hasObstacles(obstacles) || routeCost(direct, obstacles) === 0) return direct
+      return bestRoute(
+        sameAxisCandidates(
+          direct,
+          start,
+          end,
+          axis,
+          startSign,
+          endSign,
+          startClearance,
+          endClearance,
+          lo,
+          hi,
+          detour,
+          obstacles
+        ),
+        obstacles
+      )
     }
   } else {
     const corner: Point = startAxis === 'x' ? { x: end.x, y: start.y } : { x: start.x, y: end.y }
@@ -451,7 +855,17 @@ function sidedElbow(
         ? corner[endAxis] >= end[endAxis] + endClearance
         : corner[endAxis] <= end[endAxis] - endClearance
     if (startOk && endOk) {
-      return simplifyRoute([start, corner, end])
+      const single = simplifyRoute([start, corner, end])
+      if (!hasObstacles(obstacles) || routeCost(single, obstacles) === 0) return single
+      // The single corner is fully determined by its two endpoints — there
+      // is no bend to re-aim, so the only alternative on offer is the
+      // longer stub-then-bend route. Worth one comparison: it often clears
+      // a box the corner cuts straight across, and `bestRoute` keeps the
+      // corner whenever it doesn't.
+      return bestRoute(
+        [single, detourElbow(start, end, startSide, endSide, startClearance, endClearance)],
+        obstacles
+      )
     }
   }
 
@@ -476,17 +890,33 @@ export function frameGapMidpoint(startFrame: Rect | null, endFrame: Rect | null,
 }
 
 /**
+ * The tuning knobs an `ELBOW` route accepts on top of its two points and
+ * their sides. Grouped rather than trailing positionally: the two clearances
+ * are easy to swap by accident, and `null`-padding your way to the last one
+ * reads as noise at the call site.
+ */
+export interface ElbowRouteOptions {
+  /** How far the start has to poke out before it may bend. Defaults to the flat `ELBOW_STUB`; pass `connectorStubClearance` to clear an enclosing frame. */
+  readonly startClearance?: number
+  /** The same, for the end. */
+  readonly endClearance?: number
+  /** A cosmetic hint (from `frameGapMidpoint`) for where the bend should land when there's a choice. */
+  readonly preferredMid?: number | null
+  /** Boxes the route should avoid cutting through, split by `RouteObstacles`. Overrides `preferredMid` when the two disagree. */
+  readonly obstacles?: RouteObstacles
+  /** Which way to go around them. Defaults to `AUTO` — whichever way is shorter. */
+  readonly detour?: ConnectorDetour
+}
+
+/**
  * The connector's route as a polyline — two points for `STRAIGHT`, up to six
  * for a sided `ELBOW` in the rare case that needs `detourElbow`'s full
  * stub-then-bend (most sided elbows are a clean 3- or 4-point route).
  *
  * `startSide`/`endSide` come from `ConnectorGeometry` — `null` for a
  * `free`/`ratio` anchor, which has no side to respect, so the route falls
- * back to a plain unsided bend for that case. `startClearance`/`endClearance`
- * default to the flat `ELBOW_STUB`; pass the result of
- * `connectorStubClearance` instead to clear an enclosing frame.
- * `preferredMid` (optional, from `frameGapMidpoint`) is a cosmetic hint for
- * where the bend should land when there's a choice.
+ * back to a plain unsided bend for that case. Everything else is optional;
+ * see `ElbowRouteOptions`.
  *
  * Deliberately does *not* shortcut to a bare `[start, end]` just because the
  * two points happen to share an x or y — with both sides known, that
@@ -502,9 +932,7 @@ export function connectorRoutePoints(
   lineStyle: ConnectorLineStyle,
   startSide: ResolvedMagnet | null = null,
   endSide: ResolvedMagnet | null = null,
-  startClearance: number = ELBOW_STUB,
-  endClearance: number = ELBOW_STUB,
-  preferredMid: number | null = null
+  options: ElbowRouteOptions = {}
 ): ReadonlyArray<Point> {
   if (lineStyle !== 'ELBOW') {
     return [start, end]
@@ -512,7 +940,17 @@ export function connectorRoutePoints(
   if (startSide === null || endSide === null) {
     return dominantAxisElbow(start, end)
   }
-  return sidedElbow(start, end, startSide, endSide, startClearance, endClearance, preferredMid)
+  return sidedElbow(
+    start,
+    end,
+    startSide,
+    endSide,
+    options.startClearance ?? ELBOW_STUB,
+    options.endClearance ?? ELBOW_STUB,
+    options.preferredMid ?? null,
+    options.detour ?? DEFAULT_DETOUR,
+    options.obstacles ?? NO_OBSTACLES
+  )
 }
 
 const CURVE_HANDLE_MIN = 32

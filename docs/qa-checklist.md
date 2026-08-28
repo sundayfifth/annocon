@@ -31,6 +31,38 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] Switch line type straight / elbowed / curved → routes sensibly in all four quadrants
 - [ ] Select a stale connector → the properties panel shows the Re-sync relaunch button
 
+## Connect — obstacle avoidance
+
+- [ ] Three frames in a row, connector from the first to the third: the line
+      goes around the middle frame, not through it.
+- [ ] Drag the middle frame out of the way: the line straightens back out.
+- [ ] Drag the middle frame back in: the line goes around again, live.
+- [ ] Two frames with nothing between them: the route is the same plain bend it
+      always was — avoidance must not perturb a clear page.
+- [ ] Switch the line style to `STRAIGHT` and to `CURVE`: both ignore obstacles
+      and cut straight through, as designed.
+- [ ] A connector whose label pill sits between the two frames: the line does
+      not swerve around its own label.
+- [ ] Endpoints nested inside frames: the line does not try to avoid the frame
+      it starts or ends in.
+- [ ] A page with ~50 top-level frames: dragging a connected frame still tracks
+      without the editor stalling.
+- [ ] **Go around** set to `Below` on a line that auto-routed above: it flips
+      under, and stays under after the frames move.
+- [ ] **Go around** set to a direction that doesn't apply (`Left` on a
+      left-to-right line): behaves as `Auto`, no error.
+- [ ] **Go around** set on a line with nothing in its way: the route does not
+      move — the preference only applies when it actually has to go around.
+- [ ] Draw a new connector after setting **Go around**: it inherits the same
+      preference, like the other style fields.
+- [ ] Connect a small layer in the *bottom-left corner* of one screen to
+      something far to its right: the line leaves by the nearest edge, it does
+      not run the full width of its own screen through the content.
+- [ ] Same connector: after leaving, it does not turn back through the screen
+      it started in.
+- [ ] Connect two whole frames (not nested layers): the exit sides are the ones
+      facing each other, exactly as before.
+
 ## Cross-cutting
 
 - [ ] ⌘Z right after creating a connector leaves no stray nodes

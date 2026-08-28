@@ -150,6 +150,97 @@ export function resolveMagnetPreferringSides(rect: Rect, towards: Point): Resolv
   return dy >= 0 ? 'BOTTOM' : 'TOP'
 }
 
+/**
+ * How much worse a pixel spent crossing your own frame is than a pixel spent
+ * routing around outside it.
+ *
+ * Above 1 because the two are not the same kind of ugly: travelling through
+ * empty canvas is invisible, while cutting across a screen's own content
+ * reads as a mistake. 3 is a judgement call, not a measurement — high enough
+ * that a node tucked in a corner leaves by its nearest edge instead of
+ * ploughing the length of the frame to face its counterpart, low enough that
+ * a node in the middle of a frame still leaves on the side it is heading.
+ */
+const FRAME_EXIT_PENALTY = 3
+
+const ESCAPE_SIDES: ReadonlyArray<ResolvedMagnet> = ['RIGHT', 'LEFT', 'BOTTOM', 'TOP']
+
+/** How far past `rect`'s own edge the route still has to travel, inside `frame`, to leave by `side`. */
+function frameExitCost(rect: Rect, frame: Rect, side: ResolvedMagnet): number {
+  switch (side) {
+    case 'RIGHT':
+      return Math.max(0, frame.x + frame.width - (rect.x + rect.width))
+    case 'LEFT':
+      return Math.max(0, rect.x - frame.x)
+    case 'BOTTOM':
+      return Math.max(0, frame.y + frame.height - (rect.y + rect.height))
+    case 'TOP':
+      return Math.max(0, rect.y - frame.y)
+    case 'CENTER':
+      return 0
+  }
+}
+
+/** Where the route crosses `frame`'s edge on its way out of `side` — the first point that is actually outside. */
+function frameExitPoint(rect: Rect, frame: Rect, side: ResolvedMagnet): Point {
+  const point = magnetPoint(rect, side)
+  switch (side) {
+    case 'RIGHT':
+      return { x: frame.x + frame.width, y: point.y }
+    case 'LEFT':
+      return { x: frame.x, y: point.y }
+    case 'BOTTOM':
+      return { x: point.x, y: frame.y + frame.height }
+    case 'TOP':
+      return { x: point.x, y: frame.y }
+    case 'CENTER':
+      return point
+  }
+}
+
+/**
+ * Picks the side for an anchor that sits *inside* a frame, balancing the two
+ * things that fight each other there: getting out of the frame without
+ * dragging a line across its content, and not then having to travel the long
+ * way round to reach the counterpart.
+ *
+ * `resolveMagnetPreferringSides` only asks the second question, which is
+ * right for a node that *is* a top-level frame and wrong for anything nested
+ * in one. A button in the bottom-left corner of a screen whose counterpart
+ * is far to the right gets `RIGHT` from that rule — and then the connector
+ * runs the entire width of its own screen, straight through the content, to
+ * get out. Nothing downstream can repair that: `connectorStubClearance` is
+ * what makes the line poke all the way clear of the frame before bending,
+ * and the frame has to be crossed *somehow* to reach a node inside it. The
+ * only thing actually in our gift is which edge it crosses, and how much of
+ * the frame that costs.
+ *
+ * Falls back to `resolveMagnetPreferringSides` with no frame to escape.
+ */
+export function resolveMagnetEscapingFrame(
+  rect: Rect,
+  frame: Rect | null,
+  towards: Point
+): ResolvedMagnet {
+  if (frame === null) return resolveMagnetPreferringSides(rect, towards)
+  let best: ResolvedMagnet = 'RIGHT'
+  let bestCost = Number.POSITIVE_INFINITY
+  // Ordered so that a tie resolves horizontally, the same bias
+  // `resolveMagnet` documents — left-to-right flows are what this is for.
+  for (const side of ESCAPE_SIDES) {
+    const exit = frameExitPoint(rect, frame, side)
+    const cost =
+      FRAME_EXIT_PENALTY * frameExitCost(rect, frame, side) +
+      Math.abs(towards.x - exit.x) +
+      Math.abs(towards.y - exit.y)
+    if (cost < bestCost) {
+      bestCost = cost
+      best = side
+    }
+  }
+  return best
+}
+
 /** Unit vector pointing out of a box, away from the given side. `CENTER` has no direction. */
 export function outwardNormal(side: ResolvedMagnet): Point {
   switch (side) {
@@ -175,7 +266,8 @@ interface ResolvedAnchorPoint {
 function resolveAnchorDetailed(
   anchor: Anchor,
   rect: Rect | null,
-  towards: Point | null
+  towards: Point | null,
+  frame: Rect | null
 ): ResolvedAnchorPoint {
   if (anchor.kind === 'free') {
     return { point: anchor.point, side: null }
@@ -188,7 +280,7 @@ function resolveAnchorDetailed(
   }
   const magnet =
     anchor.magnet === 'AUTO'
-      ? resolveMagnetPreferringSides(rect, towards ?? centerOf(rect))
+      ? resolveMagnetEscapingFrame(rect, frame, towards ?? centerOf(rect))
       : anchor.magnet
   return { point: magnetPoint(rect, magnet), side: magnet }
 }
@@ -203,9 +295,10 @@ function resolveAnchorDetailed(
 export function resolveAnchor(
   anchor: Anchor,
   rect: Rect | null,
-  towards: Point | null
+  towards: Point | null,
+  frame: Rect | null = null
 ): Point | null {
-  return resolveAnchorDetailed(anchor, rect, towards).point
+  return resolveAnchorDetailed(anchor, rect, towards, frame).point
 }
 
 /** The node id an anchor depends on, or `null` for a free anchor. */
@@ -243,7 +336,9 @@ export function resolveAnchorPair(
   start: Anchor,
   startRect: Rect | null,
   end: Anchor,
-  endRect: Rect | null
+  endRect: Rect | null,
+  startFrame: Rect | null = null,
+  endFrame: Rect | null = null
 ): ResolvedPair {
   const seed = (anchor: Anchor, rect: Rect | null): Point | null =>
     anchor.kind === 'free' ? anchor.point : rect === null ? null : centerOf(rect)
@@ -251,11 +346,11 @@ export function resolveAnchorPair(
   const startSeed = seed(start, startRect)
   const endSeed = seed(end, endRect)
 
-  const firstStart = resolveAnchorDetailed(start, startRect, endSeed)
-  const firstEnd = resolveAnchorDetailed(end, endRect, startSeed)
+  const firstStart = resolveAnchorDetailed(start, startRect, endSeed, startFrame)
+  const firstEnd = resolveAnchorDetailed(end, endRect, startSeed, endFrame)
 
-  const finalStart = resolveAnchorDetailed(start, startRect, firstEnd.point ?? endSeed)
-  const finalEnd = resolveAnchorDetailed(end, endRect, firstStart.point ?? startSeed)
+  const finalStart = resolveAnchorDetailed(start, startRect, firstEnd.point ?? endSeed, startFrame)
+  const finalEnd = resolveAnchorDetailed(end, endRect, firstStart.point ?? startSeed, endFrame)
 
   return {
     start: finalStart.point,

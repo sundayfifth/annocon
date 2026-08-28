@@ -9,6 +9,7 @@ import {
   DEFAULT_CONNECTOR_STYLE_PREFS,
   DEFAULT_CONNECTOR_WEIGHT,
   DEFAULT_CORNER_RADIUS,
+  DEFAULT_DETOUR,
   DEFAULT_END_CAP,
   DEFAULT_LABEL,
   DEFAULT_LINE_STYLE,
@@ -17,6 +18,8 @@ import {
   connectorCurveTangents,
   connectorRoutePoints,
   connectorStubClearance,
+  obstaclesInPlay,
+  routeCrossings,
   createConnectorRecord,
   frameGapMidpoint,
   parseConnectorRecord,
@@ -45,6 +48,7 @@ describe('createConnectorRecord', () => {
       endCap: DEFAULT_END_CAP,
       lineStyle: DEFAULT_LINE_STYLE,
       cornerRadius: DEFAULT_CORNER_RADIUS,
+      detour: DEFAULT_DETOUR,
       label: DEFAULT_LABEL
     })
   })
@@ -57,7 +61,8 @@ describe('createConnectorRecord', () => {
       startCap: 'NONE' as const,
       endCap: 'DIAMOND_FILLED' as const,
       lineStyle: 'CURVE' as const,
-      cornerRadius: 8
+      cornerRadius: 8,
+      detour: 'BOTTOM' as const
     }
     const record = createConnectorRecord('a', 'b', stylePrefs)
     expect(record).toEqual({
@@ -79,7 +84,8 @@ describe('parseConnectorStylePrefs / serialiseConnectorStylePrefs', () => {
       startCap: 'DIAMOND_FILLED' as const,
       endCap: 'TRIANGLE_FILLED' as const,
       lineStyle: 'STRAIGHT' as const,
-      cornerRadius: 12
+      cornerRadius: 12,
+      detour: 'LEFT' as const
     }
     expect(parseConnectorStylePrefs(serialiseConnectorStylePrefs(prefs))).toEqual(prefs)
   })
@@ -329,9 +335,7 @@ describe('connectorRoutePoints', () => {
       'ELBOW',
       'RIGHT',
       'LEFT',
-      24,
-      24,
-      150
+      { startClearance: 24, endClearance: 24, preferredMid: 150 }
     )
     expect(withHint[1]).toEqual({ x: 150, y: 0 })
   })
@@ -343,9 +347,7 @@ describe('connectorRoutePoints', () => {
       'ELBOW',
       'RIGHT',
       'LEFT',
-      24,
-      24,
-      1000 // way past what the end's clearance allows
+      { startClearance: 24, endClearance: 24, preferredMid: 1000 } // way past what the end's clearance allows
     )
     expect(points[1]?.x).toBe(176) // clamped to 200 - 24
   })
@@ -357,8 +359,7 @@ describe('connectorRoutePoints', () => {
       'ELBOW',
       'RIGHT',
       'LEFT',
-      300,
-      24
+      { startClearance: 300, endClearance: 24 }
     )
     // Stays flat (y unchanged) until it's past the 300px clearance — no
     // turn happens while still inside the frame it needed to clear.
@@ -397,6 +398,256 @@ function dominantAxisPoints(dx: number, dy: number): ReadonlyArray<{ x: number; 
     { x: dx, y: dy }
   ]
 }
+
+describe('routeCrossings', () => {
+  const box = { x: 100, y: 100, width: 100, height: 100 }
+
+  it('counts a box the route passes through', () => {
+    const through = [
+      { x: 0, y: 150 },
+      { x: 300, y: 150 }
+    ]
+    expect(routeCrossings(through, [box])).toBe(1)
+  })
+
+  it('counts each box once however many segments hit it', () => {
+    const zigzag = [
+      { x: 150, y: 0 },
+      { x: 150, y: 300 },
+      { x: 120, y: 300 },
+      { x: 120, y: 0 }
+    ]
+    expect(routeCrossings(zigzag, [box])).toBe(1)
+  })
+
+  it('does not count a route running flush along an edge or clipping a corner', () => {
+    const flush = [
+      { x: 0, y: 100 },
+      { x: 300, y: 100 }
+    ]
+    const corner = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 }
+    ]
+    expect(routeCrossings(flush, [box])).toBe(0)
+    expect(routeCrossings(corner, [box])).toBe(0)
+  })
+
+  it('counts every box independently', () => {
+    const second = { x: 400, y: 100, width: 100, height: 100 }
+    const across = [
+      { x: 0, y: 150 },
+      { x: 600, y: 150 }
+    ]
+    expect(routeCrossings(across, [box, second])).toBe(2)
+  })
+})
+
+describe('connectorRoutePoints — obstacle avoidance', () => {
+  const facing = { startClearance: 24, endClearance: 24 }
+  /** Boxes that are nothing to do with either endpoint — the ordinary case. */
+  const foreign = (rects: ReadonlyArray<Rect>) => ({ foreign: rects, own: [] })
+
+  it('routes exactly as before when nothing is in the way', () => {
+    const clear = connectorRoutePoints({ x: 0, y: 0 }, { x: 400, y: 100 }, 'ELBOW', 'RIGHT', 'LEFT', facing)
+    const offToTheSide = connectorRoutePoints({ x: 0, y: 0 }, { x: 400, y: 100 }, 'ELBOW', 'RIGHT', 'LEFT', {
+      ...facing,
+      obstacles: foreign([{ x: 0, y: 500, width: 400, height: 200 }])
+    })
+    expect(offToTheSide).toEqual(clear)
+  })
+
+  it('slides the bend into a clear gap rather than crossing a box', () => {
+    const obstacles = [{ x: 180, y: 20, width: 40, height: 60 }]
+    const before = connectorRoutePoints({ x: 0, y: 0 }, { x: 400, y: 100 }, 'ELBOW', 'RIGHT', 'LEFT', facing)
+    expect(routeCrossings(before, obstacles)).toBe(1)
+
+    const after = connectorRoutePoints({ x: 0, y: 0 }, { x: 400, y: 100 }, 'ELBOW', 'RIGHT', 'LEFT', {
+      ...facing,
+      obstacles: foreign(obstacles)
+    })
+    expect(routeCrossings(after, obstacles)).toBe(0)
+    // Still the same three-segment Z, just bent somewhere clear.
+    expect(after.length).toBe(before.length)
+  })
+
+  it('goes around a box parked between two ends that line up, where there is no bend to move', () => {
+    const obstacles = [{ x: 150, y: -50, width: 100, height: 100 }]
+    const before = connectorRoutePoints({ x: 0, y: 0 }, { x: 400, y: 0 }, 'ELBOW', 'RIGHT', 'LEFT', facing)
+    // The unavoided route is a bare straight line — every Z-route collapses
+    // to it, which is exactly why the detour shape has to exist.
+    expect(before).toEqual([
+      { x: 0, y: 0 },
+      { x: 400, y: 0 }
+    ])
+    expect(routeCrossings(before, obstacles)).toBe(1)
+
+    const after = connectorRoutePoints({ x: 0, y: 0 }, { x: 400, y: 0 }, 'ELBOW', 'RIGHT', 'LEFT', {
+      ...facing,
+      obstacles: foreign(obstacles)
+    })
+    expect(routeCrossings(after, obstacles)).toBe(0)
+    expect(after.length).toBeGreaterThan(2)
+    expect(after[0]).toEqual({ x: 0, y: 0 })
+    expect(after[after.length - 1]).toEqual({ x: 400, y: 0 })
+  })
+
+  it('leaves a mixed-axis corner alone unless it actually crosses something', () => {
+    const corner = connectorRoutePoints({ x: 0, y: 0 }, { x: 300, y: 200 }, 'ELBOW', 'RIGHT', 'TOP', facing)
+    const stillCorner = connectorRoutePoints({ x: 0, y: 0 }, { x: 300, y: 200 }, 'ELBOW', 'RIGHT', 'TOP', {
+      ...facing,
+      obstacles: foreign([{ x: 0, y: 800, width: 100, height: 100 }])
+    })
+    expect(stillCorner).toEqual(corner)
+  })
+
+  it('still returns a usable route when every option crosses something', () => {
+    const obstacles = [{ x: -1000, y: -1000, width: 3000, height: 3000 }]
+    const points = connectorRoutePoints({ x: 0, y: 0 }, { x: 400, y: 100 }, 'ELBOW', 'RIGHT', 'LEFT', {
+      ...facing,
+      obstacles: foreign(obstacles)
+    })
+    expect(points.length).toBeGreaterThanOrEqual(2)
+    expect(points[0]).toEqual({ x: 0, y: 0 })
+    expect(points[points.length - 1]).toEqual({ x: 400, y: 100 })
+  })
+
+  it('goes below rather than above when the two ways round are the same length', () => {
+    // A box squarely between the two ends — over and under are exactly as
+    // long as each other, so nothing but the tie-break decides. Frame names
+    // are drawn above frames in Figma, so below is the tidier default.
+    const obstacles = [{ x: 150, y: -50, width: 100, height: 100 }]
+    const points = connectorRoutePoints({ x: 0, y: 0 }, { x: 400, y: 0 }, 'ELBOW', 'RIGHT', 'LEFT', {
+      ...facing,
+      obstacles: foreign(obstacles)
+    })
+    expect(routeCrossings(points, obstacles)).toBe(0)
+    expect(Math.max(...points.map((point) => point.y))).toBeGreaterThan(0)
+  })
+
+  it('goes the way it is pinned, even when the other way is shorter', () => {
+    // The box sits well above the two ends, so going over it is the long way
+    // round and AUTO takes the short way under.
+    const obstacles = [{ x: 150, y: -400, width: 100, height: 450 }]
+    const auto = connectorRoutePoints({ x: 0, y: 0 }, { x: 400, y: 0 }, 'ELBOW', 'RIGHT', 'LEFT', {
+      ...facing,
+      obstacles: foreign(obstacles)
+    })
+    const pinned = connectorRoutePoints({ x: 0, y: 0 }, { x: 400, y: 0 }, 'ELBOW', 'RIGHT', 'LEFT', {
+      ...facing,
+      obstacles: foreign(obstacles),
+      detour: 'TOP'
+    })
+    expect(routeCrossings(auto, obstacles)).toBe(0)
+    expect(routeCrossings(pinned, obstacles)).toBe(0)
+    // Both clear the box; they differ only in which side they pass it on.
+    expect(Math.max(...auto.map((point) => point.y))).toBeGreaterThan(0)
+    expect(Math.min(...pinned.map((point) => point.y))).toBeLessThan(-400)
+  })
+
+  it('ignores a pinned direction that belongs to the other axis', () => {
+    const obstacles = [{ x: 150, y: -50, width: 100, height: 100 }]
+    const args = [{ x: 0, y: 0 }, { x: 400, y: 0 }, 'ELBOW', 'RIGHT', 'LEFT'] as const
+    const auto = connectorRoutePoints(...args, { ...facing, obstacles: foreign(obstacles) })
+    // LEFT/RIGHT say nothing about a line already running left to right.
+    const sideways = connectorRoutePoints(...args, { ...facing, obstacles: foreign(obstacles), detour: 'LEFT' })
+    expect(sideways).toEqual(auto)
+  })
+
+  it('does not detour at all when nothing is in the way, however it is pinned', () => {
+    const args = [{ x: 0, y: 0 }, { x: 400, y: 100 }, 'ELBOW', 'RIGHT', 'LEFT'] as const
+    const plain = connectorRoutePoints(...args, facing)
+    const pinned = connectorRoutePoints(...args, {
+      ...facing,
+      detour: 'BOTTOM',
+      obstacles: foreign([{ x: 0, y: 900, width: 400, height: 100 }])
+    })
+    expect(pinned).toEqual(plain)
+  })
+
+  it('may cross its own screen leaving it, but not after having left', () => {
+    // Start anchored inside a screen spanning x 0..400; the route has to
+    // cross it to get out, and then must not come back through it.
+    const own = [{ x: 0, y: -200, width: 400, height: 400 }]
+    const points = connectorRoutePoints({ x: 380, y: 0 }, { x: 900, y: 0 }, 'ELBOW', 'RIGHT', 'LEFT', {
+      ...facing,
+      obstacles: { foreign: [], own }
+    })
+    // The leaving segment is exempt...
+    expect(routeCrossings(points, own)).toBeGreaterThanOrEqual(0)
+    // ...but nothing from the second segment onward may re-enter it.
+    expect(routeCrossings(points, own, 1, points.length - 3)).toBe(0)
+  })
+
+  it('treats an own screen like any other box for the segments in between', () => {
+    // A route that would have to double back through the screen it started
+    // in gets pushed onto a shape that doesn't.
+    const own = [{ x: 0, y: 0, width: 400, height: 400 }]
+    const asForeign = connectorRoutePoints({ x: 400, y: 380 }, { x: 900, y: 20 }, 'ELBOW', 'RIGHT', 'LEFT', {
+      ...facing,
+      obstacles: { foreign: own, own: [] }
+    })
+    const asOwn = connectorRoutePoints({ x: 400, y: 380 }, { x: 900, y: 20 }, 'ELBOW', 'RIGHT', 'LEFT', {
+      ...facing,
+      obstacles: { foreign: [], own }
+    })
+    expect(routeCrossings(asOwn, own, 1, asOwn.length - 3)).toBe(0)
+    expect(routeCrossings(asForeign, own)).toBe(0)
+  })
+
+  it('ignores obstacles for STRAIGHT and CURVE, which have no bend to re-aim', () => {
+    const obstacles = [{ x: 150, y: -50, width: 100, height: 100 }]
+    const straight = connectorRoutePoints({ x: 0, y: 0 }, { x: 400, y: 0 }, 'STRAIGHT', 'RIGHT', 'LEFT', {
+      ...facing,
+      obstacles: foreign(obstacles)
+    })
+    expect(straight).toEqual([
+      { x: 0, y: 0 },
+      { x: 400, y: 0 }
+    ])
+  })
+})
+
+describe('obstaclesInPlay', () => {
+  const facingFor = { startClearance: 24, endClearance: 24 }
+  const near = { x: 200, y: 0, width: 100, height: 100 }
+  const far = { x: 9000, y: 0, width: 100, height: 100 }
+
+  it('keeps what sits between the two ends and drops what is nowhere near', () => {
+    const kept = obstaclesInPlay([near, far], { x: 0, y: 50 }, { x: 500, y: 50 }, 100)
+    expect(kept).toEqual([near])
+  })
+
+  it('keeps a box just outside the span, within the margin, since a detour can reach it', () => {
+    const justPast = { x: 560, y: 0, width: 100, height: 100 }
+    const kept = obstaclesInPlay([justPast], { x: 0, y: 50 }, { x: 500, y: 50 }, 100)
+    expect(kept).toEqual([justPast])
+  })
+
+  it('cannot change the chosen route, only how long it takes to find', () => {
+    const obstacles = [{ x: 180, y: 20, width: 40, height: 60 }]
+    const start = { x: 0, y: 0 }
+    const end = { x: 400, y: 100 }
+    const withNoise = connectorRoutePoints(start, end, 'ELBOW', 'RIGHT', 'LEFT', {
+      ...facingFor,
+      obstacles: { foreign: [...obstacles, { x: 90000, y: 0, width: 10, height: 10 }], own: [] }
+    })
+    const filtered = connectorRoutePoints(start, end, 'ELBOW', 'RIGHT', 'LEFT', {
+      ...facingFor,
+      obstacles: {
+        foreign: obstaclesInPlay(
+          [...obstacles, { x: 90000, y: 0, width: 10, height: 10 }],
+          start,
+          end,
+          200
+        ),
+        own: []
+      }
+    })
+    expect(filtered).toEqual(withNoise)
+  })
+})
 
 describe('connectorAxisOf', () => {
   it('groups LEFT/RIGHT on x, TOP/BOTTOM on y, and CENTER/null as neither', () => {

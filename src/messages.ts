@@ -9,7 +9,7 @@
 
 import type { Magnet } from './core/anchor.js'
 import type { Category } from './core/category.js'
-import type { ConnectorCap, ConnectorLineStyle } from './core/connector.js'
+import type { ConnectorCap, ConnectorDetour, ConnectorLineStyle } from './core/connector.js'
 
 export interface ConnectorStyleSummary {
   readonly color: string
@@ -19,6 +19,8 @@ export interface ConnectorStyleSummary {
   readonly endCap: ConnectorCap
   readonly lineStyle: ConnectorLineStyle
   readonly cornerRadius: number
+  /** Which way an `ELBOW` goes around whatever is in its path. */
+  readonly detour: ConnectorDetour
   /** Which side of the start/end node the connector exits/enters from. `AUTO` picks based on relative position. */
   readonly startMagnet: Magnet
   readonly endMagnet: Magnet
@@ -129,6 +131,7 @@ export interface UpdateConnectorStylePayload {
   readonly endCap?: ConnectorCap
   readonly lineStyle?: ConnectorLineStyle
   readonly cornerRadius?: number
+  readonly detour?: ConnectorDetour
   readonly label?: string
 }
 
