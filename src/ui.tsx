@@ -768,13 +768,6 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
             options={DETOUR_OPTIONS}
             value={style.detour}
           />
-          <VerticalSpace space="extraSmall" />
-          <Text>
-            <Muted>
-              Which way this line passes anything parked between its two ends. Only one pair
-              applies — over/under for a line running across, either side for one running down.
-            </Muted>
-          </Text>
         </>
       ) : null}
       <VerticalSpace space="medium" />
