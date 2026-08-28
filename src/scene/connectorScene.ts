@@ -14,7 +14,6 @@ import {
   type ConnectorStylePrefs,
   type ElbowRouteOptions,
   type RouteObstacles,
-  connectorAxisOf as connectorAxisOfSide,
   connectorAxisOf,
   connectorCurveTangents,
   connectorRoutePoints,
@@ -26,7 +25,6 @@ import {
   pointAlongPolyline,
   obstaclesInPlay,
   pointOnCurve,
-  routeCrossings,
   resolveConnectorGeometry,
   serialiseConnectorRecord,
   serialiseConnectorStylePrefs
@@ -329,8 +327,6 @@ function splitRouteObstacles(
 /** A box an elbow route should bend around, tagged with the node it came from so an endpoint's own screen can be told apart. */
 export interface RouteObstacle {
   readonly id: string
-  /** Only for the route diagnostic — nothing about routing depends on it. */
-  readonly name: string
   readonly rect: Rect
 }
 
@@ -371,7 +367,7 @@ export function collectRouteObstacles(): ReadonlyArray<RouteObstacle> {
     if (node.getPluginData(LABEL_OWNER_KEY) !== '') continue
     const rect = node.absoluteBoundingBox
     if (rect === null) continue
-    obstacles.push({ id: node.id, name: node.name, rect })
+    obstacles.push({ id: node.id, rect })
   }
   return obstacles
 }
@@ -661,96 +657,4 @@ export async function reconcileAllConnectors(): Promise<{ synced: number }> {
   }
   removeOrphanConnectorLabels(new Set(connectors.map((connector) => connector.id)))
   return { synced }
-}
-
-/**
- * Explains, in words, why a connector took the route it did — which sides it
- * resolved to, which boxes it was given to avoid, and whether the route it
- * settled on still crosses any of them.
- *
- * Exists because the failure this diagnoses is invisible from the canvas: a
- * line cutting through a frame looks the same whether the router never saw
- * that frame (it is nested, so `collectRouteObstacles` never collected it),
- * saw it but had no shape that could clear it, or excluded it deliberately as
- * one of the connector's own endpoint frames. Those want three different
- * fixes, and guessing between them from a screenshot does not work.
- */
-export async function explainConnectorRoute(node: VectorNode): Promise<string> {
-  const record = getConnectorRecord(node)
-  if (record === null) return 'Not a connector — no record on this node.'
-
-  const [startBoxes, endBoxes] = await Promise.all([
-    record.start.kind === 'free' ? Promise.resolve(NO_ENDPOINT) : boxesOf(record.start.nodeId),
-    record.end.kind === 'free' ? Promise.resolve(NO_ENDPOINT) : boxesOf(record.end.nodeId)
-  ])
-  const geometry = resolveConnectorGeometry(
-    record,
-    startBoxes.rect,
-    endBoxes.rect,
-    startBoxes.frameRect,
-    endBoxes.frameRect
-  )
-  const collected = collectRouteObstacles()
-  const obstacles = splitRouteObstacles(collected, geometry, startBoxes, endBoxes)
-  const nameOf = (rect: Rect): string =>
-    collected.find((obstacle) => obstacle.rect === rect)?.name ?? '?'
-
-  const lines = [
-    `Route diagnostic — "${node.name}"`,
-    '',
-    `line style: ${record.lineStyle}   go around: ${record.detour}`,
-    `sides: start ${geometry.startSide ?? 'none'} -> end ${geometry.endSide ?? 'none'}`,
-    `axis: start ${connectorAxisOfSide(geometry.startSide) ?? 'none'}, end ${connectorAxisOfSide(geometry.endSide) ?? 'none'}` +
-      (connectorAxisOfSide(geometry.startSide) !== null &&
-      connectorAxisOfSide(geometry.startSide) === connectorAxisOfSide(geometry.endSide)
-        ? '  (same axis — full avoidance)'
-        : '  (mixed or unsided — limited avoidance)'),
-    '',
-    `top-level boxes on this page: ${collected.length}`,
-    `  near enough to matter: ${obstacles.foreign.length + obstacles.own.length}`,
-    `  this connector's own screens (avoided except where it leaves/arrives): ${obstacles.own.map((rect) => `"${nameOf(rect)}"`).join(', ') || 'none'}`,
-    `  everything else it must clear: ${obstacles.foreign.length === 0 ? 'NOTHING' : obstacles.foreign.map((rect) => `"${nameOf(rect)}"`).join(', ')}`
-  ]
-
-  if (collected.length <= 2) {
-    lines.push(
-      '',
-      'Only a couple of top-level boxes exist, so almost nothing is being',
-      'avoided. If the frames you expect it to dodge are nested inside a',
-      'section, group, or a bigger frame, the router never sees them — it',
-      'only collects direct children of the page.'
-    )
-  }
-
-  if (geometry.start !== null && geometry.end !== null) {
-    const startClearance = connectorStubClearance(geometry.start, geometry.startSide, startBoxes.frameRect)
-    const endClearance = connectorStubClearance(geometry.end, geometry.endSide, endBoxes.frameRect)
-    const axis = connectorAxisOfSide(geometry.startSide)
-    const preferredMid =
-      axis !== null && axis === connectorAxisOfSide(geometry.endSide)
-        ? frameGapMidpoint(startBoxes.frameRect, endBoxes.frameRect, axis)
-        : null
-    const points = connectorRoutePoints(
-      geometry.start,
-      geometry.end,
-      record.lineStyle,
-      geometry.startSide,
-      geometry.endSide,
-      { startClearance, endClearance, preferredMid, detour: record.detour, obstacles }
-    )
-    const crossed = obstacles.foreign.filter((rect) => routeCrossings(points, [rect]) > 0)
-    // Same window `routeCost` scores on: re-entering your own screen after
-    // having left it counts, crossing it on the way out does not.
-    const reentered = obstacles.own.filter(
-      (rect) => routeCrossings(points, [rect], 1, points.length - 3) > 0
-    )
-    lines.push(
-      '',
-      `chosen route: ${points.length} points`,
-      `still crossing: ${crossed.length === 0 ? 'nothing' : crossed.map((rect) => `"${nameOf(rect)}"`).join(', ')}`,
-      `re-entering its own screens: ${reentered.length === 0 ? 'nothing' : reentered.map((rect) => `"${nameOf(rect)}"`).join(', ')}`
-    )
-  }
-
-  return lines.join('\n')
 }

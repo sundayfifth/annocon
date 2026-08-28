@@ -64,7 +64,6 @@ import {
 } from './scene/connectorScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './scene/chunking.js'
 import { isSuppressed } from './scene/pluginData.js'
-import { explainSelectedRoute, startDragProbe } from './spikes.js'
 
 // `figma.currentPage.selection` is not in click order — Figma returns it in
 // layer/z-order regardless of which node was selected first. To let a
@@ -495,18 +494,3 @@ export function resyncPage(): void {
     })
 }
 
-/**
- * Menu command for the S6 spike — see `src/spikes.ts` and `docs/spikes.md`.
- * Temporary; goes away with the spike file once the question is answered.
- */
-export function dragProbe(): void {
-  startDragProbe()
-}
-
-/**
- * Menu command: explain why the selected connector routed the way it did.
- * Temporary, same as `dragProbe` — see `src/spikes.ts`.
- */
-export function explainRoute(): void {
-  explainSelectedRoute()
-}

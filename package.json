@@ -56,21 +56,6 @@
           "src": "src/main.ts",
           "handler": "resyncPage"
         }
-      },
-      "-",
-      {
-        "name": "Spike: drag probe (S6)",
-        "main": {
-          "src": "src/main.ts",
-          "handler": "dragProbe"
-        }
-      },
-      {
-        "name": "Explain this route",
-        "main": {
-          "src": "src/main.ts",
-          "handler": "explainRoute"
-        }
       }
     ],
     "relaunchButtons": {
