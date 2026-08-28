@@ -484,6 +484,44 @@ export function obstaclesInPlay(
   )
 }
 
+/**
+ * How far outside the box spanned by a connector's two ends a route is
+ * allowed to bulge, and so how far out anything hunting for obstacles has to
+ * look. Generous enough to cover a detour that goes around a full screen
+ * sitting just past one end, which is the widest useful candidate the router
+ * ever generates.
+ */
+export const ROUTE_SEARCH_MARGIN = 1200
+
+/**
+ * Whether a box now sitting at `box` could change the route a connector whose
+ * rendered node occupies `routeBounds` is currently drawing.
+ *
+ * This is the *invalidation* question, as opposed to `obstaclesInPlay`'s
+ * *scoring* question: not "which boxes does this route have to consider" but
+ * "did this box moving mean some route has to be worked out again". Both have
+ * to agree, or a connector sits un-resynced while a box it genuinely routes
+ * around is dragged past it — so this deliberately tests against the rendered
+ * node's own bounding box, which always contains both endpoints and, once a
+ * route has bent around something, the bulge as well. That makes it a superset
+ * of the span `obstaclesInPlay` filters on, and a superset is the safe side to
+ * be on: too many re-syncs only costs time, too few leaves a stale line on the
+ * canvas.
+ *
+ * The bulge is also what makes a drag *away* work without remembering where
+ * the box used to be. A route already bent around a box has a bounding box
+ * wrapped around that same region, so the box stays within `margin` of it long
+ * enough for the re-sync that straightens the line back out.
+ */
+export function boxCouldAffectRoute(routeBounds: Rect, box: Rect, margin: number): boolean {
+  return (
+    box.x < routeBounds.x + routeBounds.width + margin &&
+    box.x + box.width > routeBounds.x - margin &&
+    box.y < routeBounds.y + routeBounds.height + margin &&
+    box.y + box.height > routeBounds.y - margin
+  )
+}
+
 /** How far clear of an obstacle's edge a re-aimed route passes. */
 export const OBSTACLE_CLEARANCE = 20
 

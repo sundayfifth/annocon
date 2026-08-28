@@ -14,6 +14,8 @@ import {
   type ConnectorStylePrefs,
   type ElbowRouteOptions,
   type RouteObstacles,
+  ROUTE_SEARCH_MARGIN,
+  boxCouldAffectRoute,
   connectorAxisOf,
   connectorCurveTangents,
   connectorRoutePoints,
@@ -147,6 +149,39 @@ export function findConnectorsWithEndpointUnder(
 }
 
 /**
+ * Every connector whose route could be changed by one of `boxes` having just
+ * moved — the third way a connector goes stale, alongside its own endpoint
+ * moving and its endpoint's frame moving.
+ *
+ * The two `findConnectors*` helpers above both answer "is this connector
+ * attached to the node that moved", which is the only question that existed
+ * before an elbow route depended on the boxes it passes. A screen parked
+ * between two connected screens is attached to nothing: drag it into a line's
+ * path and, without this, no connector is ever asked to re-route, so the line
+ * stays cutting straight through until something else happens to sync it.
+ *
+ * Deliberately keyed off each connector's rendered bounding box rather than
+ * its record — see `boxCouldAffectRoute`. Cheap enough to run per drag frame:
+ * no `getNodeByIdAsync`, no route computed, just a rectangle test per
+ * connector against a page scan the caller already had to do.
+ */
+export function findConnectorsNearBoxes(
+  boxes: ReadonlyArray<Rect>,
+  known?: ReadonlyArray<VectorNode>
+): ReadonlyArray<VectorNode> {
+  if (boxes.length === 0) return []
+  return (known ?? findAllConnectors()).filter((node) => {
+    const record = getConnectorRecord(node)
+    // Only an ELBOW bends around anything; the other two ignore obstacles
+    // entirely, so nothing a box does can change where they are drawn.
+    if (record === null || record.lineStyle !== 'ELBOW') return false
+    const bounds = node.absoluteBoundingBox
+    if (bounds === null) return false
+    return boxes.some((box) => boxCouldAffectRoute(bounds, box, ROUTE_SEARCH_MARGIN))
+  })
+}
+
+/**
  * A connector's optional label — `connectorLabelOwner` pluginData points
  * back at the connector's own node id, the same "tag, then query" shape
  * Annotate uses for its card/leader. A vector node can't have children in
@@ -275,14 +310,6 @@ async function boxesOf(nodeId: string): Promise<EndpointBoxes> {
 }
 
 const EMPTY_OBSTACLES: RouteObstacles = { foreign: [], own: [] }
-
-/**
- * How far outside the box spanned by the two endpoints a route is allowed to
- * bulge, and so how far out `obstaclesInPlay` still has to look. Generous
- * enough to cover a detour that goes around a full screen sitting just past
- * one end, which is the widest useful candidate the router ever generates.
- */
-const ROUTE_SEARCH_MARGIN = 1200
 
 /**
  * Sorts the page's boxes into the two kinds `RouteObstacles` distinguishes,

@@ -14,6 +14,8 @@ import {
   DEFAULT_LABEL,
   DEFAULT_LINE_STYLE,
   DEFAULT_START_CAP,
+  ROUTE_SEARCH_MARGIN,
+  boxCouldAffectRoute,
   connectorAxisOf,
   connectorCurveTangents,
   connectorRoutePoints,
@@ -646,6 +648,49 @@ describe('obstaclesInPlay', () => {
       }
     })
     expect(filtered).toEqual(withNoise)
+  })
+})
+
+describe('boxCouldAffectRoute', () => {
+  /** A connector drawn straight across, as its rendered node's bounding box. */
+  const route = { x: 0, y: 100, width: 500, height: 2 }
+
+  it('says yes to a box sitting on top of the route', () => {
+    const parked = { x: 200, y: 50, width: 100, height: 100 }
+    expect(boxCouldAffectRoute(route, parked, ROUTE_SEARCH_MARGIN)).toBe(true)
+  })
+
+  it('says yes to a box near the route but not yet touching it', () => {
+    const approaching = { x: 200, y: 400, width: 100, height: 100 }
+    expect(boxCouldAffectRoute(route, approaching, ROUTE_SEARCH_MARGIN)).toBe(true)
+  })
+
+  it('says no to a box further off than any route could bulge', () => {
+    const elsewhere = { x: 200, y: 9000, width: 100, height: 100 }
+    expect(boxCouldAffectRoute(route, elsewhere, ROUTE_SEARCH_MARGIN)).toBe(false)
+  })
+
+  /**
+   * The property the whole filter rests on: it must never drop a box that
+   * `obstaclesInPlay` would have kept, or a connector goes un-resynced while
+   * a box it actually routes around is being dragged. The rendered node's
+   * box always contains both endpoints, so testing against it is a superset
+   * of testing against the span between them — never a narrower one.
+   */
+  it('keeps everything the router itself would still consider', () => {
+    const start = { x: 0, y: 100 }
+    const end = { x: 500, y: 100 }
+    const candidates = [
+      { x: 200, y: 50, width: 100, height: 100 },
+      { x: 200, y: 400, width: 100, height: 100 },
+      { x: -900, y: 100, width: 100, height: 100 },
+      { x: 200, y: 9000, width: 100, height: 100 },
+      { x: 1600, y: 100, width: 100, height: 100 }
+    ]
+    for (const box of candidates) {
+      const routerKeepsIt = obstaclesInPlay([box], start, end, ROUTE_SEARCH_MARGIN).length > 0
+      if (routerKeepsIt) expect(boxCouldAffectRoute(route, box, ROUTE_SEARCH_MARGIN)).toBe(true)
+    }
   })
 })
 
