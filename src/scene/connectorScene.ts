@@ -188,18 +188,53 @@ export function findConnectorsNearBoxes(
  * Figma, so this has to be its own top-level node rather than nested inside
  * the connector.
  */
-function findConnectorLabel(connectorId: string): FrameNode | null {
-  const found = figma.currentPage
-    .findAllWithCriteria({ pluginData: { keys: [LABEL_OWNER_KEY] } })
-    .filter(
-      (node): node is FrameNode =>
-        node.type === 'FRAME' && node.getPluginData(LABEL_OWNER_KEY) === connectorId
-    )
+function findConnectorLabel(
+  connectorId: string,
+  known?: LabelIndex
+): FrameNode | null {
+  const found = known?.get(connectorId) ?? findLabelsFor(connectorId)
   if (found.length <= 1) return found[0] ?? null
   // Same dedupe-and-recreate reasoning as annotation's rendered nodes — no
   // reliable way to tell which duplicate is "correct", so clear the slate.
   for (const node of found) node.remove()
   return null
+}
+
+function findLabelsFor(connectorId: string): ReadonlyArray<FrameNode> {
+  return figma.currentPage
+    .findAllWithCriteria({ pluginData: { keys: [LABEL_OWNER_KEY] } })
+    .filter(
+      (node): node is FrameNode =>
+        node.type === 'FRAME' && node.getPluginData(LABEL_OWNER_KEY) === connectorId
+    )
+}
+
+/** Every label pill on the page, grouped by the connector it belongs to. */
+export type LabelIndex = ReadonlyMap<string, ReadonlyArray<FrameNode>>
+
+/**
+ * One page scan for every label on it, instead of one scan per connector.
+ *
+ * Syncing a connector asks whether it has a label, and asking used to mean
+ * `findAllWithCriteria` over the whole page — affordable when only the
+ * handful of connectors attached to what moved were being synced, much less
+ * so now that a screen dragged past a line re-syncs it too. A drag delivers
+ * a `nodechange` per frame, so this is the one cost in the loop that grows
+ * with both the size of the file and the number of lines near the drag.
+ */
+export function collectConnectorLabels(): LabelIndex {
+  const byConnector = new Map<string, Array<FrameNode>>()
+  for (const node of figma.currentPage.findAllWithCriteria({
+    pluginData: { keys: [LABEL_OWNER_KEY] }
+  })) {
+    if (node.type !== 'FRAME') continue
+    const ownerId = node.getPluginData(LABEL_OWNER_KEY)
+    if (ownerId === '') continue
+    const existing = byConnector.get(ownerId)
+    if (typeof existing === 'undefined') byConnector.set(ownerId, [node])
+    else existing.push(node)
+  }
+  return byConnector
 }
 
 // A deleted label's pluginData is gone by the time `nodechange` reports the
@@ -464,7 +499,8 @@ function collectObstaclesFrom(
  */
 export async function syncConnector(
   node: VectorNode,
-  known?: ReadonlyArray<RouteObstacle>
+  known?: ReadonlyArray<RouteObstacle>,
+  labels?: LabelIndex
 ): Promise<void> {
   const record = getConnectorRecord(node)
   if (record === null) return
@@ -486,7 +522,7 @@ export async function syncConnector(
       : EMPTY_OBSTACLES
 
   try {
-    await syncConnectorBody(node, record, geometry, startBoxes, endBoxes, obstacles)
+    await syncConnectorBody(node, record, geometry, startBoxes, endBoxes, obstacles, labels)
   } catch (error) {
     // Same reasoning as the annotation sync's catch — a throw partway
     // through used to leave a half-drawn connector with no visible
@@ -502,7 +538,8 @@ async function syncConnectorBody(
   geometry: ReturnType<typeof resolveConnectorGeometry>,
   startBoxes: EndpointBoxes,
   endBoxes: EndpointBoxes,
-  obstacles: RouteObstacles
+  obstacles: RouteObstacles,
+  labels?: LabelIndex
 ): Promise<void> {
   await withSuppressedNodeChangeAsync(async () => {
     // Same reparent-before-position reasoning as annotation cards — the
@@ -569,7 +606,12 @@ async function syncConnectorBody(
           })
     figma.currentPage.appendChild(node)
 
-    await ensureConnectorLabel(node.id, findConnectorLabel(node.id), record.label, midpoint)
+    await ensureConnectorLabel(
+      node.id,
+      findConnectorLabel(node.id, labels),
+      record.label,
+      midpoint
+    )
   })
 }
 
@@ -731,9 +773,10 @@ function removeOrphanConnectorLabels(liveConnectorIds: ReadonlySet<string>): voi
 export async function reconcileAllConnectors(): Promise<{ synced: number }> {
   const connectors = findAllConnectors()
   const obstacles = collectRouteObstacles()
+  const labels = collectConnectorLabels()
   let synced = 0
   for (const connector of connectors) {
-    await syncConnector(connector, obstacles)
+    await syncConnector(connector, obstacles, labels)
     synced += 1
     if (synced % CHUNK_SIZE === 0) await yieldToMainThread()
   }

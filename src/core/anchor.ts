@@ -54,6 +54,19 @@ export type Anchor =
   /** Not attached to anything — fixed in canvas space. */
   | { readonly kind: 'free'; readonly point: Point }
 
+/**
+ * Whether two boxes occupy exactly the same space.
+ *
+ * Compared without tolerance on purpose. Figma reports canvas units, not
+ * screen pixels, so a drag that looks tiny at a high zoom is still a real
+ * move — and the clearances a route is built from are 20 units, small enough
+ * that swallowing sub-unit differences would let a box creep across a
+ * boundary without anything noticing.
+ */
+export function sameRect(a: Rect, b: Rect): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
+}
+
 export function centerOf(rect: Rect): Point {
   return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
 }

@@ -1,6 +1,6 @@
 import { emit, on, showUI } from '@create-figma-plugin/utilities'
 
-import type { Rect } from './core/anchor.js'
+import { type Rect, sameRect } from './core/anchor.js'
 import type {
   AddCategoryHandler,
   AddCategoryPayload,
@@ -49,6 +49,7 @@ import {
   renameCategory
 } from './scene/categoryScene.js'
 import {
+  collectConnectorLabels,
   collectRouteObstacles,
   createConnector,
   findAllConnectorsOnPage,
@@ -66,7 +67,6 @@ import {
   updateConnectorStyle
 } from './scene/connectorScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './scene/chunking.js'
-import { topLevelAncestorIdOf } from './scene/frames.js'
 import { isSuppressed } from './scene/pluginData.js'
 
 // `figma.currentPage.selection` is not in click order — Figma returns it in
@@ -348,6 +348,10 @@ async function resyncTouched({
   // batch rather than cached across them, because the node being dragged is
   // itself one of the boxes everything else has to avoid.
   const obstacles = allConnectors.length > 0 ? collectRouteObstacles() : []
+  // Scanned once per batch for the same reason as `allConnectors` above:
+  // every connector synced below asks whether it has a label, and asking
+  // used to be a full-page scan each time.
+  const labels = allConnectors.length > 0 ? collectConnectorLabels() : undefined
   // A connector can be reached by more than one of the routes through this
   // function — its endpoint moved *and* it passes near a box that also moved,
   // say, or both its ends were in the same multi-select drag. Re-rendering it
@@ -357,7 +361,7 @@ async function resyncTouched({
   const syncConnectorOnce = async (connector: VectorNode): Promise<void> => {
     if (syncedConnectorIds.has(connector.id)) return
     syncedConnectorIds.add(connector.id)
-    await syncConnector(connector, obstacles)
+    await syncConnector(connector, obstacles, labels)
   }
   // Which top-level boxes moved in this batch — an elbow route bends around
   // these, so a connector attached to none of them can still need re-routing
@@ -365,7 +369,6 @@ async function resyncTouched({
   // and resolved to rectangles afterwards, since `obstacles` already holds
   // every top-level box's current rect and a node's own id is the cheapest
   // thing to carry around in the meantime.
-  const movedObstacleIds = new Set<string>()
   // Where boxes that no longer exist used to be — collected in the delete
   // loop below, since a deletion frees up space rather than occupying it.
   const vacatedBoxes: Array<Rect> = []
@@ -432,12 +435,6 @@ async function resyncTouched({
       await syncAnnotation(node)
       touched = true
     }
-    // Moving a layer inside a screen moves the screen's contents, not the
-    // screen — so what every *other* connector has to route around is the
-    // top-level box this node belongs to, at whatever size it is now.
-    if (node !== null && 'absoluteBoundingBox' in node) {
-      movedObstacleIds.add(topLevelAncestorIdOf(node))
-    }
     for (const connector of findConnectorsInvolving(id, allConnectors)) {
       await syncConnectorOnce(connector)
       touched = true
@@ -461,15 +458,33 @@ async function resyncTouched({
   }
 
   // Everything above re-routes connectors *attached* to what moved. This
-  // re-routes the ones merely in its way: an elbow bends around the top-level
-  // boxes on the page, so a screen dragged into (or out of) a line's path
-  // changes that line without touching either of its ends.
-  const movedBoxes = [
-    ...obstacles
-      .filter((obstacle) => movedObstacleIds.has(obstacle.id))
-      .map((obstacle) => obstacle.rect),
-    ...vacatedBoxes
-  ]
+  // re-routes the ones merely in its way: an elbow bends around the boxes on
+  // the page, so a screen dragged into (or out of) a line's path changes that
+  // line without touching either of its ends.
+  //
+  // Which boxes actually moved is settled by comparing this batch's scan with
+  // the one before it, rather than by asking which nodes reported a change.
+  // Nudging a button inside a screen reports a change for the button, and the
+  // screen around it is exactly where it was — routing cannot care, and
+  // treating it as a move would re-sync every line for half the page on every
+  // frame of a drag that changes no route at all. Comparing rectangles also
+  // catches what no node change describes: a screen that resized itself
+  // because its auto-layout contents grew, and a screen that was pasted in.
+  const movedBoxes = [...vacatedBoxes]
+  for (const obstacle of obstacles) {
+    const wasAt = obstacleRectBeforeLastScan(obstacle.id)
+    // A box nobody has seen before is new to the page — pasted, dropped in
+    // from another file, or just ungrouped into view. It is in the way now
+    // even though it never moved to get there.
+    if (wasAt === null) {
+      movedBoxes.push(obstacle.rect)
+      continue
+    }
+    // Both rectangles, because the two ends of a move invalidate different
+    // connectors: the lines it has just left alone, and the lines it has
+    // just landed on.
+    if (!sameRect(wasAt, obstacle.rect)) movedBoxes.push(wasAt, obstacle.rect)
+  }
   for (const connector of findConnectorsNearBoxes(movedBoxes, allConnectors)) {
     if (syncedConnectorIds.has(connector.id)) continue
     await syncConnectorOnce(connector)

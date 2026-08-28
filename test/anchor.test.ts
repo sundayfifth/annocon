@@ -12,7 +12,8 @@ import {
   resolveAnchorPair,
   resolveMagnet,
   resolveMagnetEscapingFrame,
-  resolveMagnetPreferringSides
+  resolveMagnetPreferringSides,
+  sameRect
 } from '../src/core/anchor.js'
 
 const box: Rect = { x: 100, y: 200, width: 40, height: 20 }
@@ -151,6 +152,31 @@ describe('resolveAnchorPair', () => {
     const free: Anchor = { kind: 'free', point: { x: -300, y: 50 } }
     const withFree = resolveAnchorPair(auto('l'), left, free, null)
     expect(withFree.endSide).toBeNull()
+  })
+})
+
+describe('sameRect', () => {
+  const rect = { x: 10, y: 20, width: 100, height: 50 }
+
+  it('is true for the identical box', () => {
+    expect(sameRect(rect, { x: 10, y: 20, width: 100, height: 50 })).toBe(true)
+  })
+
+  it('is false when any one of the four numbers differs', () => {
+    expect(sameRect(rect, { ...rect, x: 11 })).toBe(false)
+    expect(sameRect(rect, { ...rect, y: 21 })).toBe(false)
+    expect(sameRect(rect, { ...rect, width: 101 })).toBe(false)
+    expect(sameRect(rect, { ...rect, height: 51 })).toBe(false)
+  })
+
+  /**
+   * A screen dragged one screen-pixel at a high zoom moves a fraction of a
+   * canvas unit, and that still has to count: routing clearances are 20
+   * units, so a run of sub-unit moves adds up to a route that should have
+   * changed. No epsilon, in other words.
+   */
+  it('is false for a move too small to see', () => {
+    expect(sameRect(rect, { ...rect, x: 10.0001 })).toBe(false)
   })
 })
 
