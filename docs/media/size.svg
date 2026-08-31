@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 120" width="300" height="120" role="img" aria-label="เลือกขนาดการ์ด Small Medium Large หรือลากขอบปรับความกว้างเอง">
+  <style>
+    .s { fill: #F5F5F7; stroke: #D5D5DC; stroke-width: 1.5; }
+    .s2 { fill: #ECECF1; stroke: #C9C9D2; stroke-width: 1.5; }
+    .b { fill: #DEDEE6; }
+    .w { fill: none; stroke: #1E1E24; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .d { stroke-dasharray: 3 3; }
+    .c { fill: #1E1E24; }
+    .card { fill: #FFFFFF; stroke: #E1E1E6; stroke-width: 1.5; }
+    .t { fill: #C9C9D2; }
+    .pill { fill: #0D99FF; }
+    .txt { font: 600 9px -apple-system, sans-serif; fill: #8B8B96; }
+    @media (prefers-color-scheme: dark) {
+      .s { fill: #26262C; stroke: #3A3A44; }
+      .s2 { fill: #2E2E36; stroke: #43434F; }
+      .b { fill: #3A3A44; }
+      .w { stroke: #E8E8EE; }
+      .c { fill: #E8E8EE; }
+      .card { fill: #1C1C21; stroke: #3A3A44; }
+      .t { fill: #4A4A56; }
+    }
+  </style>
+  <g>
+    <rect class="card" x="40" y="28" width="96" height="64" rx="6">
+      <animate attributeName="width" values="96;150;220;96" keyTimes="0;0.33;0.66;1" dur="5s" repeatCount="indefinite"/>
+    </rect>
+    <rect class="t" x="52" y="42" width="60" height="5" rx="2.5">
+      <animate attributeName="width" values="60;110;180;60" keyTimes="0;0.33;0.66;1" dur="5s" repeatCount="indefinite"/>
+    </rect>
+    <rect class="t" x="52" y="54" width="44" height="5" rx="2.5">
+      <animate attributeName="width" values="44;90;150;44" keyTimes="0;0.33;0.66;1" dur="5s" repeatCount="indefinite"/>
+    </rect>
+    <rect class="t" x="52" y="66" width="52" height="5" rx="2.5">
+      <animate attributeName="width" values="52;70;120;52" keyTimes="0;0.33;0.66;1" dur="5s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+  <g class="c">
+    <rect x="132" y="52" width="3" height="16" rx="1.5">
+      <animate attributeName="x" values="132;186;256;132" keyTimes="0;0.33;0.66;1" dur="5s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+  <text class="txt" x="150" y="110" text-anchor="middle">S / M / L หรือลากเอง</text>
+</svg>

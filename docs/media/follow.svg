@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 120" width="300" height="120" role="img" aria-label="ขยับจอแล้วเส้นเชื่อมตามไปเอง">
+  <style>
+    .s { fill: #F5F5F7; stroke: #D5D5DC; stroke-width: 1.5; }
+    .s2 { fill: #ECECF1; stroke: #C9C9D2; stroke-width: 1.5; }
+    .b { fill: #DEDEE6; }
+    .w { fill: none; stroke: #1E1E24; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .d { stroke-dasharray: 3 3; }
+    .c { fill: #1E1E24; }
+    .card { fill: #FFFFFF; stroke: #E1E1E6; stroke-width: 1.5; }
+    .t { fill: #C9C9D2; }
+    .pill { fill: #0D99FF; }
+    .txt { font: 600 9px -apple-system, sans-serif; fill: #8B8B96; }
+    @media (prefers-color-scheme: dark) {
+      .s { fill: #26262C; stroke: #3A3A44; }
+      .s2 { fill: #2E2E36; stroke: #43434F; }
+      .b { fill: #3A3A44; }
+      .w { stroke: #E8E8EE; }
+      .c { fill: #E8E8EE; }
+      .card { fill: #1C1C21; stroke: #3A3A44; }
+      .t { fill: #4A4A56; }
+    }
+  </style>
+  <rect class="s" x="16" y="30" width="80" height="60" rx="6"/>
+  <rect class="b" x="26" y="40" width="36" height="5" rx="2.5"/>
+  <g>
+    <rect class="s" x="190" y="20" width="80" height="60" rx="6">
+      <animate attributeName="y" values="20;56;20" dur="4s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1" keyTimes="0;0.5;1"/>
+    </rect>
+    <rect class="b" x="200" y="30" width="36" height="5" rx="2.5">
+      <animate attributeName="y" values="30;66;30" dur="4s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1" keyTimes="0;0.5;1"/>
+    </rect>
+  </g>
+  <path class="w" d="M96 60 L143 60 L143 50 L182 50">
+    <animate attributeName="d" values="M96 60 L143 60 L143 50 L182 50;M96 60 L143 60 L143 86 L182 86;M96 60 L143 60 L143 50 L182 50" dur="4s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1" keyTimes="0;0.5;1"/>
+  </path>
+  <circle class="c" cx="96" cy="60" r="3"/>
+  <path class="c" d="M182 44 L194 50 L182 56 Z">
+    <animate attributeName="d" values="M182 44 L194 50 L182 56 Z;M182 80 L194 86 L182 92 Z;M182 44 L194 50 L182 56 Z" dur="4s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1" keyTimes="0;0.5;1"/>
+  </path>
+</svg>

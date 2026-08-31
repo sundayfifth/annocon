@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 120" width="300" height="120" role="img" aria-label="คลิกที่ป้ายกำกับบนเส้นแล้วพิมพ์แก้ได้เลย">
+  <style>
+    .s { fill: #F5F5F7; stroke: #D5D5DC; stroke-width: 1.5; }
+    .s2 { fill: #ECECF1; stroke: #C9C9D2; stroke-width: 1.5; }
+    .b { fill: #DEDEE6; }
+    .w { fill: none; stroke: #1E1E24; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .d { stroke-dasharray: 3 3; }
+    .c { fill: #1E1E24; }
+    .card { fill: #FFFFFF; stroke: #E1E1E6; stroke-width: 1.5; }
+    .t { fill: #C9C9D2; }
+    .pill { fill: #0D99FF; }
+    .txt { font: 600 9px -apple-system, sans-serif; fill: #8B8B96; }
+    @media (prefers-color-scheme: dark) {
+      .s { fill: #26262C; stroke: #3A3A44; }
+      .s2 { fill: #2E2E36; stroke: #43434F; }
+      .b { fill: #3A3A44; }
+      .w { stroke: #E8E8EE; }
+      .c { fill: #E8E8EE; }
+      .card { fill: #1C1C21; stroke: #3A3A44; }
+      .t { fill: #4A4A56; }
+    }
+  </style>
+  <rect class="s" x="16" y="34" width="72" height="52" rx="6"/>
+  <rect class="s" x="212" y="34" width="72" height="52" rx="6"/>
+  <path class="w" d="M88 60 L212 60"/>
+  <circle class="c" cx="88" cy="60" r="3"/>
+  <path class="c" d="M200 54 L212 60 L200 66 Z"/>
+  <rect class="card" x="118" y="48" width="64" height="24" rx="5"/>
+  <g>
+    <rect class="t" x="128" y="57" width="30" height="6" rx="3">
+      <animate attributeName="width" values="30;10;44;30" keyTimes="0;0.35;0.75;1" dur="5s" repeatCount="indefinite"/>
+    </rect>
+    <rect class="c" x="160" y="55" width="1.5" height="10">
+      <animate attributeName="x" values="160;140;174;160" keyTimes="0;0.35;0.75;1" dur="5s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+</svg>

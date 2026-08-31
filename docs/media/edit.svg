@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 120" width="300" height="120" role="img" aria-label="ดับเบิลคลิกที่การ์ดแล้วพิมพ์แก้ข้อความได้เลย">
+  <style>
+    .s { fill: #F5F5F7; stroke: #D5D5DC; stroke-width: 1.5; }
+    .s2 { fill: #ECECF1; stroke: #C9C9D2; stroke-width: 1.5; }
+    .b { fill: #DEDEE6; }
+    .w { fill: none; stroke: #1E1E24; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .d { stroke-dasharray: 3 3; }
+    .c { fill: #1E1E24; }
+    .card { fill: #FFFFFF; stroke: #E1E1E6; stroke-width: 1.5; }
+    .t { fill: #C9C9D2; }
+    .pill { fill: #0D99FF; }
+    .txt { font: 600 9px -apple-system, sans-serif; fill: #8B8B96; }
+    @media (prefers-color-scheme: dark) {
+      .s { fill: #26262C; stroke: #3A3A44; }
+      .s2 { fill: #2E2E36; stroke: #43434F; }
+      .b { fill: #3A3A44; }
+      .w { stroke: #E8E8EE; }
+      .c { fill: #E8E8EE; }
+      .card { fill: #1C1C21; stroke: #3A3A44; }
+      .t { fill: #4A4A56; }
+    }
+  </style>
+  <rect class="card" x="60" y="26" width="180" height="72" rx="7"/>
+  <rect class="pill" x="74" y="38" width="34" height="13" rx="6.5"/>
+  <rect class="t" x="74" y="60" width="120" height="6" rx="3"/>
+  <g>
+    <rect class="t" x="74" y="74" width="42" height="6" rx="3"/>
+    <animate attributeName="width" values="0;42;42;0" keyTimes="0;0.5;0.85;1" dur="4s" repeatCount="indefinite" attributeType="XML"/>
+  </g>
+  <rect class="c" x="118" y="72" width="1.5" height="10">
+    <animate attributeName="x" values="76;120;120;76" keyTimes="0;0.5;0.85;1" dur="4s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="1;0;1;0;1;1" dur="1s" repeatCount="indefinite"/>
+  </rect>
+</svg>
