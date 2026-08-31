@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 130" width="300" height="130" role="img" aria-label="ก่อน: จออยู่ใน section แล้วเส้นลากทะลุ หลัง: อ้อมให้">
+  <style>
+    .sec { fill: none; stroke: #B8B8C4; stroke-width: 1.5; stroke-dasharray: 5 4; }
+    .s { fill: #F5F5F7; stroke: #D5D5DC; stroke-width: 1.5; }
+    .s2 { fill: #ECECF1; stroke: #C9C9D2; stroke-width: 1.5; }
+    .b { fill: #DEDEE6; }
+    .w { fill: none; stroke: #1E1E24; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .bad { stroke: #E5484D; }
+    .c { fill: #1E1E24; }
+    .cbad { fill: #E5484D; }
+    .sname { font: 500 9px -apple-system, sans-serif; fill: #9A9AA6; }
+    .tag { font: 600 9px -apple-system, sans-serif; }
+    .before { fill: #E5484D; }
+    .after { fill: #12A594; }
+    @media (prefers-color-scheme: dark) {
+      .sec { stroke: #4A4A56; }
+      .s { fill: #26262C; stroke: #3A3A44; }
+      .s2 { fill: #2E2E36; stroke: #43434F; }
+      .b { fill: #3A3A44; }
+      .w { stroke: #E8E8EE; }
+      .c { fill: #E8E8EE; }
+    }
+  </style>
+  <text class="sname" x="12" y="18">Section</text>
+  <rect class="sec" x="8" y="22" width="284" height="76" rx="6"/>
+  <rect class="s" x="20" y="34" width="58" height="52" rx="5"/>
+  <rect class="b" x="28" y="42" width="26" height="4" rx="2"/>
+  <rect class="s2" x="121" y="34" width="58" height="52" rx="5"/>
+  <rect class="b" x="129" y="42" width="26" height="4" rx="2"/>
+  <rect class="s" x="222" y="34" width="58" height="52" rx="5"/>
+  <rect class="b" x="230" y="42" width="26" height="4" rx="2"/>
+  <g>
+    <path class="w bad" d="M78 62 L212 62"/>
+    <path class="cbad" d="M210 56 L222 62 L210 68 Z"/>
+    <circle class="cbad" cx="78" cy="62" r="3"/>
+    <text class="tag before" x="150" y="118" text-anchor="middle">ก่อน — จอใน section ไม่ถูกอ้อม</text>
+    <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.42;0.5;0.92;1" dur="5s" repeatCount="indefinite"/>
+  </g>
+  <g opacity="0">
+    <path class="w" d="M78 62 L92 62 Q100 62 100 70 L100 84 Q100 92 108 92 L192 92 Q200 92 200 84 L200 70 Q200 62 208 62 L212 62"/>
+    <path class="c" d="M210 56 L222 62 L210 68 Z"/>
+    <circle class="c" cx="78" cy="62" r="3"/>
+    <text class="tag after" x="150" y="118" text-anchor="middle">หลัง — อ้อมให้ถูกแล้ว</text>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.42;0.5;0.92;1" dur="5s" repeatCount="indefinite"/>
+  </g>
+</svg>

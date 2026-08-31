@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 130" width="300" height="130" role="img" aria-label="ก่อน: ชื่อเฟรมลอยทับงาน หลัง: ไม่มีแล้ว">
+  <style>
+    .s { fill: #F5F5F7; stroke: #D5D5DC; stroke-width: 1.5; }
+    .b { fill: #DEDEE6; }
+    .card { fill: #FFFFFF; stroke: #E1E1E6; stroke-width: 1.5; }
+    .t { fill: #C9C9D2; }
+    .pill { fill: #0D99FF; }
+    .w { fill: none; stroke: #1E1E24; stroke-width: 2; stroke-dasharray: 3 3; }
+    .c { fill: #1E1E24; }
+    .name { font: 500 9px -apple-system, sans-serif; fill: #9A9AA6; }
+    .tag { font: 600 9px -apple-system, sans-serif; }
+    .before { fill: #E5484D; }
+    .after { fill: #12A594; }
+    @media (prefers-color-scheme: dark) {
+      .s { fill: #26262C; stroke: #3A3A44; }
+      .b { fill: #3A3A44; }
+      .card { fill: #1C1C21; stroke: #3A3A44; }
+      .t { fill: #4A4A56; }
+      .w { stroke: #E8E8EE; }
+      .c { fill: #E8E8EE; }
+    }
+  </style>
+  <rect class="s" x="14" y="30" width="86" height="76" rx="6"/>
+  <rect class="b" x="24" y="42" width="38" height="5" rx="2.5"/>
+  <path class="w" d="M100 66 L136 66"/>
+  <circle class="c" cx="100" cy="66" r="3"/>
+  <rect class="card" x="140" y="42" width="144" height="50" rx="6"/>
+  <rect class="pill" x="150" y="52" width="28" height="11" rx="5.5"/>
+  <rect class="t" x="150" y="70" width="112" height="5" rx="2.5"/>
+  <g>
+    <text class="name" x="140" y="37">Annotation</text>
+    <text class="tag before" x="150" y="120">ก่อน — ชื่อเฟรมลอยทับงาน</text>
+    <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.42;0.5;0.92;1" dur="5s" repeatCount="indefinite"/>
+  </g>
+  <g opacity="0">
+    <text class="tag after" x="150" y="120">หลัง — ไม่มีแล้ว</text>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.42;0.5;0.92;1" dur="5s" repeatCount="indefinite"/>
+  </g>
+</svg>
