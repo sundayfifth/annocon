@@ -19,7 +19,9 @@ import {
   type AnnotationLayout,
   type AnnotationRecord,
   CARD_APPROACH_STUB,
-  DEFAULT_METRICS,
+  type AnnotationSize,
+  type CardMetrics,
+  metricsForSize,
   MIN_OUTSIDE_CARD_WIDTH,
   OUTSIDE_MARGIN,
   annotationLayout,
@@ -286,9 +288,6 @@ interface Card {
   readonly text: TextNode
 }
 
-const CARD_PADDING_X = 12
-const CARD_PADDING_Y_TOP = 10
-const CARD_PADDING_Y_BOTTOM = 10
 const CATEGORY_PILL_KEY = 'annotationCategoryPill'
 
 /**
@@ -297,7 +296,11 @@ const CATEGORY_PILL_KEY = 'annotationCategoryPill'
  * first child (inserted, not appended) so it always reads above the text
  * regardless of which one was created first.
  */
-async function ensureCategoryPill(card: FrameNode, category: Category | null): Promise<void> {
+async function ensureCategoryPill(
+  card: FrameNode,
+  category: Category | null,
+  metrics: CardMetrics
+): Promise<void> {
   const existingPill = card.children.find(
     (child): child is FrameNode =>
       child.type === 'FRAME' && child.getPluginData(CATEGORY_PILL_KEY) === 'true'
@@ -311,14 +314,18 @@ async function ensureCategoryPill(card: FrameNode, category: Category | null): P
     pill.layoutMode = 'HORIZONTAL'
     pill.primaryAxisSizingMode = 'AUTO'
     pill.counterAxisSizingMode = 'AUTO'
-    pill.paddingLeft = 8
-    pill.paddingRight = 8
-    pill.paddingTop = 3
-    pill.paddingBottom = 3
     pill.cornerRadius = 999
     pill.setPluginData(CATEGORY_PILL_KEY, 'true')
     card.insertChild(0, pill)
   }
+  // Padding derived from the pill's own type size rather than fixed, so the
+  // pill keeps its shape at every card size instead of turning into a thin
+  // capsule around big text. Reasserted every sync so a size change redraws
+  // pills that already exist.
+  pill.paddingLeft = Math.round(metrics.categoryFontSize * 0.8)
+  pill.paddingRight = pill.paddingLeft
+  pill.paddingTop = Math.round(metrics.categoryFontSize * 0.3)
+  pill.paddingBottom = pill.paddingTop
   pill.name = 'Category'
   pill.fills = [figma.util.solidPaint(category.color)]
   let label = pill.children.find((child): child is TextNode => child.type === 'TEXT')
@@ -326,9 +333,9 @@ async function ensureCategoryPill(card: FrameNode, category: Category | null): P
     label = figma.createText()
     await figma.loadFontAsync(PILL_FONT)
     label.fontName = PILL_FONT
-    label.fontSize = 10
     pill.appendChild(label)
   }
+  label.fontSize = metrics.categoryFontSize
   if (label.characters !== category.name) {
     await figma.loadFontAsync(PILL_FONT)
     label.characters = category.name
@@ -343,19 +350,23 @@ async function ensureCard(
   existing: FrameNode | null,
   ownerId: string,
   width: number,
-  category: Category | null
+  category: Category | null,
+  metrics: CardMetrics
 ): Promise<Card> {
   const card = existing ?? figma.createFrame()
   card.name = CARD_LAYER_NAME
   card.layoutMode = 'VERTICAL'
   card.primaryAxisSizingMode = 'AUTO'
   card.counterAxisSizingMode = 'FIXED'
-  card.paddingLeft = CARD_PADDING_X
-  card.paddingRight = CARD_PADDING_X
-  card.paddingTop = CARD_PADDING_Y_TOP
-  card.paddingBottom = CARD_PADDING_Y_BOTTOM
-  card.itemSpacing = 6
-  card.cornerRadius = 8
+  // Reasserted every sync rather than only on creation, so changing an
+  // existing annotation's size redraws it instead of only affecting the next
+  // one — same reasoning as the font and category colour below.
+  card.paddingLeft = metrics.paddingX
+  card.paddingRight = metrics.paddingX
+  card.paddingTop = metrics.paddingY
+  card.paddingBottom = metrics.paddingY
+  card.itemSpacing = metrics.itemSpacing
+  card.cornerRadius = metrics.cornerRadius
   card.fills = [figma.util.solidPaint(CARD_FILL)]
   card.strokes = [figma.util.solidPaint(CARD_STROKE)]
   card.strokeWeight = 1
@@ -377,10 +388,10 @@ async function ensureCard(
     // the not-yet-reassigned current font. `fontName` is the one property
     // that only needs the *new* font loaded, not the old one.
     text.fontName = await resolveCardFont()
-    text.fontSize = 13
     text.lineHeight = { value: 150, unit: 'PERCENT' }
     text.fills = [figma.util.solidPaint(CARD_TEXT)]
   }
+  text.fontSize = metrics.fontSize
   // Reasserted every sync, not just on creation: a card whose text node was
   // created before this fix existed would otherwise stay broken forever —
   // this is also what was still leaving Thai text in a loopless fallback
@@ -394,8 +405,8 @@ async function ensureCard(
   // is what actually works.
   text.textAutoResize = 'HEIGHT'
   text.layoutSizingHorizontal = 'FIXED'
-  text.resize(width - CARD_PADDING_X * 2, text.height)
-  await ensureCategoryPill(card, category)
+  text.resize(width - metrics.paddingX * 2, text.height)
+  await ensureCategoryPill(card, category, metrics)
   return { card, text }
 }
 
@@ -518,20 +529,24 @@ interface ResolvedLayout {
  * never bleeds into whatever is sitting next door.
  */
 function computeLayout(target: SceneNode, rect: Rect, record: AnnotationRecord): ResolvedLayout {
+  const metrics = metricsForSize(record.size)
   const frame = findEnclosingFrame(target)
   const frameRect = frame?.absoluteBoundingBox ?? null
   if (frame === null || frameRect === null) {
-    return { layout: annotationLayout(rect, record), cardWidth: DEFAULT_METRICS.cardWidth, side: null }
+    return { layout: annotationLayout(rect, record, metrics), cardWidth: metrics.cardWidth, side: null }
   }
 
   const side = resolveOutsideSide(rect, frameRect)
   const gap = nearestNeighborGap(frameRect, side, frame.id)
+  // A small card is already narrower than the floor a large one shrinks to,
+  // so the floor cannot be allowed to widen it back out.
+  const floor = Math.min(MIN_OUTSIDE_CARD_WIDTH, metrics.cardWidth)
   const cardWidth = Number.isFinite(gap)
-    ? Math.max(MIN_OUTSIDE_CARD_WIDTH, Math.min(DEFAULT_METRICS.cardWidth, gap - OUTSIDE_MARGIN - NEIGHBOR_SAFETY_GAP))
-    : DEFAULT_METRICS.cardWidth
+    ? Math.max(floor, Math.min(metrics.cardWidth, gap - OUTSIDE_MARGIN - NEIGHBOR_SAFETY_GAP))
+    : metrics.cardWidth
 
   const layout = annotationLayoutOutsideFrame(rect, frameRect, record, {
-    ...DEFAULT_METRICS,
+    ...metrics,
     cardWidth
   })
   return { layout, cardWidth, side }
@@ -635,7 +650,13 @@ async function syncAnnotationBody(
     const resolved = computeLayout(target, rect, record)
     const { layout } = resolved
 
-    const { card, text } = await ensureCard(rendered.card, target.id, resolved.cardWidth, category)
+    const { card, text } = await ensureCard(
+      rendered.card,
+      target.id,
+      resolved.cardWidth,
+      category,
+      metricsForSize(record.size)
+    )
     card.name = CARD_LAYER_NAME
     card.x = layout.cardTopLeft.x
     card.y = layout.cardTopLeft.y
@@ -867,6 +888,19 @@ export async function setAnnotationCategory(target: SceneNode, categoryId: strin
   const record: AnnotationRecord =
     existing === null ? { ...createAnnotationRecord(''), categoryId } : { ...existing, categoryId }
   writeAnnotationRecord(target, record)
+  await syncAnnotation(target)
+  await finalizeLayout()
+}
+
+/**
+ * Changes how big an annotation's card is drawn. Every visual the size
+ * decides is reasserted on sync, so this redraws the card in place rather
+ * than only affecting annotations made afterwards.
+ */
+export async function setAnnotationSize(target: SceneNode, size: AnnotationSize): Promise<void> {
+  const existing = getAnnotationRecord(target)
+  if (existing === null) return
+  writeAnnotationRecord(target, { ...existing, size })
   await syncAnnotation(target)
   await finalizeLayout()
 }

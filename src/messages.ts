@@ -8,6 +8,7 @@
  */
 
 import type { Magnet } from './core/anchor.js'
+import type { AnnotationSize } from './core/annotation.js'
 import type { Category } from './core/category.js'
 import type { ConnectorCap, ConnectorDetour, ConnectorLineStyle } from './core/connector.js'
 
@@ -37,6 +38,8 @@ export interface SelectionSummary {
   readonly supportsNativeAnnotation: boolean
   /** The node's current annotation note, or `null` if it has none. */
   readonly annotationText: string | null
+  /** The annotation's card size, or `null` when the node has no annotation. */
+  readonly annotationSize: AnnotationSize | null
   /** The node's current category id, or `null` if it has none. */
   readonly categoryId: string | null
   /** Set when this node is itself a connector — lets the UI show its style controls. */
@@ -81,6 +84,16 @@ export interface SetAnnotationCategoryPayload {
 export interface SetAnnotationCategoryHandler {
   name: 'SET_ANNOTATION_CATEGORY'
   handler: (payload: SetAnnotationCategoryPayload) => void
+}
+
+export interface SetAnnotationSizePayload {
+  readonly targetId: string
+  readonly size: AnnotationSize
+}
+
+export interface SetAnnotationSizeHandler {
+  name: 'SET_ANNOTATION_SIZE'
+  handler: (payload: SetAnnotationSizePayload) => void
 }
 
 export interface AddCategoryPayload {

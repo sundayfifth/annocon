@@ -7,6 +7,7 @@ import {
   IconButton,
   IconClose16,
   Muted,
+  SegmentedControl,
   Tabs,
   Text,
   Textbox,
@@ -19,6 +20,7 @@ import { emit, on } from '@create-figma-plugin/utilities'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
 import type { Magnet } from './core/anchor.js'
+import { ANNOTATION_SIZES, type AnnotationSize, DEFAULT_ANNOTATION_SIZE } from './core/annotation.js'
 import { CATEGORY_PALETTE, type Category, contrastingTextColor } from './core/category.js'
 import {
   CONNECTOR_CAPS,
@@ -37,6 +39,7 @@ import type {
   SelectionChangedHandler,
   SelectionSummary,
   SetAnnotationCategoryHandler,
+  SetAnnotationSizeHandler,
   SetAnnotationTextHandler,
   UpdateConnectorAnchorHandler,
   UpdateConnectorStyleHandler
@@ -582,6 +585,21 @@ const DETOUR_OPTIONS: Array<{ value: ConnectorDetour; text: string }> = [
   { text: 'Right', value: 'RIGHT' }
 ]
 
+/**
+ * Whole words rather than S/M/L: the control sits directly under the note
+ * field with nothing labelling it, so it has to say what it does on its own.
+ */
+const SIZE_LABELS: Readonly<Record<AnnotationSize, string>> = {
+  S: 'Small',
+  M: 'Medium',
+  L: 'Large'
+}
+
+const SIZE_OPTIONS = ANNOTATION_SIZES.map((size) => ({
+  value: size,
+  children: SIZE_LABELS[size]
+}))
+
 function SectionLabel({ children }: { children: string }) {
   return (
     <Text>
@@ -818,6 +836,17 @@ function AnnotateEditor({
         placeholder="Type a note…"
         rows={3}
         value={text}
+      />
+      <VerticalSpace space="small" />
+      <SegmentedControl
+        onChange={(event) => {
+          emit<SetAnnotationSizeHandler>('SET_ANNOTATION_SIZE', {
+            targetId: node.id,
+            size: event.currentTarget.value as AnnotationSize
+          })
+        }}
+        options={SIZE_OPTIONS}
+        value={node.annotationSize ?? DEFAULT_ANNOTATION_SIZE}
       />
       <VerticalSpace space="small" />
       <Text>

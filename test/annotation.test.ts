@@ -2,14 +2,19 @@ import { describe, expect, it } from 'vitest'
 
 import type { Rect } from '../src/core/anchor.js'
 import {
+  ANNOTATION_SIZES,
   ANNOTATION_VERSION,
+  DEFAULT_ANNOTATION_SIZE,
   type AnnotationRecord,
+  type CardMetrics,
   DEFAULT_CARD_OFFSET,
+  DEFAULT_METRICS,
   annotationLayout,
   annotationLayoutOutsideFrame,
   createAnnotationRecord,
   elbowPoints,
   leaderIntoCard,
+  metricsForSize,
   nearestPointOnRect,
   parseAnnotationRecord,
   resolveCardStacking,
@@ -46,7 +51,8 @@ describe('parseAnnotationRecord', () => {
       text: 'hi',
       side: 'AUTO',
       cardOffset: DEFAULT_CARD_OFFSET,
-      categoryId: null
+      categoryId: null,
+      size: DEFAULT_ANNOTATION_SIZE
     })
   })
 
@@ -66,6 +72,63 @@ describe('parseAnnotationRecord', () => {
     // another frame — a relative coordinate read as if it were absolute.
     const parsed = parseAnnotationRecord('{"text":"hi","cardOffset":{"x":48213,"y":-9110}}')
     expect(parsed?.cardOffset).toEqual(DEFAULT_CARD_OFFSET)
+  })
+})
+
+describe('annotation size on the record', () => {
+  it('starts at M', () => {
+    expect(createAnnotationRecord('note').size).toBe('M')
+  })
+
+  it('round-trips a chosen size', () => {
+    const large = record({ size: 'L' })
+    expect(parseAnnotationRecord(serialiseAnnotationRecord(large))?.size).toBe('L')
+  })
+
+  it('falls back to M for a missing or untrustworthy size', () => {
+    const raw = JSON.stringify({ text: 'note', size: 'XXL' })
+    expect(parseAnnotationRecord(raw)?.size).toBe('M')
+    expect(parseAnnotationRecord(JSON.stringify({ text: 'note' }))?.size).toBe('M')
+  })
+})
+
+describe('metricsForSize', () => {
+  it('leaves M exactly as the card has always been', () => {
+    expect(metricsForSize('M')).toEqual(DEFAULT_METRICS)
+  })
+
+  it('scales every part of the card together, in both directions', () => {
+    const small = metricsForSize('S')
+    const medium = metricsForSize('M')
+    const large = metricsForSize('L')
+    for (const key of Object.keys(medium) as Array<keyof CardMetrics>) {
+      expect(small[key]).toBeLessThan(medium[key])
+      expect(large[key]).toBeGreaterThan(medium[key])
+    }
+  })
+
+  /**
+   * A card is a fixed width with text wrapped inside it, so the ratio of
+   * type size to column width is what decides how many words land on a
+   * line. Holding it roughly steady across the three sizes is what makes
+   * them read as the same card at different scales rather than three
+   * differently-proportioned cards.
+   */
+  it('keeps the text column in proportion to the type', () => {
+    for (const size of ANNOTATION_SIZES) {
+      const { cardWidth, fontSize } = metricsForSize(size)
+      const charactersPerLine = cardWidth / fontSize
+      expect(charactersPerLine).toBeGreaterThan(8)
+      expect(charactersPerLine).toBeLessThan(12)
+    }
+  })
+
+  it('gives whole-pixel type sizes at every size', () => {
+    for (const size of ANNOTATION_SIZES) {
+      const { fontSize, categoryFontSize } = metricsForSize(size)
+      expect(Number.isInteger(fontSize)).toBe(true)
+      expect(Number.isInteger(categoryFontSize)).toBe(true)
+    }
   })
 })
 

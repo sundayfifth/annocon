@@ -30,8 +30,11 @@ export interface AnnotationRecord {
   readonly cardOffset: Point
   /** id into the file-wide category list (`core/category.ts`), or `null` for none. */
   readonly categoryId: string | null
+  /** How big the card is drawn — see `metricsForSize`. */
+  readonly size: AnnotationSize
 }
 
+/** What the layout maths needs: where the badge sits and how wide the card is. */
 export interface LayoutMetrics {
   readonly badgeDiameter: number
   /** Gap between the target's edge and the near edge of the badge. */
@@ -39,18 +42,92 @@ export interface LayoutMetrics {
   readonly cardWidth: number
 }
 
-export const DEFAULT_METRICS: LayoutMetrics = {
-  // A small marker dot, not a numbered badge — Figma's own native
-  // annotations just mark the spot with a dot; the leader line itself
-  // already shows which element it points to.
-  badgeDiameter: 8,
-  badgeGap: 12,
-  // Matches MIN_OUTSIDE_CARD_WIDTH — a 120px card plus 20px OUTSIDE_MARGIN on
-  // each side lands neatly in a 160px gap between two frames, which is what
-  // this was tuned against. A wider default just meant more cards than that
-  // needed to shrink to fit, for no benefit.
-  cardWidth: 120
+/**
+ * Everything a size decides, layout and appearance together.
+ *
+ * Kept here rather than as constants in `scene/` so the three sizes are one
+ * table that can be read down a column and compared — and so the
+ * relationships that make them read as one card at three scales, rather than
+ * three differently-proportioned cards, are testable.
+ */
+export interface CardMetrics extends LayoutMetrics {
+  readonly fontSize: number
+  readonly categoryFontSize: number
+  readonly paddingX: number
+  readonly paddingY: number
+  readonly itemSpacing: number
+  readonly cornerRadius: number
 }
+
+/** How big a card is drawn. `M` is what every annotation was before the choice existed. */
+export type AnnotationSize = 'S' | 'M' | 'L'
+
+export const ANNOTATION_SIZES: ReadonlyArray<AnnotationSize> = ['S', 'M', 'L']
+
+export const DEFAULT_ANNOTATION_SIZE: AnnotationSize = 'M'
+
+/**
+ * `M` is the card exactly as it always was, so every existing annotation
+ * renders unchanged.
+ *
+ * The other two are not a single multiplier: type is rounded to whole pixels
+ * (a 13.6px card font renders soft), and the card's width tracks its type
+ * closely enough to keep roughly the same number of words per line at every
+ * size — that ratio is what makes S and L read as the same card seen from
+ * further away rather than as three different cards.
+ *
+ * `L` is sized for reading a whole flow zoomed out, which is the case that
+ * asked for this: at `M` the note is legible only once you are close enough
+ * that you can no longer see what it is annotating.
+ */
+const METRICS_BY_SIZE: Readonly<Record<AnnotationSize, CardMetrics>> = {
+  S: {
+    badgeDiameter: 6,
+    badgeGap: 9,
+    cardWidth: 96,
+    fontSize: 10,
+    categoryFontSize: 8,
+    paddingX: 9,
+    paddingY: 7,
+    itemSpacing: 4,
+    cornerRadius: 6
+  },
+  M: {
+    // A small marker dot, not a numbered badge — Figma's own native
+    // annotations just mark the spot with a dot; the leader line itself
+    // already shows which element it points to.
+    badgeDiameter: 8,
+    badgeGap: 12,
+    // Matches MIN_OUTSIDE_CARD_WIDTH — a 120px card plus 20px OUTSIDE_MARGIN
+    // on each side lands neatly in a 160px gap between two frames, which is
+    // what this was tuned against. A wider default just meant more cards
+    // than that needed to shrink to fit, for no benefit.
+    cardWidth: 120,
+    fontSize: 13,
+    categoryFontSize: 10,
+    paddingX: 12,
+    paddingY: 10,
+    itemSpacing: 6,
+    cornerRadius: 8
+  },
+  L: {
+    badgeDiameter: 12,
+    badgeGap: 18,
+    cardWidth: 190,
+    fontSize: 20,
+    categoryFontSize: 15,
+    paddingX: 18,
+    paddingY: 15,
+    itemSpacing: 9,
+    cornerRadius: 12
+  }
+}
+
+export function metricsForSize(size: AnnotationSize): CardMetrics {
+  return METRICS_BY_SIZE[size]
+}
+
+export const DEFAULT_METRICS: CardMetrics = METRICS_BY_SIZE[DEFAULT_ANNOTATION_SIZE]
 
 export const DEFAULT_CARD_OFFSET: Point = { x: 22, y: -10 }
 
@@ -67,14 +144,22 @@ export interface AnnotationLayout {
   readonly cardTopLeft: Point
 }
 
-export function createAnnotationRecord(text: string): AnnotationRecord {
+export function createAnnotationRecord(
+  text: string,
+  size: AnnotationSize = DEFAULT_ANNOTATION_SIZE
+): AnnotationRecord {
   return {
     v: ANNOTATION_VERSION,
     text,
     side: 'AUTO',
     cardOffset: DEFAULT_CARD_OFFSET,
-    categoryId: null
+    categoryId: null,
+    size
   }
+}
+
+function isAnnotationSize(value: unknown): value is AnnotationSize {
+  return typeof value === 'string' && (ANNOTATION_SIZES as ReadonlyArray<string>).includes(value)
 }
 
 /**
@@ -105,6 +190,9 @@ export function parseAnnotationRecord(raw: string): AnnotationRecord | null {
     v: ANNOTATION_VERSION,
     text: candidate.text,
     side: isMagnet(candidate.side) ? candidate.side : 'AUTO',
+    // Every annotation written before sizes existed reads back as M, which
+    // is the size it was drawn at — nothing on canvas moves.
+    size: isAnnotationSize(candidate.size) ? candidate.size : DEFAULT_ANNOTATION_SIZE,
     cardOffset:
       isPoint(candidate.cardOffset) && isSaneCardOffset(candidate.cardOffset)
         ? candidate.cardOffset

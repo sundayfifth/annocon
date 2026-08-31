@@ -17,6 +17,13 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] Edit the note → canvas text updates, no duplicate nodes
 - [ ] Delete the note → every rendered node for it is gone, no orphans in the layer panel
 - [ ] Select a group or section (no native `annotations`) → still renders, no error
+- [ ] Switch a note between Small / Medium / Large → the card, its type, its
+      padding and its category pill all resize together, in place
+- [ ] An annotation made before sizes existed → renders at Medium, unchanged
+- [ ] A Large card next to a frame with a narrow gap → shrinks to fit rather
+      than bleeding into the neighbouring frame
+- [ ] No frame name is drawn above an annotation card or a connector's label
+      pill on the canvas
 - [ ] Dev Mode / Inspect shows the same annotation (only if spike S1 passed)
 - [ ] Export the parent frame as PNG → the annotation is in the image
 - [ ] Presentation mode → the annotation is visible

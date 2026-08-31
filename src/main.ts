@@ -16,6 +16,8 @@ import type {
   SelectionSummary,
   SetAnnotationCategoryHandler,
   SetAnnotationCategoryPayload,
+  SetAnnotationSizeHandler,
+  SetAnnotationSizePayload,
   SetAnnotationTextHandler,
   SetAnnotationTextPayload,
   UpdateConnectorAnchorHandler,
@@ -35,6 +37,7 @@ import {
   removeRenderedNodesForOwner,
   roleOf,
   setAnnotationCategory,
+  setAnnotationSize,
   setAnnotationText,
   syncAnnotation,
   updateCardOffsetFromDrag
@@ -122,6 +125,7 @@ function summariseSelection(): Array<SelectionSummary> {
       // property, so the native dual-write has to be skipped for them.
       supportsNativeAnnotation: 'annotations' in node,
       annotationText: record?.text ?? null,
+      annotationSize: record?.size ?? null,
       categoryId: record?.categoryId ?? null,
       connectorStyle:
         connectorRecord === null
@@ -165,6 +169,13 @@ async function handleSetAnnotationText({ targetId, text }: SetAnnotationTextPayl
   const node = await figma.getNodeByIdAsync(targetId)
   if (node === null || !('absoluteBoundingBox' in node)) return
   await setAnnotationText(node, text)
+  emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
+}
+
+async function handleSetAnnotationSize({ targetId, size }: SetAnnotationSizePayload): Promise<void> {
+  const node = await figma.getNodeByIdAsync(targetId)
+  if (node === null || !('absoluteBoundingBox' in node)) return
+  await setAnnotationSize(node, size)
   emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
 }
 
@@ -484,6 +495,10 @@ export default function main(): void {
 
   on<SetAnnotationCategoryHandler>('SET_ANNOTATION_CATEGORY', (payload) => {
     fireAndForget(handleSetAnnotationCategory(payload))
+  })
+
+  on<SetAnnotationSizeHandler>('SET_ANNOTATION_SIZE', (payload) => {
+    fireAndForget(handleSetAnnotationSize(payload))
   })
 
   on<AddCategoryHandler>('ADD_CATEGORY', handleAddCategory)
