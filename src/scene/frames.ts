@@ -30,20 +30,22 @@ export function findEnclosingFrame(node: SceneNode): FrameNode | null {
  * section reports itself and gets treated as a foreign obstacle by its own
  * connector.
  *
- * `GROUP`s are stepped over rather than reported, matching
+ * `GROUP`s and `SECTION`s are stepped over rather than reported, matching
  * `collectRouteObstacles`, which looks inside them for the screens instead
- * of treating the group as one box. A group is a way of handling several
- * things at once, not a thing in its own right — people group a set of
- * screens and still mean the screens. Reporting the group here would name
- * something that is never collected as an obstacle, so a connector's own
- * screen would come back as a foreign box for it to avoid.
+ * of treating the container as one box. Both are ways of handling several
+ * things at once, not things in their own right — people put a flow in a
+ * section and still mean the screens. Reporting the container here would
+ * name something that is never collected as an obstacle, so a connector's
+ * own screen would come back as a foreign box for it to avoid.
  */
+const STEPPED_OVER: ReadonlySet<string> = new Set(['GROUP', 'SECTION'])
+
 export function topLevelAncestorIdOf(node: SceneNode): string {
   let current: BaseNode = node
   let outermost: BaseNode = node
   while (current.parent !== null && current.parent.type !== 'PAGE' && current.parent.type !== 'DOCUMENT') {
     current = current.parent
-    if (current.type !== 'GROUP') outermost = current
+    if (!STEPPED_OVER.has(current.type)) outermost = current
   }
   return outermost.id
 }

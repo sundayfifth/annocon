@@ -57,6 +57,11 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       not swerve around its own label.
 - [ ] Endpoints nested inside frames: the line does not try to avoid the frame
       it starts or ends in.
+- [ ] Three screens **inside a section**, connector from the first to the
+      third: it goes around the middle one, same as on bare canvas. A section
+      holds screens rather than being one, so it is looked inside, never
+      avoided as a box.
+- [ ] Same with the three screens **grouped** instead.
 - [ ] A page with ~50 top-level frames: dragging a connected frame still tracks
       without the editor stalling.
 - [ ] **Go around** set to `Below` on a line that auto-routed above: it flips

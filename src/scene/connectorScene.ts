@@ -398,8 +398,8 @@ export interface RouteObstacle {
 
 /**
  * The types that count as "another screen in the way". Deliberately only
- * the page's own children (groups aside, which are looked inside), and only
- * container-ish types: the point is to
+ * the page's own children (groups and sections aside, which are looked
+ * inside), and only container-ish types: the point is to
  * route around the *screens* on the page, which is what a person means by
  * "it doesn't dodge anything". Treating every layer as an obstacle would
  * make a route bend around a button inside a frame it was already routing
@@ -410,13 +410,28 @@ const OBSTACLE_TYPES: ReadonlySet<string> = new Set([
   'FRAME',
   'COMPONENT',
   'COMPONENT_SET',
-  'INSTANCE',
-  'SECTION'
+  'INSTANCE'
 ])
 
 /**
+ * Containers that hold screens rather than being one. Descended into, and
+ * never themselves an obstacle.
+ *
+ * A `SECTION` is where a person puts a whole flow, so it is routinely large
+ * enough to hold every screen a connector runs between — treated as one box
+ * it swallows them all, and a line between two screens inside it has nothing
+ * left to avoid. Worse, it is then the top-level ancestor of both endpoints,
+ * so the one box on offer is exempt as their own. That is exactly the report:
+ * three screens in a section, and the line straight through the middle one.
+ *
+ * The same reasoning as `GROUP`, and for the same reason it must be mirrored
+ * in `topLevelAncestorIdOf`.
+ */
+const OBSTACLE_CONTAINERS: ReadonlySet<string> = new Set(['GROUP', 'SECTION'])
+
+/**
  * Every box on the page a connector should route around — the page's own
- * children, plus whatever sits inside a group at that level.
+ * children, plus whatever sits inside a group or section at that level.
  *
  * Our own rendered nodes are skipped: an annotation card and a connector's
  * label pill are both `FRAME`s sitting at the top level, and treating them
@@ -507,7 +522,7 @@ function collectObstaclesFrom(
 ): void {
   for (const node of nodes) {
     if (!node.visible) continue
-    if (node.type === 'GROUP') {
+    if (OBSTACLE_CONTAINERS.has(node.type) && 'children' in node) {
       collectObstaclesFrom(node.children, into)
       continue
     }
