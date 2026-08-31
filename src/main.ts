@@ -32,6 +32,7 @@ import {
   getAnnotationRecord,
   lastKnownOwnerOf,
   lastKnownRoleOf,
+  annotationTargetOf,
   ownerIdOf,
   reconcileAllAnnotations,
   removeRenderedNodesForOwner,
@@ -113,8 +114,20 @@ function summariseSelection(): Array<SelectionSummary> {
   const orderedNodes = selectionOrder
     .map((id) => nodesById.get(id))
     .filter((node): node is SceneNode => typeof node !== 'undefined')
+    // A selected card or leader stands for the note it shows — see
+    // `annotationTargetOf`.
+    .map((node) => annotationTargetOf(node) ?? node)
+  // Selecting a layer together with its own card resolves to that layer
+  // twice, and two entries is what Connect reads as "two things to join" —
+  // it would offer to string a connector between a layer and itself.
+  const seen = new Set<string>()
+  const uniqueNodes = orderedNodes.filter((node) => {
+    if (seen.has(node.id)) return false
+    seen.add(node.id)
+    return true
+  })
 
-  return orderedNodes.map((node) => {
+  return uniqueNodes.map((node) => {
     const record = getAnnotationRecord(node)
     const connectorRecord = getConnectorRecord(node)
     return {

@@ -40,6 +40,11 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       neighbour (the measurement looks inside sections and groups).
 - [ ] Pick a size after dragging a width → the dragged width is dropped and
       the preset's width applies (this is the way back)
+- [ ] Select the **card itself** (not the layer it annotates) → the Annotate
+      tab shows that note, its category and its size, so the size buttons are
+      reachable straight after dragging the card
+- [ ] Select a layer **and** its own card together → Connect does not offer to
+      join the layer to itself
 - [ ] No frame name is drawn above an annotation card or a connector's label
       pill on the canvas
 - [ ] Dev Mode / Inspect shows the same annotation (only if spike S1 passed)

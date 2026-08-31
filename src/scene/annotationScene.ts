@@ -260,6 +260,28 @@ export function ownerIdOf(node: SceneNode): string | null {
   return value === '' ? null : value
 }
 
+/**
+ * The annotated layer a rendered node belongs to — `null` when `node` is not
+ * one of ours, or its target is gone.
+ *
+ * Lets a selection of a card stand for a selection of the note it shows: the
+ * record lives on the layer being annotated, so without this, someone who
+ * has just dragged a card is holding the one thing the panel has nothing to
+ * say about.
+ *
+ * Scans rather than taking the id to `getNodeByIdAsync` so it can stay
+ * synchronous — its caller runs on every `selectionchange`.
+ */
+export function annotationTargetOf(node: SceneNode): SceneNode | null {
+  const ownerId = ownerIdOf(node)
+  if (ownerId === null) return null
+  return (
+    figma.currentPage
+      .findAllWithCriteria({ pluginData: { keys: [ANNOTATION_KEY] } })
+      .find((candidate) => candidate.id === ownerId) ?? null
+  )
+}
+
 export function roleOf(node: SceneNode): Role | null {
   const value = node.getPluginData(ROLE_KEY)
   return value === 'badge' || value === 'card' || value === 'leader' ? value : null
