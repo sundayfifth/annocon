@@ -641,6 +641,19 @@ function shrinkToFit(
 const inFlightSyncs = new Map<string, Promise<void>>()
 
 /**
+ * Targets whose record changed while a sync for them was already running.
+ *
+ * Coalescing has to stop two syncs *overlapping*, but the first version of
+ * it also threw the second one away — and a drag delivers a change per
+ * frame, so whenever the last one landed mid-render, the width the person
+ * finished on was never drawn. The card stopped wherever the previous frame
+ * had left it, which is exactly the "sometimes it works" a resize was
+ * reported with. Running once more after the first finishes is not an
+ * overlap, so it costs nothing the coalescing was protecting.
+ */
+const staleAfterSync = new Set<string>()
+
+/**
  * Renders (or updates) the annotation for one target node from its record.
  * Pass `known` when the caller already has a fresh `findRenderedNodes`
  * result for this target (see `removeRenderedNodesForOwner`'s `known` for
@@ -650,9 +663,16 @@ const inFlightSyncs = new Map<string, Promise<void>>()
 export async function syncAnnotation(target: SceneNode, known?: RenderedNodes): Promise<void> {
   const inFlight = inFlightSyncs.get(target.id)
   if (typeof inFlight !== 'undefined') {
+    staleAfterSync.add(target.id)
     await inFlight
+    // Whoever removes the flag runs the follow-up, so several callers
+    // waiting on the same sync produce one re-render between them rather
+    // than one each. `known` is deliberately dropped: it was read before
+    // the wait and is exactly what is now out of date.
+    if (staleAfterSync.delete(target.id)) await syncAnnotation(target)
     return
   }
+  staleAfterSync.delete(target.id)
   const promise = syncAnnotationExclusive(target, known)
   inFlightSyncs.set(target.id, promise)
   try {

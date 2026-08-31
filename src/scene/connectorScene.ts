@@ -245,6 +245,20 @@ export function collectConnectorLabels(): LabelIndex {
 // next sync recreates the very pill that was just deleted.
 const labelOwnerByRenderedNodeId = new Map<string, string>()
 
+/**
+ * The connector a label pill belongs to — `null` when `node` is not one.
+ *
+ * Lets a selection of the pill stand for a selection of its line, so
+ * clicking the label on the canvas opens that connector for editing rather
+ * than selecting a frame the panel has nothing to say about. Same idea as
+ * `annotationTargetOf`, and synchronous for the same reason.
+ */
+export function connectorBehindLabel(node: SceneNode): VectorNode | null {
+  const ownerId = node.getPluginData(LABEL_OWNER_KEY)
+  if (ownerId === '') return null
+  return findAllConnectors().find((connector) => connector.id === ownerId) ?? null
+}
+
 /** The connector a now-deleted label used to belong to — see `labelOwnerByRenderedNodeId`. */
 export function lastKnownLabelOwnerOf(labelId: string): string | null {
   return labelOwnerByRenderedNodeId.get(labelId) ?? null
@@ -296,10 +310,16 @@ async function ensureConnectorLabel(
     pill.paddingBottom = LABEL_PADDING_Y
     pill.cornerRadius = 6
     pill.strokeWeight = 1
-    pill.locked = true
     pill.setPluginData(LABEL_OWNER_KEY, connectorId)
     labelOwnerByRenderedNodeId.set(pill.id, connectorId)
   }
+  // Unlocked, unlike the badge and leader, so a person can click the pill on
+  // the canvas to edit its line's label. Set every sync rather than only on
+  // creation, so pills made while they were locked become clickable too. The
+  // position and text stay fully derived and are reasserted below, so
+  // nothing done to it by hand survives — clicking it is the point, editing
+  // it in place is not.
+  pill.locked = false
   // A space, not the label's text: Figma draws a top-level frame's name on
   // the canvas above the frame, so naming the pill after its own words
   // printed every label twice — once in the pill, once in grey above it.

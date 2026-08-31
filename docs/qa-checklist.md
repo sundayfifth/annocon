@@ -43,6 +43,10 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] Select the **card itself** (not the layer it annotates) → the Annotate
       tab shows that note, its category and its size, so the size buttons are
       reachable straight after dragging the card
+- [ ] Drag a card narrower in one continuous motion, quickly → it ends at the
+      width you released at, not at some width partway through the drag
+- [ ] Click a connector's **label pill** on the canvas → the Connect tab opens
+      on that line, ready to edit its label
 - [ ] Select a layer **and** its own card together → Connect does not offer to
       join the layer to itself
 - [ ] No frame name is drawn above an annotation card or a connector's label

@@ -55,6 +55,7 @@ import {
   boxesChangedInLastScan,
   collectConnectorLabels,
   collectRouteObstacles,
+  connectorBehindLabel,
   createConnector,
   findAllConnectorsOnPage,
   findConnectorBetween,
@@ -114,9 +115,9 @@ function summariseSelection(): Array<SelectionSummary> {
   const orderedNodes = selectionOrder
     .map((id) => nodesById.get(id))
     .filter((node): node is SceneNode => typeof node !== 'undefined')
-    // A selected card or leader stands for the note it shows — see
-    // `annotationTargetOf`.
-    .map((node) => annotationTargetOf(node) ?? node)
+    // A selected card, leader or label pill stands for the thing it belongs
+    // to — see `annotationTargetOf` / `connectorBehindLabel`.
+    .map((node) => annotationTargetOf(node) ?? connectorBehindLabel(node) ?? node)
   // Selecting a layer together with its own card resolves to that layer
   // twice, and two entries is what Connect reads as "two things to join" —
   // it would offer to string a connector between a layer and itself.

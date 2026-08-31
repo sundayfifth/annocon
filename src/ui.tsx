@@ -1111,7 +1111,10 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
       // Picking exactly two layers is an unambiguous "I want to connect
       // these" signal — jump straight to the tab that shows the result
       // instead of making that the reward for finding the right tab first.
-      if (!tabTouched.current && next.length === 2) {
+      // Clicking a line, or the label pill on one, says the same thing about
+      // a connector that already exists.
+      const single = next.length === 1 ? next[0] : undefined
+      if (!tabTouched.current && (next.length === 2 || single?.connectorStyle != null)) {
         setTab('Connect')
       }
       tryAutoConnect(next)
