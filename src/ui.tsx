@@ -848,6 +848,10 @@ function AnnotateEditor({
         options={SIZE_OPTIONS}
         value={node.annotationSize ?? DEFAULT_ANNOTATION_SIZE}
       />
+      <VerticalSpace space="extraSmall" />
+      <Text>
+        <Muted>Drag the card's side edge on the canvas to widen it.</Muted>
+      </Text>
       <VerticalSpace space="small" />
       <Text>
         <Muted>Renders as a leader line and note card on the canvas.</Muted>

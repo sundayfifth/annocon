@@ -52,7 +52,8 @@ describe('parseAnnotationRecord', () => {
       side: 'AUTO',
       cardOffset: DEFAULT_CARD_OFFSET,
       categoryId: null,
-      size: DEFAULT_ANNOTATION_SIZE
+      size: DEFAULT_ANNOTATION_SIZE,
+      cardWidth: null
     })
   })
 
@@ -89,6 +90,36 @@ describe('annotation size on the record', () => {
     const raw = JSON.stringify({ text: 'note', size: 'XXL' })
     expect(parseAnnotationRecord(raw)?.size).toBe('M')
     expect(parseAnnotationRecord(JSON.stringify({ text: 'note' }))?.size).toBe('M')
+  })
+})
+
+describe('a card width the person set by dragging', () => {
+  it('is absent until someone drags an edge', () => {
+    expect(createAnnotationRecord('note').cardWidth).toBeNull()
+  })
+
+  it('round-trips, and falls back to the size\'s own width when absent or absurd', () => {
+    expect(parseAnnotationRecord(serialiseAnnotationRecord(record({ cardWidth: 260 })))?.cardWidth).toBe(260)
+    expect(parseAnnotationRecord(JSON.stringify({ text: 'n' }))?.cardWidth).toBeNull()
+    // A width of nothing, or one wider than any canvas anyone works at, is
+    // corruption rather than a preference — the card would be unusable and
+    // there is no honest way to render it.
+    expect(parseAnnotationRecord(JSON.stringify({ text: 'n', cardWidth: 0 }))?.cardWidth).toBeNull()
+    expect(parseAnnotationRecord(JSON.stringify({ text: 'n', cardWidth: -50 }))?.cardWidth).toBeNull()
+    expect(parseAnnotationRecord(JSON.stringify({ text: 'n', cardWidth: 99999 }))?.cardWidth).toBeNull()
+    expect(parseAnnotationRecord(JSON.stringify({ text: 'n', cardWidth: 'wide' }))?.cardWidth).toBeNull()
+  })
+
+  /**
+   * Width is the person's; type is the size preset's. Dragging an edge
+   * reflows the words into a wider column rather than scaling the card, so
+   * the two controls stay independent of each other.
+   */
+  it('moves the card layout without touching the type', () => {
+    const wide = record({ cardWidth: 260 })
+    const metrics = { ...metricsForSize('M'), cardWidth: wide.cardWidth ?? 0 }
+    expect(metrics.cardWidth).toBe(260)
+    expect(metrics.fontSize).toBe(metricsForSize('M').fontSize)
   })
 })
 

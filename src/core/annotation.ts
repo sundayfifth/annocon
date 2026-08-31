@@ -32,6 +32,16 @@ export interface AnnotationRecord {
   readonly categoryId: string | null
   /** How big the card is drawn — see `metricsForSize`. */
   readonly size: AnnotationSize
+  /**
+   * A width the person set by dragging the card's edge, overriding the one
+   * `size` implies. `null` until they do.
+   *
+   * Deliberately only the width. The card's height is auto-layout's to
+   * decide from the text it holds, and its type size belongs to `size` — so
+   * dragging an edge reflows the words into a wider column rather than
+   * scaling the card, and the two controls never fight over the same thing.
+   */
+  readonly cardWidth: number | null
 }
 
 /** What the layout maths needs: where the badge sits and how wide the card is. */
@@ -154,8 +164,24 @@ export function createAnnotationRecord(
     side: 'AUTO',
     cardOffset: DEFAULT_CARD_OFFSET,
     categoryId: null,
-    size
+    size,
+    cardWidth: null
   }
+}
+
+/**
+ * Narrower than this and the card cannot hold a word; wider and it is past
+ * any canvas anyone works at. Either way it is corrupt data rather than a
+ * preference, and there is no honest way to draw it — so it falls back to
+ * the width the size implies.
+ */
+const MIN_DRAGGED_CARD_WIDTH = 40
+const MAX_DRAGGED_CARD_WIDTH = 4000
+
+function saneCardWidth(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  if (value < MIN_DRAGGED_CARD_WIDTH || value > MAX_DRAGGED_CARD_WIDTH) return null
+  return value
 }
 
 function isAnnotationSize(value: unknown): value is AnnotationSize {
@@ -193,6 +219,7 @@ export function parseAnnotationRecord(raw: string): AnnotationRecord | null {
     // Every annotation written before sizes existed reads back as M, which
     // is the size it was drawn at — nothing on canvas moves.
     size: isAnnotationSize(candidate.size) ? candidate.size : DEFAULT_ANNOTATION_SIZE,
+    cardWidth: saneCardWidth(candidate.cardWidth),
     cardOffset:
       isPoint(candidate.cardOffset) && isSaneCardOffset(candidate.cardOffset)
         ? candidate.cardOffset

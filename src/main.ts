@@ -40,7 +40,7 @@ import {
   setAnnotationSize,
   setAnnotationText,
   syncAnnotation,
-  updateCardOffsetFromDrag
+  updateCardFromDrag
 } from './scene/annotationScene.js'
 import {
   addCategory,
@@ -480,7 +480,7 @@ async function resyncTouched({
       await maybeYield()
       continue
     }
-    await updateCardOffsetFromDrag(node)
+    await updateCardFromDrag(node)
     touched = true
     await maybeYield()
   }

@@ -539,7 +539,12 @@ interface ResolvedLayout {
  * never bleeds into whatever is sitting next door.
  */
 function computeLayout(target: SceneNode, rect: Rect, record: AnnotationRecord): ResolvedLayout {
-  const metrics = metricsForSize(record.size)
+  // A width dragged by hand wins over the size preset's, but only over that
+  // — the type, padding and radius still come from the size. Dragging widens
+  // the column the words flow in; it does not scale the card.
+  const preset = metricsForSize(record.size)
+  const metrics: CardMetrics =
+    record.cardWidth === null ? preset : { ...preset, cardWidth: record.cardWidth }
   const frame = findEnclosingFrame(target)
   const frameRect = frame?.absoluteBoundingBox ?? null
   if (frame === null || frameRect === null) {
@@ -910,7 +915,11 @@ export async function setAnnotationCategory(target: SceneNode, categoryId: strin
 export async function setAnnotationSize(target: SceneNode, size: AnnotationSize): Promise<void> {
   const existing = getAnnotationRecord(target)
   if (existing === null) return
-  writeAnnotationRecord(target, { ...existing, size })
+  // Picking a size clears a width dragged by hand. Someone reaching for the
+  // preset is asking for the card that preset describes — and it doubles as
+  // the way back from a width they dragged and no longer want, which there
+  // is otherwise no control for.
+  writeAnnotationRecord(target, { ...existing, size, cardWidth: null })
   await syncAnnotation(target)
   await finalizeLayout()
 }
@@ -921,7 +930,7 @@ const CARD_OFFSET_EPSILON = 0.5
  * Captures a manual drag of the card as the record's new offset preference,
  * then re-syncs so the badge/leader catch up to wherever the card landed.
  */
-export async function updateCardOffsetFromDrag(target: SceneNode): Promise<void> {
+export async function updateCardFromDrag(target: SceneNode): Promise<void> {
   const record = getAnnotationRecord(target)
   if (record === null) return
   const rendered = findRenderedNodes(target.id)
@@ -939,17 +948,30 @@ export async function updateCardOffsetFromDrag(target: SceneNode): Promise<void>
   const cardBox = rendered.card.absoluteBoundingBox
   if (cardBox === null) return
 
-  const before = computeLayout(target, rect, record).layout
+  const before = computeLayout(target, rect, record)
   const newOffset: Point = {
-    x: cardBox.x - before.badgeCenter.x,
-    y: cardBox.y - before.badgeCenter.y
+    x: cardBox.x - before.layout.badgeCenter.x,
+    y: cardBox.y - before.layout.badgeCenter.y
   }
-  const unchanged =
-    Math.abs(newOffset.x - record.cardOffset.x) < CARD_OFFSET_EPSILON &&
-    Math.abs(newOffset.y - record.cardOffset.y) < CARD_OFFSET_EPSILON
-  if (unchanged) return
+  const movedBy =
+    Math.abs(newOffset.x - record.cardOffset.x) >= CARD_OFFSET_EPSILON ||
+    Math.abs(newOffset.y - record.cardOffset.y) >= CARD_OFFSET_EPSILON
 
-  writeAnnotationRecord(target, { ...record, side: 'AUTO', cardOffset: newOffset })
+  // Compared against the width this sync *drew*, not the width in the
+  // record. They differ whenever a card was shrunk to fit a narrow gap, and
+  // measuring against the record would then read our own shrinking back as
+  // if the person had dragged the card narrower — quietly overwriting the
+  // width they actually chose the first time the card passed a tight spot.
+  const widthNow = cardBox.width
+  const resized = Math.abs(widthNow - before.cardWidth) >= CARD_OFFSET_EPSILON
+  if (!movedBy && !resized) return
+
+  writeAnnotationRecord(target, {
+    ...record,
+    side: movedBy ? 'AUTO' : record.side,
+    cardOffset: movedBy ? newOffset : record.cardOffset,
+    cardWidth: resized ? widthNow : record.cardWidth
+  })
   await syncAnnotation(target)
   await finalizeLayout()
 }

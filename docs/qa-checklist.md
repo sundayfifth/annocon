@@ -27,6 +27,13 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] An annotation made before sizes existed → renders at Medium, unchanged
 - [ ] A Large card next to a frame with a narrow gap → shrinks to fit rather
       than bleeding into the neighbouring frame
+- [ ] Drag a card's side edge → it stays at the width you left it, the text
+      reflows into the wider column, and the type size does not change
+- [ ] Drag a card wider than the gap beside its frame → still shrinks to fit,
+      and the width you dragged is not overwritten by that shrinking: move
+      the frame somewhere roomy and the card returns to your width
+- [ ] Pick a size after dragging a width → the dragged width is dropped and
+      the preset's width applies (this is the way back)
 - [ ] No frame name is drawn above an annotation card or a connector's label
       pill on the canvas
 - [ ] Dev Mode / Inspect shows the same annotation (only if spike S1 passed)
