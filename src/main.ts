@@ -26,6 +26,7 @@ import type {
   UpdateConnectorStylePayload
 } from './messages.js'
 import {
+  captureCardTextEdit,
   clearAnnotation,
   finalizeLayout,
   findAnnotationTargetsUnder,
@@ -54,6 +55,7 @@ import {
 import {
   boxesChangedInLastScan,
   collectConnectorLabels,
+  captureLabelTextEdit,
   collectRouteObstacles,
   connectorBehindLabel,
   createConnector,
@@ -301,6 +303,8 @@ interface TouchedNodes {
   readonly deletedIds: ReadonlySet<string>
   readonly movedTargetIds: ReadonlySet<string>
   readonly draggedCardOwnerIds: ReadonlySet<string>
+  /** Text nodes someone typed into on the canvas — a card's own text, or a connector label's. */
+  readonly editedTextNodes: ReadonlyArray<TextNode>
 }
 
 /**
@@ -315,6 +319,7 @@ function handleNodeChange(event: NodeChangeEvent): void {
   const deletedIds = new Set<string>()
   const movedTargetIds = new Set<string>()
   const draggedCardOwnerIds = new Set<string>()
+  const editedTextNodes: Array<TextNode> = []
 
   for (const change of event.nodeChanges) {
     if (change.type === 'DELETE') {
@@ -322,6 +327,19 @@ function handleNodeChange(event: NodeChangeEvent): void {
       continue
     }
     if (change.type !== 'PROPERTY_CHANGE') continue
+    // Someone typed into a card or a label pill on the canvas. Collected
+    // before the positional filter below, since `characters` is not a
+    // position — and separately from it, because what has to happen next is
+    // to read the words back into the record rather than to re-render.
+    // `absoluteBoundingBox` narrows a RemovedNode out — a node deleted in
+    // this same batch has nothing left to read.
+    if (
+      change.properties.includes('characters') &&
+      change.node.type === 'TEXT' &&
+      'absoluteBoundingBox' in change.node
+    ) {
+      editedTextNodes.push(change.node)
+    }
     if (!change.properties.some((property) => POSITIONAL_PROPERTIES.includes(property))) continue
     // A RemovedNode never carries this property; narrows change.node to SceneNode.
     if (!('absoluteBoundingBox' in change.node)) continue
@@ -338,14 +356,22 @@ function handleNodeChange(event: NodeChangeEvent): void {
     movedTargetIds.add(change.node.id)
   }
 
-  if (deletedIds.size === 0 && movedTargetIds.size === 0 && draggedCardOwnerIds.size === 0) return
-  fireAndForget(resyncTouched({ deletedIds, movedTargetIds, draggedCardOwnerIds }))
+  if (
+    deletedIds.size === 0 &&
+    movedTargetIds.size === 0 &&
+    draggedCardOwnerIds.size === 0 &&
+    editedTextNodes.length === 0
+  ) {
+    return
+  }
+  fireAndForget(resyncTouched({ deletedIds, movedTargetIds, draggedCardOwnerIds, editedTextNodes }))
 }
 
 async function resyncTouched({
   deletedIds,
   movedTargetIds,
-  draggedCardOwnerIds
+  draggedCardOwnerIds,
+  editedTextNodes
 }: TouchedNodes): Promise<void> {
   let touched = false
   // One shared counter across all three loops below — a single nodechange
@@ -487,6 +513,23 @@ async function resyncTouched({
     touched = true
     await maybeYield()
   }
+
+  let capturedAnEdit = false
+  for (const text of editedTextNodes) {
+    if (text.removed) continue
+    // Whichever it belongs to, or neither — a person editing some unrelated
+    // text on the page is none of our business.
+    const captured = (await captureCardTextEdit(text)) || (await captureLabelTextEdit(text))
+    if (captured) {
+      touched = true
+      capturedAnEdit = true
+    }
+    await maybeYield()
+  }
+  // The panel is showing the words that just changed under it. Without this
+  // it keeps the old ones until the selection changes, and typing into the
+  // box there would then put them back.
+  if (capturedAnEdit) emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
 
   for (const ownerId of draggedCardOwnerIds) {
     const node = await figma.getNodeByIdAsync(ownerId)

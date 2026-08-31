@@ -47,6 +47,15 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       width you released at, not at some width partway through the drag
 - [ ] Click a connector's **label pill** on the canvas → the Connect tab opens
       on that line, ready to edit its label
+- [ ] Double-click into a card on the canvas and type → the words stick, and
+      the note field in the panel shows them
+- [ ] Same into a connector's label pill → sticks, and the Label field shows
+      it
+- [ ] Type into a card, then type into the panel's field for the same note →
+      the panel wins for what you typed last; neither overwrites the other
+      with something stale
+- [ ] Empty a label pill by typing nothing into it → the pill goes away, as
+      clearing the field in the panel does
 - [ ] Select a layer **and** its own card together → Connect does not offer to
       join the layer to itself
 - [ ] No frame name is drawn above an annotation card or a connector's label

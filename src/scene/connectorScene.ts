@@ -264,6 +264,27 @@ export function lastKnownLabelOwnerOf(labelId: string): string | null {
   return labelOwnerByRenderedNodeId.get(labelId) ?? null
 }
 
+/**
+ * Takes text typed straight into a label pill on the canvas and makes it the
+ * connector's label.
+ *
+ * Without it, typing into the pill — which the pill being clickable rather
+ * invites — is undone by the next sync, since the pill is drawn from
+ * `record.label`. Same reasoning as `captureCardTextEdit`.
+ */
+export async function captureLabelTextEdit(text: TextNode): Promise<boolean> {
+  const pill = text.parent
+  if (pill === null || pill.type !== 'FRAME') return false
+  const connectorId = pill.getPluginData(LABEL_OWNER_KEY)
+  if (connectorId === '') return false
+  const connector = findAllConnectors().find((node) => node.id === connectorId)
+  if (typeof connector === 'undefined') return false
+  const record = getConnectorRecord(connector)
+  if (record === null || record.label === text.characters) return false
+  await updateConnectorStyle(connector, { label: text.characters })
+  return true
+}
+
 /** Removes a connector's label, if it has one — used when the connector itself is deleted. */
 export function removeConnectorLabel(connectorId: string): void {
   const label = findConnectorLabel(connectorId)

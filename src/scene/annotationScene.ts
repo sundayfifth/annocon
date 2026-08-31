@@ -1059,6 +1059,36 @@ export async function updateCardFromDrag(target: SceneNode): Promise<void> {
   await finalizeLayout()
 }
 
+/**
+ * Takes text typed straight into a card on the canvas and makes it the
+ * note's own text.
+ *
+ * The card is a rendering of the record, so without this a person who
+ * double-clicks and types watches their words survive until the next sync
+ * and then vanish — worse than not being able to type at all. Reading the
+ * edit back is the same move already made for a dragged position and a
+ * dragged width: what somebody did by hand becomes the stored intent.
+ *
+ * `false` when `text` is not a card's own text node — the category pill's
+ * label lives one level deeper and is not the note.
+ */
+export async function captureCardTextEdit(text: TextNode): Promise<boolean> {
+  const card = text.parent
+  if (card === null || card.type !== 'FRAME' || roleOf(card) !== 'card') return false
+  const ownerId = ownerIdOf(card)
+  if (ownerId === null) return false
+  const target = figma.currentPage
+    .findAllWithCriteria({ pluginData: { keys: [ANNOTATION_KEY] } })
+    .find((candidate) => candidate.id === ownerId)
+  if (typeof target === 'undefined') return false
+  const record = getAnnotationRecord(target)
+  if (record === null || record.text === text.characters) return false
+  writeAnnotationRecord(target, { ...record, text: text.characters })
+  await syncAnnotation(target)
+  await finalizeLayout()
+  return true
+}
+
 /** Re-renders every annotation on the current page and sweeps orphaned nodes. */
 export async function reconcileAllAnnotations(): Promise<{
   synced: number

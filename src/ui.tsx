@@ -1164,7 +1164,12 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
               selection.length === 1 ? (
                 <AnnotateEditor
                   categories={categories}
-                  key={(selection[0] as SelectionSummary).id}
+                  // Keyed on the note as well as the layer, so text typed
+                  // straight into the card on the canvas replaces what is in
+                  // the box here. Typing in the box does not remount it: the
+                  // record only changes on blur, which is when the two are
+                  // meant to agree again.
+                  key={`${(selection[0] as SelectionSummary).id}:${(selection[0] as SelectionSummary).annotationText ?? ''}`}
                   node={selection[0] as SelectionSummary}
                 />
               ) : (
@@ -1192,7 +1197,10 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
             children:
               selection.length === 1 && (selection[0] as SelectionSummary).connectorStyle !== null ? (
                 <ConnectorStyleEditor
-                  key={(selection[0] as SelectionSummary).id}
+                  // Keyed on the label too, for the same reason as the
+                  // annotation editor above: text typed into the pill on the
+                  // canvas has to replace what is in the box here.
+                  key={`${(selection[0] as SelectionSummary).id}:${(selection[0] as SelectionSummary).connectorStyle?.label ?? ''}`}
                   node={selection[0] as SelectionSummary}
                 />
               ) : (
