@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 300" width="640" height="300" role="img" aria-label="เส้นเชื่อมที่ลากทะลุจอที่ขวางอยู่ เทียบกับเส้นที่อ้อมจอนั้นให้เอง">
+  <style>
+    .screen { fill: #F5F5F7; stroke: #D5D5DC; stroke-width: 2; }
+    .screen-mid { fill: #ECECF1; stroke: #C9C9D2; stroke-width: 2; }
+    .bar { fill: #DEDEE6; }
+    .wire { fill: none; stroke: #1E1E24; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .wire-bad { stroke: #E5484D; }
+    .cap { fill: #1E1E24; }
+    .cap-bad { fill: #E5484D; }
+    .label { font: 600 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .label-bad { fill: #E5484D; }
+    .label-good { fill: #12A594; }
+    @media (prefers-color-scheme: dark) {
+      .screen { fill: #26262C; stroke: #3A3A44; }
+      .screen-mid { fill: #2E2E36; stroke: #43434F; }
+      .bar { fill: #3A3A44; }
+      .wire { stroke: #E8E8EE; }
+      .cap { fill: #E8E8EE; }
+    }
+  </style>
+
+  <g>
+    <rect class="screen" x="40" y="50" width="130" height="180" rx="10"/>
+    <rect class="bar" x="56" y="66" width="70" height="8" rx="4"/>
+    <rect class="bar" x="56" y="86" width="98" height="8" rx="4"/>
+
+    <rect class="screen-mid" x="255" y="50" width="130" height="180" rx="10"/>
+    <rect class="bar" x="271" y="66" width="70" height="8" rx="4"/>
+    <rect class="bar" x="271" y="86" width="98" height="8" rx="4"/>
+
+    <rect class="screen" x="470" y="50" width="130" height="180" rx="10"/>
+    <rect class="bar" x="486" y="66" width="70" height="8" rx="4"/>
+    <rect class="bar" x="486" y="86" width="98" height="8" rx="4"/>
+  </g>
+
+  <g>
+    <path class="wire wire-bad" d="M170 140 L462 140"/>
+    <path class="cap cap-bad" d="M462 134 L474 140 L462 146 Z"/>
+    <circle class="cap cap-bad" cx="170" cy="140" r="4"/>
+    <text class="label label-bad" x="320" y="285" text-anchor="middle">เส้นลากทะลุจอที่ขวางอยู่</text>
+    <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.40;0.48;0.92;1" dur="5s" repeatCount="indefinite"/>
+  </g>
+
+  <g opacity="0">
+    <path class="wire" d="M170 140 L200 140 Q210 140 210 150 L210 250 Q210 260 220 260 L410 260 Q420 260 420 250 L420 150 Q420 140 430 140 L462 140"/>
+    <path class="cap" d="M462 134 L474 140 L462 146 Z"/>
+    <circle class="cap" cx="170" cy="140" r="4"/>
+    <text class="label label-good" x="320" y="285" text-anchor="middle">อ้อมให้เอง</text>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.40;0.48;0.92;1" dur="5s" repeatCount="indefinite"/>
+  </g>
+</svg>
