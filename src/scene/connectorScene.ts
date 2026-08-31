@@ -300,7 +300,11 @@ async function ensureConnectorLabel(
     pill.setPluginData(LABEL_OWNER_KEY, connectorId)
     labelOwnerByRenderedNodeId.set(pill.id, connectorId)
   }
-  pill.name = trimmed
+  // A space, not the label's text: Figma draws a top-level frame's name on
+  // the canvas above the frame, so naming the pill after its own words
+  // printed every label twice — once in the pill, once in grey above it.
+  // Same reasoning as the annotation card's name.
+  pill.name = ' '
   pill.fills = [figma.util.solidPaint('#FFFFFF')]
   pill.strokes = [figma.util.solidPaint('#E1E1E6')]
 

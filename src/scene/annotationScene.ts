@@ -92,12 +92,19 @@ function resolveCardFont(): Promise<FontName> {
   })()
   return resolvedCardFont
 }
-// Card and leader both get a short, fixed, uninteresting layer name — not
-// the note's own text. That was tried the other way (see git history) and
-// turned out worse: a long note makes for a long, cluttered-looking layer
-// name, and every annotation showing different text of a different length
-// reads as noisier than all of them sharing one quiet, generic name.
-const CARD_LAYER_NAME = 'Annotation'
+// Figma draws a top-level frame's name on the canvas, above the frame, in
+// the file itself — not just in the layers panel. A card sitting beside the
+// screen it annotates therefore came with a label floating over the artwork
+// that nobody asked for and nobody can turn off, which is exactly the kind
+// of clutter this plugin exists to avoid. A single space is a name Figma
+// accepts and draws as nothing.
+//
+// The cost is the layers panel, where these now read as blank rows. Judged
+// the better trade: the canvas is what everyone sees, all the time, and
+// these nodes are locked and derived — there is very little reason to go
+// hunting for one by name. The leader is a vector, whose name Figma never
+// draws, so it keeps a useful one.
+const CARD_LAYER_NAME = ' '
 const LEADER_LAYER_NAME = 'Annotation leader'
 
 const CARD_SHADOW: DropShadowEffect = {
@@ -339,7 +346,7 @@ async function ensureCard(
   category: Category | null
 ): Promise<Card> {
   const card = existing ?? figma.createFrame()
-  card.name = 'Annotation card'
+  card.name = CARD_LAYER_NAME
   card.layoutMode = 'VERTICAL'
   card.primaryAxisSizingMode = 'AUTO'
   card.counterAxisSizingMode = 'FIXED'
