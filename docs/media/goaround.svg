@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 120" width="300" height="120" role="img" aria-label="สั่งให้เส้นอ้อมด้านบนหรือด้านล่างเองได้ด้วย Go around">
+  <style>
+    .s { fill: #F5F5F7; stroke: #D5D5DC; stroke-width: 1.5; }
+    .s2 { fill: #ECECF1; stroke: #C9C9D2; stroke-width: 1.5; }
+    .b { fill: #DEDEE6; }
+    .w { fill: none; stroke: #1E1E24; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .c { fill: #1E1E24; }
+    .tag { font: 600 9px -apple-system, sans-serif; fill: #8B8B96; }
+    @media (prefers-color-scheme: dark) {
+      .s { fill: #26262C; stroke: #3A3A44; }
+      .s2 { fill: #2E2E36; stroke: #43434F; }
+      .b { fill: #3A3A44; }
+      .w { stroke: #E8E8EE; }
+      .c { fill: #E8E8EE; }
+    }
+  </style>
+  <rect class="s" x="14" y="34" width="58" height="52" rx="5"/>
+  <rect class="b" x="22" y="42" width="26" height="4" rx="2"/>
+  <rect class="s2" x="121" y="34" width="58" height="52" rx="5"/>
+  <rect class="b" x="129" y="42" width="26" height="4" rx="2"/>
+  <rect class="s" x="228" y="34" width="58" height="52" rx="5"/>
+  <rect class="b" x="236" y="42" width="26" height="4" rx="2"/>
+  <g>
+    <path class="w" d="M72 60 L86 60 Q94 60 94 52 L94 26 Q94 18 102 18 L198 18 Q206 18 206 26 L206 52 Q206 60 214 60 L218 60"/>
+    <path class="c" d="M216 54 L228 60 L216 66 Z"/>
+    <circle class="c" cx="72" cy="60" r="3"/>
+    <text class="tag" x="150" y="112" text-anchor="middle">Go around: Above</text>
+    <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.42;0.5;0.92;1" dur="2.8s" repeatCount="indefinite"/>
+  </g>
+  <g opacity="0">
+    <path class="w" d="M72 60 L86 60 Q94 60 94 68 L94 94 Q94 102 102 102 L198 102 Q206 102 206 94 L206 68 Q206 60 214 60 L218 60"/>
+    <path class="c" d="M216 54 L228 60 L216 66 Z"/>
+    <circle class="c" cx="72" cy="60" r="3"/>
+    <text class="tag" x="150" y="112" text-anchor="middle">Go around: Below</text>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.42;0.5;0.92;1" dur="2.8s" repeatCount="indefinite"/>
+  </g>
+</svg>

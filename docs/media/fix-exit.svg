@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 130" width="300" height="130" role="img" aria-label="ก่อน: เส้นลากผ่านทั้งจอ หลัง: ออกทางขอบที่ใกล้ที่สุด">
+  <style>
+    .s { fill: #F5F5F7; stroke: #D5D5DC; stroke-width: 1.5; }
+    .b { fill: #DEDEE6; }
+    .chip { fill: #FECC00; }
+    .w { fill: none; stroke: #1E1E24; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .bad { stroke: #E5484D; }
+    .c { fill: #1E1E24; }
+    .cbad { fill: #E5484D; }
+    .tag { font: 600 9px -apple-system, sans-serif; }
+    .before { fill: #E5484D; }
+    .after { fill: #12A594; }
+    @media (prefers-color-scheme: dark) {
+      .s { fill: #26262C; stroke: #3A3A44; }
+      .b { fill: #3A3A44; }
+      .w { stroke: #E8E8EE; }
+      .c { fill: #E8E8EE; }
+    }
+  </style>
+  <rect class="s" x="14" y="16" width="104" height="82" rx="6"/>
+  <rect class="b" x="26" y="26" width="46" height="5" rx="2.5"/>
+  <rect class="b" x="26" y="38" width="70" height="5" rx="2.5"/>
+  <rect class="b" x="26" y="50" width="58" height="5" rx="2.5"/>
+  <rect class="chip" x="26" y="76" width="30" height="12" rx="4"/>
+  <rect class="s" x="220" y="30" width="66" height="54" rx="6"/>
+  <rect class="b" x="230" y="40" width="28" height="4" rx="2"/>
+  <g>
+    <path class="w bad" d="M56 82 L152 82 L152 57 L210 57"/>
+    <path class="cbad" d="M208 51 L220 57 L208 63 Z"/>
+    <circle class="cbad" cx="56" cy="82" r="3"/>
+    <text class="tag before" x="150" y="120" text-anchor="middle">ก่อน — ลากผ่านเนื้อหาทั้งจอ</text>
+    <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.42;0.5;0.92;1" dur="2.8s" repeatCount="indefinite"/>
+  </g>
+  <g opacity="0">
+    <path class="w" d="M41 88 L41 106 Q41 112 47 112 L152 112 Q158 112 158 106 L158 63 Q158 57 164 57 L210 57"/>
+    <path class="c" d="M208 51 L220 57 L208 63 Z"/>
+    <circle class="c" cx="41" cy="88" r="3"/>
+    <text class="tag after" x="150" y="126" text-anchor="middle">หลัง — ออกทางขอบที่ใกล้ที่สุด</text>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.42;0.5;0.92;1" dur="2.8s" repeatCount="indefinite"/>
+  </g>
+</svg>
