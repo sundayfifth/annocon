@@ -503,23 +503,40 @@ function verticallyOverlaps(a: Rect, b: Rect): boolean {
 const NEIGHBOR_SAFETY_GAP = 20
 
 /**
- * How far it is from `ownFrame`'s edge on `side` to the nearest other
- * top-level frame that a card routed that way could run into — screens
- * placed close together in a flow, say. `Infinity` when nothing is in the
- * way, so the card is free to use its ideal width.
+ * How far it is from `ownFrame`'s edge on `side` to the nearest other frame
+ * that a card routed that way could run into — screens placed close together
+ * in a flow, say. `Infinity` when nothing is in the way, so the card is free
+ * to use its ideal width.
+ *
+ * Looks inside groups and sections for the same reason `collectRouteObstacles`
+ * does: putting a flow in a section is how people tidy up, and it must not
+ * quietly change what the plugin can see. Reading only the page's own
+ * children meant a card beside a screen in a section believed it had the
+ * whole canvas to itself.
  */
 function nearestNeighborGap(ownFrame: Rect, side: 'LEFT' | 'RIGHT', ownFrameId: string): number {
   let nearest = Number.POSITIVE_INFINITY
-  for (const frame of figma.currentPage.children) {
-    if (frame.type !== 'FRAME' || frame.id === ownFrameId) continue
-    const rect = frame.absoluteBoundingBox
-    if (rect === null || !verticallyOverlaps(ownFrame, rect)) continue
-    const gap =
-      side === 'RIGHT' ? rect.x - (ownFrame.x + ownFrame.width) : ownFrame.x - (rect.x + rect.width)
-    if (gap >= 0 && gap < nearest) nearest = gap
+  const visit = (nodes: ReadonlyArray<SceneNode>): void => {
+    for (const node of nodes) {
+      if (!node.visible) continue
+      if (NEIGHBOR_CONTAINERS.has(node.type) && 'children' in node) {
+        visit(node.children)
+        continue
+      }
+      if (node.type !== 'FRAME' || node.id === ownFrameId) continue
+      const rect = node.absoluteBoundingBox
+      if (rect === null || !verticallyOverlaps(ownFrame, rect)) continue
+      const gap =
+        side === 'RIGHT' ? rect.x - (ownFrame.x + ownFrame.width) : ownFrame.x - (rect.x + rect.width)
+      if (gap >= 0 && gap < nearest) nearest = gap
+    }
   }
+  visit(figma.currentPage.children)
   return nearest
 }
+
+/** Containers holding screens rather than being one — mirrors `OBSTACLE_CONTAINERS` in `connectorScene`. */
+const NEIGHBOR_CONTAINERS: ReadonlySet<string> = new Set(['GROUP', 'SECTION'])
 
 interface ResolvedLayout {
   readonly layout: AnnotationLayout
@@ -552,19 +569,36 @@ function computeLayout(target: SceneNode, rect: Rect, record: AnnotationRecord):
   }
 
   const side = resolveOutsideSide(rect, frameRect)
-  const gap = nearestNeighborGap(frameRect, side, frame.id)
-  // A small card is already narrower than the floor a large one shrinks to,
-  // so the floor cannot be allowed to widen it back out.
-  const floor = Math.min(MIN_OUTSIDE_CARD_WIDTH, metrics.cardWidth)
-  const cardWidth = Number.isFinite(gap)
-    ? Math.max(floor, Math.min(metrics.cardWidth, gap - OUTSIDE_MARGIN - NEIGHBOR_SAFETY_GAP))
-    : metrics.cardWidth
+  // Shrink-to-fit applies to a width this plugin chose, not to one a person
+  // dragged. Someone dragging an edge can see the gap they are dragging into
+  // and has decided; pulling the card back from under them means the drag
+  // simply does not work wherever a neighbour happens to be close, which is
+  // most of a real file.
+  const cardWidth = record.cardWidth !== null ? record.cardWidth : shrinkToFit(metrics, frameRect, side, frame.id)
 
   const layout = annotationLayoutOutsideFrame(rect, frameRect, record, {
     ...metrics,
     cardWidth
   })
   return { layout, cardWidth, side }
+}
+
+/**
+ * The plugin's own choice of width, narrowed so the card never bleeds into
+ * the screen next door — down to `MIN_OUTSIDE_CARD_WIDTH`, or to the card's
+ * own width when that is already narrower (a Small card must not be widened
+ * back out by the floor).
+ */
+function shrinkToFit(
+  metrics: CardMetrics,
+  frameRect: Rect,
+  side: 'LEFT' | 'RIGHT',
+  ownFrameId: string
+): number {
+  const gap = nearestNeighborGap(frameRect, side, ownFrameId)
+  if (!Number.isFinite(gap)) return metrics.cardWidth
+  const floor = Math.min(MIN_OUTSIDE_CARD_WIDTH, metrics.cardWidth)
+  return Math.max(floor, Math.min(metrics.cardWidth, gap - OUTSIDE_MARGIN - NEIGHBOR_SAFETY_GAP))
 }
 
 // `ensureBadge`/`ensureCard` each have an `await` (font loading) between

@@ -29,9 +29,12 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       than bleeding into the neighbouring frame
 - [ ] Drag a card's side edge → it stays at the width you left it, the text
       reflows into the wider column, and the type size does not change
-- [ ] Drag a card wider than the gap beside its frame → still shrinks to fit,
-      and the width you dragged is not overwritten by that shrinking: move
-      the frame somewhere roomy and the card returns to your width
+- [ ] Drag a card wider than the gap beside its frame → it stays at the width
+      you dragged. Shrink-to-fit is for widths the plugin chose, not ones a
+      person set with the gap in front of them.
+- [ ] A card beside a screen that sits **inside a section**, with another
+      screen close by → its automatic width still shrinks to clear that
+      neighbour (the measurement looks inside sections and groups).
 - [ ] Pick a size after dragging a width → the dragged width is dropped and
       the preset's width applies (this is the way back)
 - [ ] No frame name is drawn above an annotation card or a connector's label
