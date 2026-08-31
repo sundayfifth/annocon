@@ -335,9 +335,13 @@ async function ensureCategoryPill(
     label.fontName = PILL_FONT
     pill.appendChild(label)
   }
+  // Loaded before the write, not only when creating the node: writing
+  // `fontSize` touches the font the label already has, and an existing pill's
+  // font is not loaded just because the pill exists. Same rule as the card's
+  // text below.
+  await figma.loadFontAsync(PILL_FONT)
   label.fontSize = metrics.categoryFontSize
   if (label.characters !== category.name) {
-    await figma.loadFontAsync(PILL_FONT)
     label.characters = category.name
   }
   // Reasserted every sync, not just on creation — a recolour needs the
@@ -391,13 +395,19 @@ async function ensureCard(
     text.lineHeight = { value: 150, unit: 'PERCENT' }
     text.fills = [figma.util.solidPaint(CARD_TEXT)]
   }
-  text.fontSize = metrics.fontSize
   // Reasserted every sync, not just on creation: a card whose text node was
   // created before this fix existed would otherwise stay broken forever —
   // this is also what was still leaving Thai text in a loopless fallback
   // font: the font was only ever applied on first creation, so every
   // already-existing card kept whatever it started with.
   text.fontName = await resolveCardFont()
+  // After the reassignment above, never before it. Writing `fontSize` first
+  // touches whatever font the node is *currently* set to, which for a card
+  // written earlier is a Thai face this sync has not loaded — and Figma
+  // refuses the write with "Cannot write to node with unloaded font". The
+  // same rule the comment above spells out for a brand-new node applies to
+  // an existing one whose font is about to be replaced.
+  text.fontSize = metrics.fontSize
   // `layoutSizingHorizontal: 'FILL'` is documented to make an auto-layout
   // child's width track its parent, but in practice it left the text at
   // whatever sliver of a width it was created with — every character wrapped

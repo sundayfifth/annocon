@@ -19,6 +19,11 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] Select a group or section (no native `annotations`) → still renders, no error
 - [ ] Switch a note between Small / Medium / Large → the card, its type, its
       padding and its category pill all resize together, in place
+- [ ] Do the same on a note written in **Thai**, and on one made before sizes
+      existed → no "Cannot write to node with unloaded font" toast. Any write
+      that touches type has to come after the font it is about to use is
+      loaded, and an existing node's font is not loaded just because the node
+      is there.
 - [ ] An annotation made before sizes existed → renders at Medium, unchanged
 - [ ] A Large card next to a frame with a narrow gap → shrinks to fit rather
       than bleeding into the neighbouring frame
