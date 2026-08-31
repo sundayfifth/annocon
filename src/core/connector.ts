@@ -113,7 +113,21 @@ export const DEFAULT_CORNER_RADIUS = 20
 export const DEFAULT_DETOUR: ConnectorDetour = 'AUTO'
 export const DEFAULT_LABEL = ''
 
-/** The style fields a new connector inherits from whatever was last set — everything in `ConnectorRecord` except its anchors and its (per-connector, never inherited) label. */
+/**
+ * The style fields a new connector inherits from whatever was last set —
+ * everything in `ConnectorRecord` except its anchors, its label, and its
+ * detour.
+ *
+ * The label is excluded because it is this connector's own words. The detour
+ * is excluded for a subtler reason: it is not a style in the way the rest of
+ * these are. A colour applies to every connector there will ever be, and
+ * looks the same on all of them. "Go below" only means anything while
+ * something is in the way — so carried forward, it lies dormant on line
+ * after line with nothing to avoid, and then one day a screen lands in the
+ * path of one of them and it takes effect, months after the choice was made
+ * and nowhere near the connector it was made on. A preference that does
+ * nothing until it surprises you is worse than one you have to set twice.
+ */
 export interface ConnectorStylePrefs {
   readonly strokeWeight: number
   readonly color: string
@@ -122,7 +136,6 @@ export interface ConnectorStylePrefs {
   readonly endCap: ConnectorCap
   readonly lineStyle: ConnectorLineStyle
   readonly cornerRadius: number
-  readonly detour: ConnectorDetour
 }
 
 export const DEFAULT_CONNECTOR_STYLE_PREFS: ConnectorStylePrefs = {
@@ -132,8 +145,7 @@ export const DEFAULT_CONNECTOR_STYLE_PREFS: ConnectorStylePrefs = {
   startCap: DEFAULT_START_CAP,
   endCap: DEFAULT_END_CAP,
   lineStyle: DEFAULT_LINE_STYLE,
-  cornerRadius: DEFAULT_CORNER_RADIUS,
-  detour: DEFAULT_DETOUR
+  cornerRadius: DEFAULT_CORNER_RADIUS
 }
 
 export function createConnectorRecord(
@@ -146,6 +158,8 @@ export function createConnectorRecord(
     start: { kind: 'magnet', nodeId: startNodeId, magnet: 'AUTO' },
     end: { kind: 'magnet', nodeId: endNodeId, magnet: 'AUTO' },
     ...stylePrefs,
+    // Always AUTO, never inherited — see `ConnectorStylePrefs`.
+    detour: DEFAULT_DETOUR,
     label: DEFAULT_LABEL
   }
 }
@@ -195,8 +209,7 @@ function stylePrefsFrom(candidate: Record<string, unknown>): ConnectorStylePrefs
     cornerRadius:
       typeof candidate.cornerRadius === 'number' && candidate.cornerRadius >= 0
         ? candidate.cornerRadius
-        : DEFAULT_CORNER_RADIUS,
-    detour: isDetour(candidate.detour) ? candidate.detour : DEFAULT_DETOUR
+        : DEFAULT_CORNER_RADIUS
   }
 }
 
@@ -260,6 +273,9 @@ export function parseConnectorRecord(raw: string): ConnectorRecord | null {
     start: candidate.start,
     end: candidate.end,
     ...stylePrefsFrom(candidate),
+    // Read here rather than in `stylePrefsFrom`, because a connector records
+    // its own detour but never hands it on to the next one.
+    detour: isDetour(candidate.detour) ? candidate.detour : DEFAULT_DETOUR,
     label: typeof candidate.label === 'string' ? candidate.label : DEFAULT_LABEL
   }
 }

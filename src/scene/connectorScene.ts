@@ -759,8 +759,10 @@ export async function updateConnectorStyle(
   writeConnectorRecord(node, next)
   await syncConnector(node)
   // Remembered for the next connector someone creates — see
-  // `loadLastConnectorStyle`. The label is deliberately excluded: it's this
-  // connector's own text, not a style preference to carry forward.
+  // `loadLastConnectorStyle`. The label and the detour are deliberately
+  // excluded: the label is this connector's own text, and the detour is a
+  // decision about one line's path, not a preference (see
+  // `ConnectorStylePrefs`).
   await saveLastConnectorStyle({
     strokeWeight: next.strokeWeight,
     color: next.color,
@@ -768,8 +770,7 @@ export async function updateConnectorStyle(
     startCap: next.startCap,
     endCap: next.endCap,
     lineStyle: next.lineStyle,
-    cornerRadius: next.cornerRadius,
-    detour: next.detour
+    cornerRadius: next.cornerRadius
   })
 }
 

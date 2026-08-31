@@ -53,8 +53,9 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       left-to-right line): behaves as `Auto`, no error.
 - [ ] **Go around** set on a line with nothing in its way: the route does not
       move — the preference only applies when it actually has to go around.
-- [ ] Draw a new connector after setting **Go around**: it inherits the same
-      preference, like the other style fields.
+- [ ] Draw a new connector after setting **Go around**: it starts at `Auto`,
+      *not* at the direction just pinned — unlike colour and weight, which are
+      inherited.
 - [ ] Connect a small layer in the *bottom-left corner* of one screen to
       something far to its right: the line leaves by the nearest edge, it does
       not run the full width of its own screen through the content.

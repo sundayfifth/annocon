@@ -51,8 +51,14 @@ and `LEFT`/`RIGHT` drop the other way's candidates entirely rather than merely
 ranking them lower. Only one pair applies to a given connector — which one
 depends on where its two ends currently sit, and so changes as they move — so a
 pinned direction belonging to the other axis degrades to `AUTO` instead of being
-an error. It is a style preference like the rest, inherited by the next
-connector via `ConnectorStylePrefs`.
+an error.
+
+Unlike the other fields a connector carries, it is **not** inherited by the next
+connector. A colour applies to every connector there will ever be; a detour only
+means anything while something is in the way, so carrying it forward leaves it
+dormant on line after line and then takes effect months later, on a line nowhere
+near the one it was set on, when a screen happens to land in its path. That is
+exactly how it was first reported as a routing bug.
 
 Both candidate families are needed because they fail in opposite cases. A
 Z-route can slide its crossing into a clear gap, but two screens lined up in a

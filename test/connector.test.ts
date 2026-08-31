@@ -56,7 +56,7 @@ describe('createConnectorRecord', () => {
     })
   })
 
-  it('starts from the given style prefs instead of the shipped defaults, but never inherits a label', () => {
+  it('starts from the given style prefs instead of the shipped defaults, but never inherits a label or a detour', () => {
     const stylePrefs = {
       strokeWeight: 3,
       color: '#8C8C8C',
@@ -64,8 +64,7 @@ describe('createConnectorRecord', () => {
       startCap: 'NONE' as const,
       endCap: 'DIAMOND_FILLED' as const,
       lineStyle: 'CURVE' as const,
-      cornerRadius: 8,
-      detour: 'BOTTOM' as const
+      cornerRadius: 8
     }
     const record = createConnectorRecord('a', 'b', stylePrefs)
     expect(record).toEqual({
@@ -73,6 +72,7 @@ describe('createConnectorRecord', () => {
       start: { kind: 'magnet', nodeId: 'a', magnet: 'AUTO' },
       end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' },
       ...stylePrefs,
+      detour: DEFAULT_DETOUR,
       label: DEFAULT_LABEL
     })
   })
@@ -87,10 +87,30 @@ describe('parseConnectorStylePrefs / serialiseConnectorStylePrefs', () => {
       startCap: 'DIAMOND_FILLED' as const,
       endCap: 'TRIANGLE_FILLED' as const,
       lineStyle: 'STRAIGHT' as const,
-      cornerRadius: 12,
-      detour: 'LEFT' as const
+      cornerRadius: 12
     }
     expect(parseConnectorStylePrefs(serialiseConnectorStylePrefs(prefs))).toEqual(prefs)
+  })
+
+  /**
+   * Which way round an obstacle is not a style the way a colour is. A colour
+   * applies to every connector there will ever be; "go below" only means
+   * anything while something is in the way, so carrying it forward leaves it
+   * lying in wait on lines that have nothing to avoid — where it does
+   * nothing at all until, one day, it does.
+   */
+  it('does not carry a pinned detour forward to the next connector', () => {
+    const raw = serialiseConnectorStylePrefs({
+      ...DEFAULT_CONNECTOR_STYLE_PREFS,
+      color: '#8C8C8C'
+    })
+    expect(raw).not.toContain('detour')
+    expect(parseConnectorStylePrefs(JSON.stringify({ detour: 'BOTTOM' }))).toEqual(
+      DEFAULT_CONNECTOR_STYLE_PREFS
+    )
+    expect(createConnectorRecord('a', 'b', parseConnectorStylePrefs(raw)).detour).toBe(
+      DEFAULT_DETOUR
+    )
   })
 
   it('falls back to the shipped defaults for empty, malformed, or invalid-field data', () => {
