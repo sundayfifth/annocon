@@ -429,22 +429,22 @@ async function ensureCard(
   // same rule the comment above spells out for a brand-new node applies to
   // an existing one whose font is about to be replaced.
   text.fontSize = metrics.fontSize
-  // `layoutSizingHorizontal: 'FILL'` is documented to make an auto-layout
-  // child's width track its parent, but in practice it left the text at
-  // whatever sliver of a width it was created with — every character wrapped
-  // onto its own line. Setting the width directly, instead of trusting FILL,
-  // is what actually works.
   text.textAutoResize = 'HEIGHT'
+  // Sized explicitly first, and this order is the whole trick to making a
+  // card narrower: auto-layout will not shrink a frame past a fixed-width
+  // child, so resizing the card first left it propped open at the old width
+  // by text that had not moved yet — overflowing whatever it sat beside,
+  // including out past the edge of a section.
   text.layoutSizingHorizontal = 'FIXED'
-  // The text is narrowed *before* the card, and this order is the whole
-  // trick to making a card narrower. Auto-layout will not shrink a frame
-  // past the fixed-width child inside it, so resizing the card first left it
-  // propped open at the old width by text that had not moved yet — the card
-  // then overflowed whatever it sat beside, including out past the edge of a
-  // section. Widening works either way round, but one order that always
-  // works beats two that each work half the time.
   text.resize(width - metrics.paddingX * 2, text.height)
   card.resize(width, card.height)
+  // Then handed to auto-layout to keep. An earlier attempt at `FILL` alone
+  // was abandoned because the text stayed at the sliver of a width it was
+  // created at — but that was `FILL` on a card whose own width had not been
+  // set yet, so there was nothing to fill. Set last, with both widths
+  // already right, it holds: and it is what makes the text follow *during* a
+  // drag, when no sync has run yet and nothing else is there to reflow it.
+  text.layoutSizingHorizontal = 'FILL'
   await ensureCategoryPill(card, category, metrics)
   return { card, text }
 }
