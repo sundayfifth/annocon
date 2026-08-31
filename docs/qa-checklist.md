@@ -29,6 +29,9 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       than bleeding into the neighbouring frame
 - [ ] Drag a card's side edge → it stays at the width you left it, the text
       reflows into the wider column, and the type size does not change
+- [ ] Drag it *narrower* too, not just wider: the text has to reflow down with
+      it rather than propping the card open at its old width — and the card
+      must not end up sticking out past the edge of a section it sits beside
 - [ ] Drag a card wider than the gap beside its frame → it stays at the width
       you dragged. Shrink-to-fit is for widths the plugin chose, not ones a
       person set with the gap in front of them.

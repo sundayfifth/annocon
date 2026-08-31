@@ -375,8 +375,7 @@ async function ensureCard(
   card.strokes = [figma.util.solidPaint(CARD_STROKE)]
   card.strokeWeight = 1
   card.effects = [CARD_SHADOW]
-  card.resize(width, card.height)
-  // Draggable on purpose — see `updateCardOffsetFromDrag`. Badge and leader
+  // Draggable on purpose — see `updateCardFromDrag`. Badge and leader
   // stay locked because their position is fully derived; the card's is a
   // record-backed preference a person can nudge.
   tag(card, ownerId, 'card')
@@ -415,7 +414,15 @@ async function ensureCard(
   // is what actually works.
   text.textAutoResize = 'HEIGHT'
   text.layoutSizingHorizontal = 'FIXED'
+  // The text is narrowed *before* the card, and this order is the whole
+  // trick to making a card narrower. Auto-layout will not shrink a frame
+  // past the fixed-width child inside it, so resizing the card first left it
+  // propped open at the old width by text that had not moved yet — the card
+  // then overflowed whatever it sat beside, including out past the edge of a
+  // section. Widening works either way round, but one order that always
+  // works beats two that each work half the time.
   text.resize(width - metrics.paddingX * 2, text.height)
+  card.resize(width, card.height)
   await ensureCategoryPill(card, category, metrics)
   return { card, text }
 }
