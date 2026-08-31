@@ -25,12 +25,12 @@
     <path class="w bad" d="M76 55 L214 55"/>
     <path class="cbad" d="M212 49 L224 55 L212 61 Z"/>
     <circle class="cbad" cx="76" cy="55" r="3"/>
-    <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.4;0.48;0.92;1" dur="5s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.4;0.48;0.92;1" dur="2.8s" repeatCount="indefinite"/>
   </g>
   <g opacity="0">
     <path class="w" d="M76 55 L92 55 Q100 55 100 63 L100 96 Q100 104 108 104 L192 104 Q200 104 200 96 L200 63 Q200 55 208 55 L214 55"/>
     <path class="c" d="M212 49 L224 55 L212 61 Z"/>
     <circle class="c" cx="76" cy="55" r="3"/>
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4;0.48;0.92;1" dur="5s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4;0.48;0.92;1" dur="2.8s" repeatCount="indefinite"/>
   </g>
 </svg>

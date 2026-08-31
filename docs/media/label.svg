@@ -8,7 +8,7 @@
     .c { fill: #1E1E24; }
     .card { fill: #FFFFFF; stroke: #E1E1E6; stroke-width: 1.5; }
     .t { fill: #C9C9D2; }
-    .pill { fill: #0D99FF; }
+    .pill { fill: #FECC00; }
     .txt { font: 600 9px -apple-system, sans-serif; fill: #8B8B96; }
     @media (prefers-color-scheme: dark) {
       .s { fill: #26262C; stroke: #3A3A44; }
@@ -28,11 +28,11 @@
   <rect class="card" x="118" y="48" width="64" height="24" rx="5"/>
   <g>
     <rect class="t" x="128" y="57" width="30" height="6" rx="3">
-      <animate attributeName="width" values="30;10;44;30" keyTimes="0;0.35;0.75;1" dur="5s" repeatCount="indefinite"/>
+      <animate attributeName="width" values="30;10;44;30" keyTimes="0;0.35;0.75;1" dur="2.8s" repeatCount="indefinite"/>
     </rect>
     <rect class="c" x="160" y="55" width="1.5" height="10">
-      <animate attributeName="x" values="160;140;174;160" keyTimes="0;0.35;0.75;1" dur="5s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite"/>
+      <animate attributeName="x" values="160;140;174;160" keyTimes="0;0.35;0.75;1" dur="2.8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="1;0;1" dur="0.9s" repeatCount="indefinite"/>
     </rect>
   </g>
 </svg>

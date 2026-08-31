@@ -34,13 +34,13 @@
     <path class="cbad" d="M210 56 L222 62 L210 68 Z"/>
     <circle class="cbad" cx="78" cy="62" r="3"/>
     <text class="tag before" x="150" y="118" text-anchor="middle">ก่อน — จอใน section ไม่ถูกอ้อม</text>
-    <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.42;0.5;0.92;1" dur="5s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.42;0.5;0.92;1" dur="2.8s" repeatCount="indefinite"/>
   </g>
   <g opacity="0">
     <path class="w" d="M78 62 L92 62 Q100 62 100 70 L100 84 Q100 92 108 92 L192 92 Q200 92 200 84 L200 70 Q200 62 208 62 L212 62"/>
     <path class="c" d="M210 56 L222 62 L210 68 Z"/>
     <circle class="c" cx="78" cy="62" r="3"/>
     <text class="tag after" x="150" y="118" text-anchor="middle">หลัง — อ้อมให้ถูกแล้ว</text>
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.42;0.5;0.92;1" dur="5s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.42;0.5;0.92;1" dur="2.8s" repeatCount="indefinite"/>
   </g>
 </svg>

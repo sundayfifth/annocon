@@ -8,7 +8,7 @@
     .c { fill: #1E1E24; }
     .card { fill: #FFFFFF; stroke: #E1E1E6; stroke-width: 1.5; }
     .t { fill: #C9C9D2; }
-    .pill { fill: #0D99FF; }
+    .pill { fill: #FECC00; }
     .txt { font: 600 9px -apple-system, sans-serif; fill: #8B8B96; }
     @media (prefers-color-scheme: dark) {
       .s { fill: #26262C; stroke: #3A3A44; }
@@ -23,7 +23,7 @@
   <g class="w">
     <path d="M40 32 L240 32"/>
     <path d="M40 60 Q140 60 140 60 T240 60">
-      <animate attributeName="d" values="M40 60 L240 60;M40 60 Q140 20 240 60;M40 60 L140 60 L140 60 L240 60;M40 60 L240 60" dur="6s" repeatCount="indefinite"/>
+      <animate attributeName="d" values="M40 60 L240 60;M40 60 Q140 20 240 60;M40 60 L140 60 L140 60 L240 60;M40 60 L240 60" dur="3.4s" repeatCount="indefinite"/>
     </path>
     <path d="M40 88 L240 88" stroke-dasharray="6 5"/>
   </g>
