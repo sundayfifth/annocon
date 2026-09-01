@@ -26,6 +26,7 @@ import {
   parseConnectorStylePrefs,
   pointAlongPolyline,
   obstaclesInPlay,
+  waypointInsertionIndex,
   pointOnCurve,
   resolveConnectorGeometry,
   serialiseConnectorRecord,
@@ -41,6 +42,13 @@ const CONNECTOR_KEY = 'connector'
 const BROKEN_COLOR = '#E5484D'
 const LABEL_OWNER_KEY = 'connectorLabelOwner'
 const LAST_STYLE_KEY = 'lastConnectorStyle'
+/** Marks a drag handle and says which connector it belongs to. */
+const HANDLE_OWNER_KEY = 'connectorHandleOwner'
+/** A pinned point's index in `record.waypoints`, or `''` for a handle that has not pinned one yet. */
+const HANDLE_INDEX_KEY = 'connectorHandleIndex'
+const HANDLE_SIZE = 9
+const HANDLE_FILL = '#FFFFFF'
+const HANDLE_STROKE = '#FECC00'
 
 /**
  * The style (colour, weight, opacity, caps, line style, corner radius —
@@ -277,6 +285,116 @@ export function connectorsBehindLabels(
 /** The connector a now-deleted label used to belong to — see `labelOwnerByRenderedNodeId`. */
 export function lastKnownLabelOwnerOf(labelId: string): string | null {
   return labelOwnerByRenderedNodeId.get(labelId) ?? null
+}
+
+/**
+ * Draws the drag handles for one connector, and removes everyone else's.
+ *
+ * A handle is a real node, because a plugin cannot draw on the canvas: it is
+ * visible to whoever else has the file open, and it outlives the plugin if
+ * the plugin dies with one on screen. Both are why they exist only while
+ * their line is selected, and why `reconcileAllConnectors` sweeps them.
+ *
+ * One handle per pinned point, plus one at the middle of every stretch
+ * between them — drag an existing point to move it, drag a middle one to pin
+ * a new one there. Same shape as FigJam, except the stretches nobody has
+ * touched still route themselves around whatever is in the way.
+ */
+export function showConnectorHandles(connector: VectorNode | null): void {
+  const keep = connector?.id ?? null
+  for (const node of figma.currentPage.children) {
+    if (node.getPluginData(HANDLE_OWNER_KEY) === '') continue
+    if (node.getPluginData(HANDLE_OWNER_KEY) !== keep) node.remove()
+  }
+  if (connector === null) return
+  const record = getConnectorRecord(connector)
+  // Only an elbow has bends to pin. A straight line or a curve is defined by
+  // its two ends, and a handle on one would promise something it cannot do.
+  if (record === null || record.lineStyle !== 'ELBOW') return
+
+  const route = renderedRouteOf(connector)
+  if (route.length < 2) return
+  const existing = new Map<string, EllipseNode>()
+  for (const node of figma.currentPage.children) {
+    if (node.type === 'ELLIPSE' && node.getPluginData(HANDLE_OWNER_KEY) === connector.id) {
+      existing.set(node.getPluginData(HANDLE_INDEX_KEY), node)
+    }
+  }
+
+  const wanted: Array<{ key: string; at: Point }> = record.waypoints.map((point, index) => ({
+    key: String(index),
+    at: point
+  }))
+  for (let i = 0; i < route.length - 1; i += 1) {
+    const from = route[i]
+    const to = route[i + 1]
+    if (typeof from === 'undefined' || typeof to === 'undefined') continue
+    wanted.push({ key: `s${i}`, at: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 } })
+  }
+
+  for (const [key, node] of existing) {
+    if (!wanted.some((w) => w.key === key)) node.remove()
+  }
+  for (const { key, at } of wanted) {
+    const handle = existing.get(key) ?? figma.createEllipse()
+    handle.resize(HANDLE_SIZE, HANDLE_SIZE)
+    handle.x = at.x - HANDLE_SIZE / 2
+    handle.y = at.y - HANDLE_SIZE / 2
+    handle.fills = [figma.util.solidPaint(HANDLE_FILL)]
+    handle.strokes = [figma.util.solidPaint(HANDLE_STROKE)]
+    handle.strokeWeight = 2
+    handle.name = ' '
+    handle.setPluginData(HANDLE_OWNER_KEY, connector.id)
+    handle.setPluginData(HANDLE_INDEX_KEY, key)
+    figma.currentPage.appendChild(handle)
+  }
+}
+
+/** The route as drawn, in absolute coordinates — read off the node so handles land on the line actually on screen. */
+function renderedRouteOf(connector: VectorNode): ReadonlyArray<Point> {
+  const network = connector.vectorNetwork
+  return network.vertices.map((vertex) => ({
+    x: vertex.x + connector.x,
+    y: vertex.y + connector.y
+  }))
+}
+
+/**
+ * Takes a handle that has just been dragged and pins its point.
+ *
+ * A handle sitting on a stretch nobody has touched pins a new point, in the
+ * place along the line where it was dropped; one that already stands for a
+ * pinned point moves that point. Returns `false` for anything that is not a
+ * handle, so the caller can go on and try something else.
+ */
+export async function captureHandleDrag(node: SceneNode): Promise<boolean> {
+  const connectorId = node.getPluginData(HANDLE_OWNER_KEY)
+  if (connectorId === '') return false
+  const connector = findAllConnectors().find((candidate) => candidate.id === connectorId)
+  if (typeof connector === 'undefined') return false
+  const record = getConnectorRecord(connector)
+  if (record === null) return false
+  const box = node.absoluteBoundingBox
+  if (box === null) return false
+  const dropped: Point = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+
+  const key = node.getPluginData(HANDLE_INDEX_KEY)
+  const index = Number.parseInt(key, 10)
+  const waypoints = [...record.waypoints]
+  if (Number.isInteger(index) && index >= 0 && index < waypoints.length) {
+    waypoints[index] = dropped
+  } else {
+    waypoints.splice(waypointInsertionIndex(renderedRouteOf(connector), dropped, waypoints), 0, dropped)
+  }
+  await updateConnectorStyle(connector, { waypoints })
+  showConnectorHandles(connector)
+  return true
+}
+
+/** Clears every point pinned on a connector, putting it back on the automatic route. */
+export async function clearConnectorWaypoints(connector: VectorNode): Promise<void> {
+  await updateConnectorStyle(connector, { waypoints: [] })
+  showConnectorHandles(connector)
 }
 
 /**
@@ -826,6 +944,7 @@ export async function updateConnectorStyle(
       | 'cornerRadius'
       | 'detour'
       | 'label'
+      | 'waypoints'
     >
   >
 ): Promise<void> {
@@ -871,6 +990,10 @@ export async function updateConnectorAnchorSide(
 /** Removes any connector label whose owning connector no longer exists. */
 function removeOrphanConnectorLabels(liveConnectorIds: ReadonlySet<string>): void {
   removeOrphansByOwnerKey(LABEL_OWNER_KEY, liveConnectorIds)
+  // Handles belong to a selection, not to a file. A reconcile means the
+  // plugin has just started or been asked to tidy up, and either way any
+  // handle still on the canvas is one a previous session left behind.
+  removeOrphansByOwnerKey(HANDLE_OWNER_KEY, new Set())
 }
 
 /** Re-renders every connector on the current page. */

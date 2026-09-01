@@ -4,6 +4,7 @@ import type {
   AddCategoryHandler,
   AddCategoryPayload,
   CategoriesChangedHandler,
+  ClearWaypointsHandler,
   CreateConnectorHandler,
   CreateConnectorPayload,
   DeleteCategoryHandler,
@@ -55,7 +56,9 @@ import {
 import {
   boxesChangedInLastScan,
   collectConnectorLabels,
+  captureHandleDrag,
   captureLabelTextEdit,
+  clearConnectorWaypoints,
   collectRouteObstacles,
   connectorsBehindLabels,
   createConnector,
@@ -68,12 +71,13 @@ import {
   lastKnownLabelOwnerOf,
   reconcileAllConnectors,
   removeConnectorLabel,
+  showConnectorHandles,
   syncConnector,
   updateConnectorAnchorSide,
   updateConnectorStyle
 } from './scene/connectorScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './scene/chunking.js'
-import { isSuppressed } from './scene/pluginData.js'
+import { isSuppressed, withSuppressedNodeChange } from './scene/pluginData.js'
 
 // `figma.currentPage.selection` is not in click order — Figma returns it in
 // layer/z-order regardless of which node was selected first. To let a
@@ -177,12 +181,22 @@ function summariseSelection(): Array<SelectionSummary> {
               lineStyle: connectorRecord.lineStyle,
               cornerRadius: connectorRecord.cornerRadius,
               detour: connectorRecord.detour,
+              pinnedCount: connectorRecord.waypoints.length,
               startMagnet: connectorRecord.start.kind === 'magnet' ? connectorRecord.start.magnet : 'AUTO',
               endMagnet: connectorRecord.end.kind === 'magnet' ? connectorRecord.end.magnet : 'AUTO',
               label: connectorRecord.label
             }
     }
   })
+}
+
+/** The one connector a selection is about, if it is about exactly one. */
+function selectedConnector(summary: ReadonlyArray<SelectionSummary>): VectorNode | null {
+  if (summary.length !== 1) return null
+  const only = summary[0]
+  if (typeof only === 'undefined' || only.connectorStyle === null) return null
+  const node = figma.currentPage.selection.find((candidate) => candidate.id === only.id)
+  return typeof node !== 'undefined' && node.type === 'VECTOR' ? node : null
 }
 
 interface ReconcileResult {
@@ -214,6 +228,13 @@ async function handleSetAnnotationSize({ targetId, size }: SetAnnotationSizePayl
   const node = await figma.getNodeByIdAsync(targetId)
   if (node === null || !('absoluteBoundingBox' in node)) return
   await setAnnotationSize(node, size)
+  emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
+}
+
+async function handleClearWaypoints(connectorId: string): Promise<void> {
+  const node = await figma.getNodeByIdAsync(connectorId)
+  if (node === null || node.type !== 'VECTOR') return
+  await clearConnectorWaypoints(node)
   emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
 }
 
@@ -537,6 +558,13 @@ async function resyncTouched({
   }
 
   let capturedAnEdit = false
+  for (const id of movedTargetIds) {
+    const node = await figma.getNodeByIdAsync(id)
+    if (node === null || !('absoluteBoundingBox' in node)) continue
+    if (await captureHandleDrag(node)) touched = true
+    await maybeYield()
+  }
+
   for (const text of editedTextNodes) {
     if (text.removed) continue
     // Whichever it belongs to, or neither — a person editing some unrelated
@@ -599,12 +627,23 @@ export default function main(): void {
     fireAndForget(handleUpdateConnectorStyle(payload))
   })
 
+  on<ClearWaypointsHandler>('CLEAR_WAYPOINTS', ({ connectorId }) => {
+    fireAndForget(handleClearWaypoints(connectorId))
+  })
+
   on<UpdateConnectorAnchorHandler>('UPDATE_CONNECTOR_ANCHOR', (payload) => {
     fireAndForget(handleUpdateConnectorAnchor(payload))
   })
 
   figma.on('selectionchange', () => {
-    emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
+    const summary = summariseSelection()
+    emit<SelectionChangedHandler>('SELECTION_CHANGED', summary)
+    // Handles exist only while their line is selected — they are real nodes
+    // on the canvas, visible to anyone else in the file, so they must not
+    // outstay the moment they are useful.
+    withSuppressedNodeChange(() => {
+      showConnectorHandles(selectedConnector(summary))
+    })
   })
 
   figma.currentPage.on('nodechange', handleNodeChange)

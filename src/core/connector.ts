@@ -501,6 +501,58 @@ function edgesOn(obstacles: RouteObstacles, axis: 'x' | 'y'): ReadonlyArray<[num
 }
 
 /**
+ * How far along a polyline a point sits, as a distance from the start.
+ *
+ * Used to keep pinned points in the order the line visits them; a point
+ * off the line answers with the nearest place on it, which is what a handle
+ * dragged clear of the route is asking for anyway.
+ */
+function distanceAlong(points: ReadonlyArray<Point>, target: Point): number {
+  let travelled = 0
+  let best = { distance: Number.POSITIVE_INFINITY, at: 0 }
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const from = points[i]
+    const to = points[i + 1]
+    if (typeof from === 'undefined' || typeof to === 'undefined') continue
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    const lengthSquared = dx * dx + dy * dy
+    const t =
+      lengthSquared === 0
+        ? 0
+        : clamp(((target.x - from.x) * dx + (target.y - from.y) * dy) / lengthSquared, 0, 1)
+    const closest = { x: from.x + dx * t, y: from.y + dy * t }
+    const distance = Math.hypot(target.x - closest.x, target.y - closest.y)
+    if (distance < best.distance) {
+      best = { distance, at: travelled + Math.hypot(closest.x - from.x, closest.y - from.y) }
+    }
+    travelled += Math.hypot(dx, dy)
+  }
+  return best.at
+}
+
+/**
+ * Where a newly pinned point belongs in the list, so the legs are walked in
+ * the order the line actually visits them.
+ *
+ * Insert in the wrong place and the route doubles back on itself: the legs
+ * are stitched in list order, not in the order the points appear on canvas.
+ */
+export function waypointInsertionIndex(
+  route: ReadonlyArray<Point>,
+  dropped: Point,
+  existing: ReadonlyArray<Point>
+): number {
+  const droppedAt = distanceAlong(route, dropped)
+  let index = 0
+  for (const waypoint of existing) {
+    if (distanceAlong(route, waypoint) > droppedAt) break
+    index += 1
+  }
+  return index
+}
+
+/**
  * Stitches a route out of one leg per pinned point.
  *
  * Each leg is routed by the ordinary elbow rules — obstacles and all — so

@@ -22,6 +22,7 @@ import {
   connectorStubClearance,
   obstaclesInPlay,
   routeCost,
+  waypointInsertionIndex,
   routeCrossings,
   createConnectorRecord,
   frameGapMidpoint,
@@ -742,6 +743,42 @@ describe('waypoints — a route through points a person pinned', () => {
       { x: 0, y: 0 },
       { x: 400, y: 0 }
     ])
+  })
+})
+
+describe('waypointInsertionIndex', () => {
+  /** An L: right along the top, then down the right-hand side. */
+  const route = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 100, y: 100 }
+  ]
+
+  it('puts a point dragged from the first stretch before one from the second', () => {
+    const early = waypointInsertionIndex(route, { x: 50, y: 0 }, [])
+    const late = waypointInsertionIndex(route, { x: 100, y: 50 }, [])
+    expect(early).toBeLessThanOrEqual(late)
+  })
+
+  it('slots a new point between the pinned points it falls between', () => {
+    const pinned = [
+      { x: 20, y: 0 },
+      { x: 100, y: 80 }
+    ]
+    expect(waypointInsertionIndex(route, { x: 60, y: 0 }, pinned)).toBe(1)
+    expect(waypointInsertionIndex(route, { x: 10, y: 0 }, pinned)).toBe(0)
+    expect(waypointInsertionIndex(route, { x: 100, y: 95 }, pinned)).toBe(2)
+  })
+
+  /**
+   * Order along the line is what keeps a route from tying itself in knots:
+   * legs are walked in list order, so a point pinned near the end that lands
+   * first in the list sends the line back on itself.
+   */
+  it('never returns an index that would put a later point earlier', () => {
+    const pinned = [{ x: 100, y: 50 }]
+    expect(waypointInsertionIndex(route, { x: 90, y: 0 }, pinned)).toBe(0)
+    expect(waypointInsertionIndex(route, { x: 100, y: 90 }, pinned)).toBe(1)
   })
 })
 
