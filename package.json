@@ -1,6 +1,6 @@
 {
   "name": "annotate-connect",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Figma Design plugin: canvas-visible annotations and FigJam-style connectors that stay attached.",
   "license": "UNLICENSED",

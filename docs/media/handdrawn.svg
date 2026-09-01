@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 120" width="300" height="120" role="img" aria-label="แก้รูปทรงเส้นเองด้วยเครื่องมือ vector แล้วเส้นยังเกาะ layer อยู่">
+  <style>
+    .s { fill: #F5F5F7; stroke: #D5D5DC; stroke-width: 1.5; }
+    .s2 { fill: #ECECF1; stroke: #C9C9D2; stroke-width: 1.5; }
+    .b { fill: #DEDEE6; }
+    .w { fill: none; stroke: #1E1E24; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .c { fill: #1E1E24; }
+    .pt { fill: #FFFFFF; stroke: #0D99FF; stroke-width: 1.5; }
+    .tag { font: 600 9px -apple-system, sans-serif; fill: #8B8B96; }
+    @media (prefers-color-scheme: dark) {
+      .s { fill: #26262C; stroke: #3A3A44; }
+      .s2 { fill: #2E2E36; stroke: #43434F; }
+      .b { fill: #3A3A44; }
+      .w { stroke: #E8E8EE; }
+      .c { fill: #E8E8EE; }
+      .pt { fill: #1C1C21; }
+    }
+  </style>
+  <rect class="s" x="14" y="26" width="58" height="52" rx="5"/>
+  <rect class="b" x="22" y="34" width="26" height="4" rx="2"/>
+  <rect class="s2" x="121" y="26" width="58" height="52" rx="5"/>
+  <rect class="b" x="129" y="34" width="26" height="4" rx="2"/>
+  <rect class="s" x="228" y="26" width="58" height="52" rx="5"/>
+  <rect class="b" x="236" y="34" width="26" height="4" rx="2"/>
+  <g>
+    <path class="w" d="M72 52 L88 52 Q96 52 96 60 L96 92 Q96 100 104 100 L196 100 Q204 100 204 92 L204 60 Q204 52 212 52 L218 52">
+      <animate attributeName="d" values="M72 52 L88 52 Q96 52 96 60 L96 92 Q96 100 104 100 L196 100 Q204 100 204 92 L204 60 Q204 52 212 52 L218 52;M72 52 L88 52 Q96 52 96 44 L96 20 Q96 12 104 12 L196 12 Q204 12 204 20 L204 44 Q204 52 212 52 L218 52;M72 52 L88 52 Q96 52 96 44 L96 20 Q96 12 104 12 L196 12 Q204 12 204 20 L204 44 Q204 52 212 52 L218 52" keyTimes="0;0.35;1" dur="2.8s" repeatCount="indefinite" calcMode="spline" keySplines="0.32 0 0.12 1;0 0 1 1"/>
+    </path>
+    <path class="c" d="M216 46 L228 52 L216 58 Z"/>
+    <circle class="c" cx="72" cy="52" r="3"/>
+  </g>
+  <g>
+    <circle class="pt" cx="150" cy="100" r="4">
+      <animate attributeName="cy" values="100;12;12" keyTimes="0;0.35;1" dur="2.8s" repeatCount="indefinite" calcMode="spline" keySplines="0.32 0 0.12 1;0 0 1 1"/>
+    </circle>
+    <animate attributeName="opacity" values="1;1;0" keyTimes="0;0.5;0.7" dur="2.8s" repeatCount="indefinite"/>
+  </g>
+  <text class="tag" x="150" y="116" text-anchor="middle">ลากแก้เองได้ แล้วเส้นยังเกาะจอ</text>
+</svg>
