@@ -26,7 +26,6 @@
   </style>
 
   <g transform="translate(48, 74)">
-    <rect class="chip" x="0" y="-30" width="46" height="10" rx="5"/>
     <text class="name" x="0" y="14">ANNOCON</text>
     <text class="tag" x="0" y="44">โน้ตและเส้นเชื่อมที่อยู่ในไฟล์จริง ไม่หายตอน export</text>
     <text class="tag" x="0" y="66">Figma plugin · Annotate &amp; Connect</text>
