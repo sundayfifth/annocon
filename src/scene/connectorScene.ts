@@ -46,9 +46,20 @@ const LAST_STYLE_KEY = 'lastConnectorStyle'
 const HANDLE_OWNER_KEY = 'connectorHandleOwner'
 /** A pinned point's index in `record.waypoints`, or `''` for a handle that has not pinned one yet. */
 const HANDLE_INDEX_KEY = 'connectorHandleIndex'
-const HANDLE_SIZE = 9
-const HANDLE_FILL = '#FFFFFF'
-const HANDLE_STROKE = '#FECC00'
+/**
+ * A capsule lying along its stretch of the line, FigJam-style, rather than a
+ * dot: the shape says which way it slides before anyone drags it, and it
+ * reads as part of the line instead of as something dropped on top.
+ */
+const HANDLE_LENGTH = 18
+const HANDLE_THICKNESS = 5
+/**
+ * Figma's own selection blue. Not the plugin's yellow, deliberately — blue is
+ * what this editor already uses to mean "this is a control you can grab", and
+ * a handle is the one thing this plugin draws that belongs to the editor's
+ * vocabulary rather than to the document.
+ */
+const HANDLE_FILL = '#0D99FF'
 
 /**
  * The style (colour, weight, opacity, caps, line style, corner radius —
@@ -254,7 +265,8 @@ export function collectConnectorLabels(): LabelIndex {
 const labelOwnerByRenderedNodeId = new Map<string, string>()
 
 /**
- * The connector each label pill in `nodes` belongs to, keyed by the pill's id.
+ * The connector each label pill or drag handle in `nodes` belongs to, keyed by
+ * that node's id.
  *
  * Lets a selection of the pill stand for a selection of its line, so clicking
  * the label on the canvas opens that connector for editing rather than
@@ -266,7 +278,14 @@ export function connectorsBehindLabels(
 ): Map<string, VectorNode> {
   const wanted = new Map<string, Array<string>>()
   for (const node of nodes) {
-    const ownerId = node.getPluginData(LABEL_OWNER_KEY)
+    // Handles as well as labels. Dragging a handle selects it, and a
+    // selection that no longer looks like the connector would take the
+    // handles away mid-drag — the line would shed the very thing being
+    // dragged the moment it was picked up.
+    const ownerId =
+      node.getPluginData(LABEL_OWNER_KEY) !== ''
+        ? node.getPluginData(LABEL_OWNER_KEY)
+        : node.getPluginData(HANDLE_OWNER_KEY)
     if (ownerId === '') continue
     const asking = wanted.get(ownerId)
     if (typeof asking === 'undefined') wanted.set(ownerId, [node.id])
@@ -314,40 +333,68 @@ export function showConnectorHandles(connector: VectorNode | null): void {
 
   const route = renderedRouteOf(connector)
   if (route.length < 2) return
-  const existing = new Map<string, EllipseNode>()
-  for (const node of figma.currentPage.children) {
-    if (node.type === 'ELLIPSE' && node.getPluginData(HANDLE_OWNER_KEY) === connector.id) {
-      existing.set(node.getPluginData(HANDLE_INDEX_KEY), node)
-    }
-  }
 
-  const wanted: Array<{ key: string; at: Point }> = record.waypoints.map((point, index) => ({
-    key: String(index),
-    at: point
-  }))
+  const wanted: Array<{ key: string; at: Point; along: 'x' | 'y' }> = []
   for (let i = 0; i < route.length - 1; i += 1) {
     const from = route[i]
     const to = route[i + 1]
     if (typeof from === 'undefined' || typeof to === 'undefined') continue
-    wanted.push({ key: `s${i}`, at: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 } })
+    const along = Math.abs(to.x - from.x) >= Math.abs(to.y - from.y) ? 'x' : 'y'
+    // A pinned point sits somewhere along a stretch rather than at a bend, so
+    // it takes that stretch's direction and replaces the stretch's own
+    // handle: two grabbable things in the same place would be a coin toss.
+    const pinned = record.waypoints.findIndex((point) => isOnSegment(point, from, to))
+    wanted.push(
+      pinned === -1
+        ? { key: `s${i}`, at: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 }, along }
+        : { key: String(pinned), at: record.waypoints[pinned] as Point, along }
+    )
   }
 
-  for (const [key, node] of existing) {
-    if (!wanted.some((w) => w.key === key)) node.remove()
+  const existing = new Map<string, SceneNode>()
+  for (const node of figma.currentPage.children) {
+    if (node.getPluginData(HANDLE_OWNER_KEY) !== connector.id) continue
+    const key = node.getPluginData(HANDLE_INDEX_KEY)
+    // A handle of the wrong shape is one an older version drew; it goes with
+    // the ones whose stretch no longer exists.
+    if (node.type !== 'RECTANGLE' || !wanted.some((w) => w.key === key)) {
+      node.remove()
+      continue
+    }
+    existing.set(key, node)
   }
-  for (const { key, at } of wanted) {
-    const handle = existing.get(key) ?? figma.createEllipse()
-    handle.resize(HANDLE_SIZE, HANDLE_SIZE)
-    handle.x = at.x - HANDLE_SIZE / 2
-    handle.y = at.y - HANDLE_SIZE / 2
+
+  for (const { key, at, along } of wanted) {
+    const found = existing.get(key)
+    const handle = found?.type === 'RECTANGLE' ? found : figma.createRectangle()
+    const width = along === 'x' ? HANDLE_LENGTH : HANDLE_THICKNESS
+    const height = along === 'x' ? HANDLE_THICKNESS : HANDLE_LENGTH
+    handle.resize(width, height)
+    handle.x = at.x - width / 2
+    handle.y = at.y - height / 2
+    handle.cornerRadius = HANDLE_THICKNESS / 2
     handle.fills = [figma.util.solidPaint(HANDLE_FILL)]
-    handle.strokes = [figma.util.solidPaint(HANDLE_STROKE)]
-    handle.strokeWeight = 2
+    handle.strokes = []
     handle.name = ' '
     handle.setPluginData(HANDLE_OWNER_KEY, connector.id)
     handle.setPluginData(HANDLE_INDEX_KEY, key)
     figma.currentPage.appendChild(handle)
   }
+}
+
+/** Whether `point` lies on the segment `from`-`to`, within a pixel of slack for rounding. */
+function isOnSegment(point: Point, from: Point, to: Point): boolean {
+  const slack = 1
+  const withinX = Math.min(from.x, to.x) - slack <= point.x && point.x <= Math.max(from.x, to.x) + slack
+  const withinY = Math.min(from.y, to.y) - slack <= point.y && point.y <= Math.max(from.y, to.y) + slack
+  if (!withinX || !withinY) return false
+  const cross = (to.x - from.x) * (point.y - from.y) - (to.y - from.y) * (point.x - from.x)
+  return Math.abs(cross) <= slack * Math.hypot(to.x - from.x, to.y - from.y)
+}
+
+/** Whether `node` is one of our drag handles — see `handleOwnerOf` for whose. */
+export function isConnectorHandle(node: SceneNode): boolean {
+  return node.getPluginData(HANDLE_OWNER_KEY) !== ''
 }
 
 /** The route as drawn, in absolute coordinates — read off the node so handles land on the line actually on screen. */
@@ -387,14 +434,23 @@ export async function captureHandleDrag(node: SceneNode): Promise<boolean> {
     waypoints.splice(waypointInsertionIndex(renderedRouteOf(connector), dropped, waypoints), 0, dropped)
   }
   await updateConnectorStyle(connector, { waypoints })
-  showConnectorHandles(connector)
+  // Inside the suppression window, like every other write this plugin makes.
+  // Left outside it, moving a handle to sit on the new route is delivered
+  // back as "someone dragged a handle", which pins another point, which
+  // redraws the handles, which pins another point — the plugin fills the
+  // page with handles until it is closed.
+  withSuppressedNodeChange(() => {
+    showConnectorHandles(connector)
+  })
   return true
 }
 
 /** Clears every point pinned on a connector, putting it back on the automatic route. */
 export async function clearConnectorWaypoints(connector: VectorNode): Promise<void> {
   await updateConnectorStyle(connector, { waypoints: [] })
-  showConnectorHandles(connector)
+  withSuppressedNodeChange(() => {
+    showConnectorHandles(connector)
+  })
 }
 
 /**

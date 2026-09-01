@@ -58,6 +58,7 @@ import {
   collectConnectorLabels,
   captureHandleDrag,
   captureLabelTextEdit,
+  isConnectorHandle,
   clearConnectorWaypoints,
   collectRouteObstacles,
   connectorsBehindLabels,
@@ -348,6 +349,8 @@ interface TouchedNodes {
   readonly draggedCardOwnerIds: ReadonlySet<string>
   /** Text nodes someone typed into on the canvas — a card's own text, or a connector label's. */
   readonly editedTextNodes: ReadonlyArray<TextNode>
+  /** Drag handles someone moved — the one kind of our own node that is meant to be dragged. */
+  readonly draggedHandleIds: ReadonlySet<string>
 }
 
 /**
@@ -363,6 +366,7 @@ function handleNodeChange(event: NodeChangeEvent): void {
   const movedTargetIds = new Set<string>()
   const draggedCardOwnerIds = new Set<string>()
   const editedTextNodes: Array<TextNode> = []
+  const draggedHandleIds = new Set<string>()
 
   for (const change of event.nodeChanges) {
     if (change.type === 'DELETE') {
@@ -396,6 +400,14 @@ function handleNodeChange(event: NodeChangeEvent): void {
     // Badge/leader are locked and repositioned only by our own sync code —
     // reacting to their moves here would just chase our own writes.
     if (role === 'badge' || role === 'leader') continue
+    // A handle is ours too, but unlike those it is *meant* to be dragged. It
+    // gets its own bucket rather than joining the layers that moved: those
+    // are re-synced and re-routed, and a handle is neither a layer a
+    // connector is attached to nor a box anything routes around.
+    if (isConnectorHandle(change.node)) {
+      draggedHandleIds.add(change.node.id)
+      continue
+    }
     movedTargetIds.add(change.node.id)
   }
 
@@ -403,18 +415,28 @@ function handleNodeChange(event: NodeChangeEvent): void {
     deletedIds.size === 0 &&
     movedTargetIds.size === 0 &&
     draggedCardOwnerIds.size === 0 &&
-    editedTextNodes.length === 0
+    editedTextNodes.length === 0 &&
+    draggedHandleIds.size === 0
   ) {
     return
   }
-  fireAndForget(resyncTouched({ deletedIds, movedTargetIds, draggedCardOwnerIds, editedTextNodes }))
+  fireAndForget(
+    resyncTouched({
+      deletedIds,
+      movedTargetIds,
+      draggedCardOwnerIds,
+      editedTextNodes,
+      draggedHandleIds
+    })
+  )
 }
 
 async function resyncTouched({
   deletedIds,
   movedTargetIds,
   draggedCardOwnerIds,
-  editedTextNodes
+  editedTextNodes,
+  draggedHandleIds
 }: TouchedNodes): Promise<void> {
   let touched = false
   // One shared counter across all three loops below — a single nodechange
@@ -558,7 +580,7 @@ async function resyncTouched({
   }
 
   let capturedAnEdit = false
-  for (const id of movedTargetIds) {
+  for (const id of draggedHandleIds) {
     const node = await figma.getNodeByIdAsync(id)
     if (node === null || !('absoluteBoundingBox' in node)) continue
     if (await captureHandleDrag(node)) touched = true
