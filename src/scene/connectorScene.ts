@@ -314,11 +314,27 @@ export async function captureLabelTextEdit(text: TextNode): Promise<boolean> {
   return true
 }
 
-/** A fingerprint of the shape on the node, for spotting an edit that was not ours. */
+/**
+ * A fingerprint of the shape on the node, for spotting an edit that was not
+ * ours.
+ *
+ * Every vertex and every join, not the bounding box: pulling a bend inwards
+ * leaves the box exactly as it was — it is defined by the two ends — and the
+ * vertex count with it, so a box-and-count fingerprint reports no change and
+ * the edit is redrawn over in silence. A connector carries a handful of
+ * vertices, so hashing all of them costs nothing worth measuring.
+ *
+ * Rounded to whole units, because the plugin's own writes come back with the
+ * sub-pixel drift of a float round-trip, and a fingerprint that changes on
+ * its own would claim every line in the file as hand-drawn.
+ */
 function shapeFingerprint(node: VectorNode): string {
-  const box = node.absoluteBoundingBox
-  const size = box === null ? '' : `${Math.round(box.width)},${Math.round(box.height)}`
-  return `${Math.round(node.x)},${Math.round(node.y)},${size},${node.vectorNetwork.vertices.length}`
+  const network = node.vectorNetwork
+  const vertices = network.vertices
+    .map((vertex) => `${Math.round(vertex.x)},${Math.round(vertex.y)}`)
+    .join(';')
+  const segments = network.segments.map((segment) => `${segment.start}>${segment.end}`).join(';')
+  return `${Math.round(node.x)},${Math.round(node.y)}|${vertices}|${segments}`
 }
 
 /** Records the shape just drawn, so the next change to it can be attributed. */
@@ -392,13 +408,20 @@ export async function captureManualReshape(node: SceneNode): Promise<boolean> {
  */
 function drawnShapeOf(node: VectorNode): { vertices: ReadonlyArray<ManualVertex>; order: ReadonlyArray<number> } | null {
   const network = node.vectorNetwork
-  const box = node.absoluteBoundingBox
-  if (box === null || network.vertices.length < 2) return null
+  if (network.vertices.length < 2) return null
 
-  const relativeX = box.x - node.x
-  const relativeY = box.y - node.y
+  // `absoluteTransform`, not the bounding box and not `x`/`y`. A vertex is
+  // stored relative to the node's own origin; the bounding box is a
+  // different rectangle again — it is grown by the stroke width, so using it
+  // shifts every point by half a stroke — and `x`/`y` mean "relative to the
+  // parent", which stops being the page the moment somebody drops the
+  // connector onto a frame. The transform is the one thing that answers
+  // "where is this on the canvas" whatever the node's parent is.
+  const transform = node.absoluteTransform
+  const absoluteX = transform[0]?.[2] ?? node.x
+  const absoluteY = transform[1]?.[2] ?? node.y
   const vertices: Array<ManualVertex> = network.vertices.map((vertex) => ({
-    at: { x: vertex.x + relativeX, y: vertex.y + relativeY },
+    at: { x: vertex.x + absoluteX, y: vertex.y + absoluteY },
     tangentIn: null,
     tangentOut: null
   }))
@@ -858,7 +881,7 @@ async function syncConnectorBody(
       const midpoint =
         record.manualShape === null
           ? midpointOfDrawnLine(node)
-          : await drawManualShape(node, record.manualShape, { start, end })
+          : await drawManualShape(node, record.manualShape, { start, end }, record)
       await ensureConnectorLabel(
         node.id,
         findConnectorLabel(node.id, labels),
@@ -951,7 +974,8 @@ async function positionPolyline(
 async function drawManualShape(
   node: VectorNode,
   shape: ManualShape,
-  now: { start: Point; end: Point }
+  now: { start: Point; end: Point },
+  record: ConnectorRecord
 ): Promise<Point> {
   const walked = shape.order.map((index) => (shape.vertices[index] as ManualVertex).at)
   const carried = shiftManualShape(walked, shape, now)
@@ -962,13 +986,15 @@ async function drawManualShape(
 
   const lastIndex = carried.length - 1
   await node.setVectorNetworkAsync({
-    // No cornerRadius on any of them: a corner the person made sharp stays
-    // sharp. The record's radius describes the route this plugin draws, not
-    // the one it was handed.
+    // Caps on the two ends, as the routed path does — dropping them left a
+    // hand-drawn line with no arrowhead. No cornerRadius on any of them,
+    // though: a corner the person made sharp stays sharp, and the record's
+    // radius describes the route this plugin draws rather than the one it
+    // was handed.
     vertices: carried.map((point, i) => ({
       x: point.x - originX,
       y: point.y - originY,
-      ...(i === 0 || i === lastIndex ? {} : { strokeCap: 'NONE' as const })
+      strokeCap: i === 0 ? record.startCap : i === lastIndex ? record.endCap : ('NONE' as const)
     })),
     segments: carried.slice(1).map((_point, i) => {
       const from = shape.vertices[shape.order[i] as number] as ManualVertex
