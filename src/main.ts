@@ -11,6 +11,7 @@ import type {
   RecolorCategoryHandler,
   RecolorCategoryPayload,
   RenameCategoryHandler,
+  RestoreAutoRouteHandler,
   RenameCategoryPayload,
   SelectionChangedHandler,
   SelectionSummary,
@@ -56,6 +57,7 @@ import {
   boxesChangedInLastScan,
   collectConnectorLabels,
   captureLabelTextEdit,
+  captureManualReshape,
   collectRouteObstacles,
   connectorsBehindLabels,
   createConnector,
@@ -68,6 +70,7 @@ import {
   lastKnownLabelOwnerOf,
   reconcileAllConnectors,
   removeConnectorLabel,
+  restoreAutomaticRoute,
   syncConnector,
   updateConnectorAnchorSide,
   updateConnectorStyle
@@ -177,6 +180,7 @@ function summariseSelection(): Array<SelectionSummary> {
               lineStyle: connectorRecord.lineStyle,
               cornerRadius: connectorRecord.cornerRadius,
               detour: connectorRecord.detour,
+              manualGeometry: connectorRecord.manualGeometry,
               startMagnet: connectorRecord.start.kind === 'magnet' ? connectorRecord.start.magnet : 'AUTO',
               endMagnet: connectorRecord.end.kind === 'magnet' ? connectorRecord.end.magnet : 'AUTO',
               label: connectorRecord.label
@@ -214,6 +218,13 @@ async function handleSetAnnotationSize({ targetId, size }: SetAnnotationSizePayl
   const node = await figma.getNodeByIdAsync(targetId)
   if (node === null || !('absoluteBoundingBox' in node)) return
   await setAnnotationSize(node, size)
+  emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
+}
+
+async function handleRestoreAutoRoute(connectorId: string): Promise<void> {
+  const node = await figma.getNodeByIdAsync(connectorId)
+  if (node === null || node.type !== 'VECTOR') return
+  await restoreAutomaticRoute(node)
   emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
 }
 
@@ -537,6 +548,13 @@ async function resyncTouched({
   }
 
   let capturedAnEdit = false
+  for (const id of movedTargetIds) {
+    const node = await figma.getNodeByIdAsync(id)
+    if (node === null || !('absoluteBoundingBox' in node)) continue
+    if (captureManualReshape(node)) touched = true
+    await maybeYield()
+  }
+
   for (const text of editedTextNodes) {
     if (text.removed) continue
     // Whichever it belongs to, or neither — a person editing some unrelated
@@ -597,6 +615,10 @@ export default function main(): void {
 
   on<UpdateConnectorStyleHandler>('UPDATE_CONNECTOR_STYLE', (payload) => {
     fireAndForget(handleUpdateConnectorStyle(payload))
+  })
+
+  on<RestoreAutoRouteHandler>('RESTORE_AUTO_ROUTE', ({ connectorId }) => {
+    fireAndForget(handleRestoreAutoRoute(connectorId))
   })
 
   on<UpdateConnectorAnchorHandler>('UPDATE_CONNECTOR_ANCHOR', (payload) => {

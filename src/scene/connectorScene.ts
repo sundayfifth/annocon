@@ -41,6 +41,17 @@ const CONNECTOR_KEY = 'connector'
 const BROKEN_COLOR = '#E5484D'
 const LABEL_OWNER_KEY = 'connectorLabelOwner'
 const LAST_STYLE_KEY = 'lastConnectorStyle'
+/**
+ * The shape this plugin last drew, as `x,y,width,height,vertexCount`.
+ *
+ * How a person reshaping a line is told from this plugin drawing one.
+ * Suppression cannot answer it: it releases a tick after the write, and a
+ * sync's awaits mean the `nodechange` for a vector write can land after the
+ * window has closed. Comparing against what we drew does not depend on when
+ * an event turns up — the same test that tells a dragged card width from a
+ * re-rendered one.
+ */
+const DRAWN_AS_KEY = 'connectorDrawnAs'
 
 /**
  * The style (colour, weight, opacity, caps, line style, corner radius —
@@ -299,6 +310,68 @@ export async function captureLabelTextEdit(text: TextNode): Promise<boolean> {
   await updateConnectorStyle(connector, { label: text.characters })
   return true
 }
+
+/** A fingerprint of the shape on the node, for spotting an edit that was not ours. */
+function shapeFingerprint(node: VectorNode): string {
+  const box = node.absoluteBoundingBox
+  const size = box === null ? '' : `${Math.round(box.width)},${Math.round(box.height)}`
+  return `${Math.round(node.x)},${Math.round(node.y)},${size},${node.vectorNetwork.vertices.length}`
+}
+
+/** Records the shape just drawn, so the next change to it can be attributed. */
+function rememberDrawnShape(node: VectorNode): void {
+  node.setPluginData(DRAWN_AS_KEY, shapeFingerprint(node))
+}
+
+/**
+ * Notices that somebody has reshaped a connector with Figma's own tools and
+ * hands its geometry over for good.
+ *
+ * Returns `false` for a shape that matches what this plugin drew — every
+ * ordinary sync — so the caller can carry on.
+ */
+export function captureManualReshape(node: SceneNode): boolean {
+  if (node.type !== 'VECTOR') return false
+  const record = getConnectorRecord(node)
+  if (record === null || record.manualGeometry) return false
+  const remembered = node.getPluginData(DRAWN_AS_KEY)
+  // Nothing remembered means this line predates the fingerprint. Treating
+  // that as an edit would hand over every old connector in the file the
+  // first time anything moved, so it is left alone and fingerprinted on its
+  // next sync.
+  if (remembered === '' || remembered === shapeFingerprint(node)) return false
+  writeConnectorRecord(node, { ...record, manualGeometry: true })
+  figma.notify('เส้นนี้ถูกปรับเอง ปลั๊กอินจะไม่คำนวณเส้นทางให้อีก')
+  return true
+}
+
+/** Puts a hand-drawn connector back under the plugin's own routing. */
+export async function restoreAutomaticRoute(connector: VectorNode): Promise<void> {
+  await updateConnectorStyle(connector, { manualGeometry: false })
+}
+
+/**
+ * The middle of the line as it is actually drawn, for placing the label on a
+ * connector this plugin no longer routes.
+ *
+ * Reads the node's own vertices, which the "geometry flows one way" rule
+ * otherwise forbids — allowed here precisely because the flow has stopped:
+ * nothing is written back, and there is no other source for where the middle
+ * of a hand-drawn line is.
+ */
+function midpointOfDrawnLine(node: VectorNode): Point {
+  const vertices = node.vectorNetwork.vertices
+  const points = vertices.map((vertex) => ({ x: vertex.x + node.x, y: vertex.y + node.y }))
+  if (points.length === 0) {
+    const box = node.absoluteBoundingBox
+    return box === null
+      ? { x: node.x, y: node.y }
+      : { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  }
+  return pointAlongPolyline(points, 0.5)
+}
+
+/** The route as drawn, in absolute coordinates
 
 /** Removes a connector's label, if it has one — used when the connector itself is deleted. */
 export function removeConnectorLabel(connectorId: string): void {
@@ -669,6 +742,21 @@ async function syncConnectorBody(
     const end = geometry.end
     if (start === null || end === null) return
 
+    // Reshaped by hand: everything above still applies — colour, weight, the
+    // dash on a broken line — and nothing below does. The plugin has handed
+    // over where the line goes and kept what it looks like. The label is
+    // placed from the shape actually on the node rather than from a route
+    // this code no longer computes.
+    if (record.manualGeometry) {
+      await ensureConnectorLabel(
+        node.id,
+        findConnectorLabel(node.id, labels),
+        record.label,
+        midpointOfDrawnLine(node)
+      )
+      return
+    }
+
     // How far each end has to poke out before it's clear of whatever frame
     // it's nested in — not just clear of the target node's own tiny box —
     // so the route never cuts back across the frame it just left.
@@ -707,6 +795,9 @@ async function syncConnectorBody(
             obstacles
           })
     figma.currentPage.appendChild(node)
+    // Fingerprinted after every draw, so the next change to this node can be
+    // attributed: matching means we drew it, differing means somebody else did.
+    rememberDrawnShape(node)
 
     await ensureConnectorLabel(
       node.id,
@@ -825,6 +916,7 @@ export async function updateConnectorStyle(
       | 'cornerRadius'
       | 'detour'
       | 'label'
+      | 'manualGeometry'
     >
   >
 ): Promise<void> {

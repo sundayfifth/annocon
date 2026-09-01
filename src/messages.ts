@@ -22,6 +22,8 @@ export interface ConnectorStyleSummary {
   readonly cornerRadius: number
   /** Which way an `ELBOW` goes around whatever is in its path. */
   readonly detour: ConnectorDetour
+  /** True once someone has reshaped the line by hand and the plugin has stopped routing it. */
+  readonly manualGeometry: boolean
   /** Which side of the start/end node the connector exits/enters from. `AUTO` picks based on relative position. */
   readonly startMagnet: Magnet
   readonly endMagnet: Magnet
@@ -94,6 +96,15 @@ export interface SetAnnotationSizePayload {
 export interface SetAnnotationSizeHandler {
   name: 'SET_ANNOTATION_SIZE'
   handler: (payload: SetAnnotationSizePayload) => void
+}
+
+export interface RestoreAutoRoutePayload {
+  readonly connectorId: string
+}
+
+export interface RestoreAutoRouteHandler {
+  name: 'RESTORE_AUTO_ROUTE'
+  handler: (payload: RestoreAutoRoutePayload) => void
 }
 
 export interface AddCategoryPayload {

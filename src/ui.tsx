@@ -36,6 +36,7 @@ import type {
   DeleteCategoryHandler,
   RecolorCategoryHandler,
   RenameCategoryHandler,
+  RestoreAutoRouteHandler,
   SelectionChangedHandler,
   SelectionSummary,
   SetAnnotationCategoryHandler,
@@ -715,7 +716,30 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
             value={style.lineStyle}
           />
         </div>
-        {style.lineStyle === 'ELBOW' ? (
+        {style.manualGeometry ? (
+        <>
+          <VerticalSpace space="medium" />
+          <SectionLabel>เส้นนี้ปรับเอง</SectionLabel>
+          <VerticalSpace space="extraSmall" />
+          <Text>
+            <Muted>
+              ปลั๊กอินไม่คำนวณเส้นทางให้แล้ว แก้รูปทรงด้วยเครื่องมือ vector ได้ตามใจ
+              สี หัวลูกศร และป้ายกำกับยังปรับได้ปกติ
+            </Muted>
+          </Text>
+          <VerticalSpace space="extraSmall" />
+          <Button
+            fullWidth
+            onClick={() => {
+              emit<RestoreAutoRouteHandler>('RESTORE_AUTO_ROUTE', { connectorId: node.id })
+            }}
+            secondary
+          >
+            กลับไปใช้เส้นอัตโนมัติ
+          </Button>
+        </>
+      ) : null}
+      {style.lineStyle === 'ELBOW' && !style.manualGeometry ? (
           <div style={{ flex: '1 1 0' }}>
             <TextboxNumeric
               minimum={0}
@@ -774,7 +798,30 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
           value={style.endMagnet}
         />
       </div>
-      {style.lineStyle === 'ELBOW' ? (
+      {style.manualGeometry ? (
+        <>
+          <VerticalSpace space="medium" />
+          <SectionLabel>เส้นนี้ปรับเอง</SectionLabel>
+          <VerticalSpace space="extraSmall" />
+          <Text>
+            <Muted>
+              ปลั๊กอินไม่คำนวณเส้นทางให้แล้ว แก้รูปทรงด้วยเครื่องมือ vector ได้ตามใจ
+              สี หัวลูกศร และป้ายกำกับยังปรับได้ปกติ
+            </Muted>
+          </Text>
+          <VerticalSpace space="extraSmall" />
+          <Button
+            fullWidth
+            onClick={() => {
+              emit<RestoreAutoRouteHandler>('RESTORE_AUTO_ROUTE', { connectorId: node.id })
+            }}
+            secondary
+          >
+            กลับไปใช้เส้นอัตโนมัติ
+          </Button>
+        </>
+      ) : null}
+      {style.lineStyle === 'ELBOW' && !style.manualGeometry ? (
         <>
           <VerticalSpace space="medium" />
           <SectionLabel>Go around</SectionLabel>

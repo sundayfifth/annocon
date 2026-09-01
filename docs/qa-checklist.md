@@ -116,6 +116,19 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] Connect two whole frames (not nested layers): the exit sides are the ones
       facing each other, exactly as before.
 
+## Connect — reshaping a line by hand
+
+- [ ] Double-click a connector to enter vector edit, move a point, leave →
+      the shape stays, and the panel says the line is now hand-drawn
+- [ ] Move a screen the line is attached to → the line does **not** re-route,
+      and does not snap back to the shape the plugin would have drawn
+- [ ] Colour, weight, caps and the label still apply to a hand-drawn line —
+      only its shape is out of the plugin's hands
+- [ ] **กลับไปใช้เส้นอัตโนมัติ** → routing takes over again, obstacles and all
+- [ ] Re-sync this page with a hand-drawn line present → still not redrawn
+- [ ] A connector made before this existed → not treated as hand-drawn the
+      first time something moves (no fingerprint yet means "not an edit")
+
 ## Cross-cutting
 
 - [ ] ⌘Z right after creating a connector leaves no stray nodes

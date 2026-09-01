@@ -101,6 +101,21 @@ export interface ConnectorRecord {
   readonly detour: ConnectorDetour
   /** An optional label drawn at the midpoint of the route, FigJam/Autoflow-style. Empty string means no label. */
   readonly label: string
+  /**
+   * Set once somebody has reshaped the line themselves with Figma's own
+   * vector tools. From then on the plugin stops deciding where it goes.
+   *
+   * The one place this codebase's "geometry flows one way" rule is answered
+   * by handing the geometry over rather than by owning it: the plugin does
+   * not read the shape back, it simply stops writing one. Everything else —
+   * colour, weight, caps, the label, and being listed as this pair's
+   * connector — carries on as before.
+   *
+   * The cost, taken deliberately: a hand-drawn line no longer follows its
+   * layers. Reshaping is a promise that the shape is right, and there is no
+   * honest way to keep that promise while moving the shape around.
+   */
+  readonly manualGeometry: boolean
 }
 
 export const DEFAULT_CONNECTOR_WEIGHT = 1.5
@@ -160,7 +175,8 @@ export function createConnectorRecord(
     ...stylePrefs,
     // Always AUTO, never inherited — see `ConnectorStylePrefs`.
     detour: DEFAULT_DETOUR,
-    label: DEFAULT_LABEL
+    label: DEFAULT_LABEL,
+    manualGeometry: false
   }
 }
 
@@ -276,7 +292,8 @@ export function parseConnectorRecord(raw: string): ConnectorRecord | null {
     // Read here rather than in `stylePrefsFrom`, because a connector records
     // its own detour but never hands it on to the next one.
     detour: isDetour(candidate.detour) ? candidate.detour : DEFAULT_DETOUR,
-    label: typeof candidate.label === 'string' ? candidate.label : DEFAULT_LABEL
+    label: typeof candidate.label === 'string' ? candidate.label : DEFAULT_LABEL,
+    manualGeometry: candidate.manualGeometry === true
   }
 }
 

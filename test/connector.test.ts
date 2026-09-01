@@ -34,6 +34,8 @@ import {
   serialiseConnectorStylePrefs
 } from '../src/core/connector.js'
 
+const anchor = (nodeId: string) => ({ kind: 'magnet', nodeId, magnet: 'AUTO' })
+
 const startRect: Rect = { x: 0, y: 0, width: 100, height: 100 }
 const endRect: Rect = { x: 400, y: 0, width: 100, height: 100 }
 
@@ -52,7 +54,8 @@ describe('createConnectorRecord', () => {
       lineStyle: DEFAULT_LINE_STYLE,
       cornerRadius: DEFAULT_CORNER_RADIUS,
       detour: DEFAULT_DETOUR,
-      label: DEFAULT_LABEL
+      label: DEFAULT_LABEL,
+      manualGeometry: false
     })
   })
 
@@ -73,7 +76,8 @@ describe('createConnectorRecord', () => {
       end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' },
       ...stylePrefs,
       detour: DEFAULT_DETOUR,
-      label: DEFAULT_LABEL
+      label: DEFAULT_LABEL,
+      manualGeometry: false
     })
   })
 })
@@ -669,6 +673,40 @@ describe('obstaclesInPlay', () => {
       }
     })
     expect(filtered).toEqual(withNoise)
+  })
+})
+
+describe('a connector someone has drawn by hand', () => {
+  it('is automatic until someone edits it', () => {
+    expect(createConnectorRecord('a', 'b').manualGeometry).toBe(false)
+  })
+
+  it('round-trips, and treats anything untrustworthy as automatic', () => {
+    const byHand = { ...createConnectorRecord('a', 'b'), manualGeometry: true }
+    expect(parseConnectorRecord(serialiseConnectorRecord(byHand))?.manualGeometry).toBe(true)
+    expect(parseConnectorRecord(JSON.stringify({ start: anchor('a'), end: anchor('b') }))?.manualGeometry).toBe(false)
+    expect(parseConnectorRecord(JSON.stringify({ start: anchor('a'), end: anchor('b'), manualGeometry: 'yes' }))?.manualGeometry).toBe(false)
+  })
+
+  /**
+   * The style half of a connector keeps working on a hand-drawn line —
+   * colour, weight, caps, the label. Only its shape stops being ours, which
+   * is the whole distinction: the plugin still owns what the line looks
+   * like, and has handed over where it goes.
+   */
+  it('keeps every style field it had', () => {
+    const byHand = parseConnectorRecord(
+      serialiseConnectorRecord({
+        ...createConnectorRecord('a', 'b'),
+        manualGeometry: true,
+        color: '#8C8C8C',
+        strokeWeight: 3,
+        label: 'still mine'
+      })
+    )
+    expect(byHand?.color).toBe('#8C8C8C')
+    expect(byHand?.strokeWeight).toBe(3)
+    expect(byHand?.label).toBe('still mine')
   })
 })
 
