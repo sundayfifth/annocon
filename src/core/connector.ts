@@ -199,16 +199,46 @@ const CAP_SET = new Set<string>(CONNECTOR_CAPS)
 const LINE_STYLES: ReadonlySet<string> = new Set<ConnectorLineStyle>(['STRAIGHT', 'ELBOW', 'CURVE'])
 const DETOURS = new Set<string>(CONNECTOR_DETOURS)
 
+function parseManualVertex(value: unknown): ManualVertex | null {
+  if (typeof value !== 'object' || value === null) return null
+  const candidate = value as Record<string, unknown>
+  if (!isPoint(candidate.at)) return null
+  return {
+    at: candidate.at,
+    tangentIn: isPoint(candidate.tangentIn) ? candidate.tangentIn : null,
+    tangentOut: isPoint(candidate.tangentOut) ? candidate.tangentOut : null
+  }
+}
+
+/**
+ * All of it or none of it, unlike the tolerant field-by-field decoding
+ * elsewhere in this file.
+ *
+ * A style field that fails to decode falls back to a default and the
+ * connector still looks like a connector. Half a shape is not half a line —
+ * it is a different line, drawn somewhere its author never put it. Better to
+ * answer `null` and let the route go back to being computed.
+ */
 function parseManualShape(value: unknown): ManualShape | null {
   if (typeof value !== 'object' || value === null) return null
   const candidate = value as Record<string, unknown>
-  if (!Array.isArray(candidate.points)) return null
-  const points = candidate.points.filter(isPoint)
-  // Two points is the least that can describe a line; anything less is
-  // corruption, and drawing it would put a connector nowhere.
-  if (points.length < 2) return null
+  if (!Array.isArray(candidate.vertices) || !Array.isArray(candidate.order)) return null
   if (!isPoint(candidate.start) || !isPoint(candidate.end)) return null
-  return { points, start: candidate.start, end: candidate.end }
+  const vertices: Array<ManualVertex> = []
+  for (const raw of candidate.vertices) {
+    const vertex = parseManualVertex(raw)
+    if (vertex === null) return null
+    vertices.push(vertex)
+  }
+  // Two vertices is the least that can describe a line, and the order has to
+  // name real ones — an index past the end would draw to nowhere.
+  if (vertices.length < 2 || candidate.order.length < 2) return null
+  const order: Array<number> = []
+  for (const index of candidate.order) {
+    if (!Number.isInteger(index) || index < 0 || index >= vertices.length) return null
+    order.push(index as number)
+  }
+  return { vertices, order, start: candidate.start, end: candidate.end }
 }
 
 function isDetour(value: unknown): value is ConnectorDetour {
@@ -528,9 +558,25 @@ function edgesOn(obstacles: RouteObstacles, axis: 'x' | 'y'): ReadonlyArray<[num
   return edges
 }
 
-/** A shape somebody drew, and where its two ends were when they drew it. */
+/** One vertex of a hand-drawn shape: where it is, and how the curve leaves it. */
+export interface ManualVertex {
+  readonly at: Point
+  /** Bezier handles, relative to `at` — `null` for a plain corner. */
+  readonly tangentIn: Point | null
+  readonly tangentOut: Point | null
+}
+
+/**
+ * A shape somebody drew, and where its two ends were when they drew it.
+ *
+ * `order` is the vertices' indices as the line actually visits them, which
+ * is not the order they sit in the network: adding a point mid-line with the
+ * pen tool appends it to the end of the vertex list. Redrawing in list order
+ * would jump the line from one end to the other and back.
+ */
 export interface ManualShape {
-  readonly points: ReadonlyArray<Point>
+  readonly vertices: ReadonlyArray<ManualVertex>
+  readonly order: ReadonlyArray<number>
   readonly start: Point
   readonly end: Point
 }
@@ -559,6 +605,9 @@ export function shiftManualShape(
   now: { start: Point; end: Point }
 ): ReadonlyArray<Point> {
   if (points.length === 0) return []
+  // Tangents are deliberately left untouched by this: they are relative to
+  // their own vertex, so a shape that is carried keeps its curvature exactly.
+
   const startDelta = { x: now.start.x - was.start.x, y: now.start.y - was.start.y }
   const endDelta = { x: now.end.x - was.end.x, y: now.end.y - was.end.y }
 

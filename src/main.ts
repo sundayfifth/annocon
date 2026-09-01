@@ -111,7 +111,13 @@ const POSITIONAL_PROPERTIES = [
   'height',
   'relativeTransform',
   'rotation',
-  'visible'
+  'visible',
+  // Reshaping a connector need not change its box at all — pull a bend
+  // inwards and the two ends still define the same rectangle with the same
+  // number of vertices. Without these, that edit is filtered out here and
+  // then quietly redrawn over on the next sync.
+  'vectorNetwork',
+  'vectorPaths'
 ]
 
 /**
@@ -497,8 +503,30 @@ async function resyncTouched({
     await maybeYield()
   }
 
+  // Fetched once and shared by both passes below. They cannot be merged into
+  // one — a reshape has to be recorded before *any* connector is re-synced,
+  // since a batch that moves a screen and reshapes its connector together
+  // would otherwise re-draw the connector first and overwrite the edit — but
+  // there is no reason to ask Figma for the same node twice, on a thread
+  // where a multi-select drag already costs one lookup per node per frame.
+  const movedNodes = new Map<string, SceneNode>()
   for (const id of movedTargetIds) {
     const node = await figma.getNodeByIdAsync(id)
+    if (node !== null && 'absoluteBoundingBox' in node) movedNodes.set(id, node)
+    await maybeYield()
+  }
+
+  let capturedAReshape = false
+  for (const node of movedNodes.values()) {
+    if (await captureManualReshape(node)) {
+      touched = true
+      capturedAReshape = true
+    }
+    await maybeYield()
+  }
+
+  for (const id of movedTargetIds) {
+    const node = movedNodes.get(id) ?? null
     if (node !== null && 'absoluteBoundingBox' in node && getAnnotationRecord(node) !== null) {
       await syncAnnotation(node)
       touched = true
@@ -548,13 +576,6 @@ async function resyncTouched({
   }
 
   let capturedAnEdit = false
-  for (const id of movedTargetIds) {
-    const node = await figma.getNodeByIdAsync(id)
-    if (node === null || !('absoluteBoundingBox' in node)) continue
-    if (await captureManualReshape(node)) touched = true
-    await maybeYield()
-  }
-
   for (const text of editedTextNodes) {
     if (text.removed) continue
     // Whichever it belongs to, or neither — a person editing some unrelated
@@ -569,7 +590,9 @@ async function resyncTouched({
   // The panel is showing the words that just changed under it. Without this
   // it keeps the old ones until the selection changes, and typing into the
   // box there would then put them back.
-  if (capturedAnEdit) emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
+  if (capturedAnEdit || capturedAReshape) {
+    emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
+  }
 
   for (const ownerId of draggedCardOwnerIds) {
     const node = await figma.getNodeByIdAsync(ownerId)

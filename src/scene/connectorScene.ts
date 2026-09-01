@@ -13,6 +13,8 @@ import {
   type ConnectorRecord,
   type ConnectorStylePrefs,
   type ElbowRouteOptions,
+  type ManualShape,
+  type ManualVertex,
   type RouteObstacles,
   ROUTE_SEARCH_MARGIN,
   boxCouldAffectRoute,
@@ -357,11 +359,11 @@ export async function captureManualReshape(node: SceneNode): Promise<boolean> {
     startBoxes.frameRect,
     endBoxes.frameRect
   )
-  const points = drawnPointsOf(node)
+  const drawn = drawnShapeOf(node)
   const manualShape =
-    geometry.start === null || geometry.end === null || points.length < 2
+    geometry.start === null || geometry.end === null || drawn === null
       ? null
-      : { points, start: geometry.start, end: geometry.end }
+      : { ...drawn, start: geometry.start, end: geometry.end }
 
   writeConnectorRecord(node, { ...record, manualGeometry: true, manualShape })
   if (!record.manualGeometry) {
@@ -370,12 +372,86 @@ export async function captureManualReshape(node: SceneNode): Promise<boolean> {
   return true
 }
 
-/** The vertices as drawn, in absolute coordinates. */
-function drawnPointsOf(node: VectorNode): ReadonlyArray<Point> {
-  return node.vectorNetwork.vertices.map((vertex) => ({
-    x: vertex.x + node.x,
-    y: vertex.y + node.y
+/**
+ * The shape on the node: its vertices with their curve handles, and the
+ * order the line actually visits them.
+ *
+ * The vertex list is not the path. Adding a point mid-line with the pen tool
+ * appends it to the end of the list, so redrawing in list order would jump
+ * the line out to the far end and back. The segments say what joins what, so
+ * the path is walked from them.
+ *
+ * Coordinates are made absolute against the node's *bounding box* rather
+ * than its `x`/`y`: dropping a connector onto a frame reparents it, after
+ * which `x`/`y` mean "relative to that frame" and would put the stored shape
+ * a whole frame origin away from where it is.
+ *
+ * `null` when the shape is not a single open run — a person who has cut a
+ * connector into two pieces, or closed it into a loop, is holding something
+ * this cannot carry, and guessing at it would be worse than leaving it be.
+ */
+function drawnShapeOf(node: VectorNode): { vertices: ReadonlyArray<ManualVertex>; order: ReadonlyArray<number> } | null {
+  const network = node.vectorNetwork
+  const box = node.absoluteBoundingBox
+  if (box === null || network.vertices.length < 2) return null
+
+  const relativeX = box.x - node.x
+  const relativeY = box.y - node.y
+  const vertices: Array<ManualVertex> = network.vertices.map((vertex) => ({
+    at: { x: vertex.x + relativeX, y: vertex.y + relativeY },
+    tangentIn: null,
+    tangentOut: null
   }))
+
+  // Who is joined to whom, and with what curvature.
+  const neighbours = new Map<number, Array<number>>()
+  const tangents = new Map<string, Point>()
+  for (const segment of network.segments) {
+    for (const [from, to] of [
+      [segment.start, segment.end],
+      [segment.end, segment.start]
+    ]) {
+      const list = neighbours.get(from as number) ?? []
+      list.push(to as number)
+      neighbours.set(from as number, list)
+    }
+    if (typeof segment.tangentStart !== 'undefined') {
+      tangents.set(`${segment.start}>${segment.end}`, segment.tangentStart)
+    }
+    if (typeof segment.tangentEnd !== 'undefined') {
+      tangents.set(`${segment.end}>${segment.start}`, segment.tangentEnd)
+    }
+  }
+
+  // An open run has exactly two ends — vertices joined to one other vertex.
+  const ends = [...neighbours].filter(([, list]) => list.length === 1).map(([index]) => index)
+  if (ends.length !== 2) return null
+
+  const order: Array<number> = []
+  const seen = new Set<number>()
+  let current = ends[0] as number
+  while (!seen.has(current)) {
+    order.push(current)
+    seen.add(current)
+    const next = (neighbours.get(current) ?? []).find((candidate) => !seen.has(candidate))
+    if (typeof next === 'undefined') break
+    current = next
+  }
+  if (order.length !== network.vertices.length) return null
+
+  for (let i = 0; i < order.length; i += 1) {
+    const index = order[i] as number
+    const previous = i > 0 ? (order[i - 1] as number) : null
+    const next = i < order.length - 1 ? (order[i + 1] as number) : null
+    const vertex = vertices[index]
+    if (typeof vertex === 'undefined') continue
+    vertices[index] = {
+      at: vertex.at,
+      tangentIn: previous === null ? null : tangents.get(`${index}>${previous}`) ?? null,
+      tangentOut: next === null ? null : tangents.get(`${index}>${next}`) ?? null
+    }
+  }
+  return { vertices, order }
 }
 
 /** Puts a hand-drawn connector back under the plugin's own routing. */
@@ -403,8 +479,6 @@ function midpointOfDrawnLine(node: VectorNode): Point {
   }
   return pointAlongPolyline(points, 0.5)
 }
-
-/** The route as drawn, in absolute coordinates
 
 /** Removes a connector's label, if it has one — used when the connector itself is deleted. */
 export function removeConnectorLabel(connectorId: string): void {
@@ -781,14 +855,10 @@ async function syncConnectorBody(
     // placed from the shape actually on the node rather than from a route
     // this code no longer computes.
     if (record.manualGeometry) {
-      const carried =
-        record.manualShape === null
-          ? null
-          : shiftManualShape(record.manualShape.points, record.manualShape, { start, end })
       const midpoint =
-        carried === null
+        record.manualShape === null
           ? midpointOfDrawnLine(node)
-          : await drawPoints(node, carried, record)
+          : await drawManualShape(node, record.manualShape, { start, end })
       await ensureConnectorLabel(
         node.id,
         findConnectorLabel(node.id, labels),
@@ -867,6 +937,52 @@ async function positionPolyline(
     connectorRoutePoints(start, end, record.lineStyle, route.startSide, route.endSide, route),
     record
   )
+}
+
+/**
+ * Redraws a hand-drawn shape where its layers are now, and answers with its
+ * midpoint.
+ *
+ * Nothing about the shape is reinterpreted on the way through: the order the
+ * line is walked in, the curve handles, and the absence of corner rounding
+ * are all as the person left them. Only position is carried, and only by
+ * `shiftManualShape`.
+ */
+async function drawManualShape(
+  node: VectorNode,
+  shape: ManualShape,
+  now: { start: Point; end: Point }
+): Promise<Point> {
+  const walked = shape.order.map((index) => (shape.vertices[index] as ManualVertex).at)
+  const carried = shiftManualShape(walked, shape, now)
+  const originX = Math.min(...carried.map((point) => point.x))
+  const originY = Math.min(...carried.map((point) => point.y))
+  node.x = originX
+  node.y = originY
+
+  const lastIndex = carried.length - 1
+  await node.setVectorNetworkAsync({
+    // No cornerRadius on any of them: a corner the person made sharp stays
+    // sharp. The record's radius describes the route this plugin draws, not
+    // the one it was handed.
+    vertices: carried.map((point, i) => ({
+      x: point.x - originX,
+      y: point.y - originY,
+      ...(i === 0 || i === lastIndex ? {} : { strokeCap: 'NONE' as const })
+    })),
+    segments: carried.slice(1).map((_point, i) => {
+      const from = shape.vertices[shape.order[i] as number] as ManualVertex
+      const to = shape.vertices[shape.order[i + 1] as number] as ManualVertex
+      return {
+        start: i,
+        end: i + 1,
+        ...(from.tangentOut === null ? {} : { tangentStart: from.tangentOut }),
+        ...(to.tangentIn === null ? {} : { tangentEnd: to.tangentIn })
+      }
+    }),
+    regions: []
+  })
+  return pointAlongPolyline(carried, 0.5)
 }
 
 /**

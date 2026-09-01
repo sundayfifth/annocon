@@ -128,6 +128,24 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       carried in proportion; the shape is recognisably the one drawn
 - [ ] Reshape it a second time → the new shape is the one that follows from
       then on
+- [ ] Add a point **mid-line** with the pen tool → the redrawn line keeps that
+      point in the middle, and does not jump out to one end and back
+- [ ] Bend a segment into a **curve** → the curve survives being carried; it
+      does not straighten into a polyline
+- [ ] A corner left sharp stays sharp after a screen moves — no rounding
+      appears that nobody asked for
+- [ ] Drag a connector so it lands **on top of a frame** (Figma reparents it),
+      then reshape it → the stored shape is still where the line is, not one
+      frame origin away
+- [ ] Pull a bend **inwards** so the line's bounding box does not change →
+      still noticed as a hand edit, and not redrawn over on the next sync
+- [ ] Select a screen and its connector together and drag both while the
+      connector is also reshaped → the reshape survives
+- [ ] Reshape a connector that is currently selected → the panel shows the
+      hand-drawn section immediately, without deselecting first
+- [ ] Cut a connector into two pieces with the vector tools → the plugin
+      leaves it where it is rather than guessing (it can only carry a single
+      unbroken line)
 - [ ] Colour, weight, caps and the label still apply to a hand-drawn line —
       only its shape is out of the plugin's hands
 - [ ] **กลับไปใช้เส้นอัตโนมัติ** → routing takes over again, obstacles and all

@@ -716,30 +716,7 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
             value={style.lineStyle}
           />
         </div>
-        {style.manualGeometry ? (
-        <>
-          <VerticalSpace space="medium" />
-          <SectionLabel>เส้นนี้ปรับเอง</SectionLabel>
-          <VerticalSpace space="extraSmall" />
-          <Text>
-            <Muted>
-              ปลั๊กอินจะเลื่อนเส้นตาม layer ให้ แต่จะไม่คำนวณเส้นทางใหม่ — รูปทรงเป็นของคุณแล้ว
-              สี หัวลูกศร และป้ายกำกับยังปรับได้ปกติ
-            </Muted>
-          </Text>
-          <VerticalSpace space="extraSmall" />
-          <Button
-            fullWidth
-            onClick={() => {
-              emit<RestoreAutoRouteHandler>('RESTORE_AUTO_ROUTE', { connectorId: node.id })
-            }}
-            secondary
-          >
-            กลับไปใช้เส้นอัตโนมัติ
-          </Button>
-        </>
-      ) : null}
-      {style.lineStyle === 'ELBOW' && !style.manualGeometry ? (
+        {style.lineStyle === 'ELBOW' && !style.manualGeometry ? (
           <div style={{ flex: '1 1 0' }}>
             <TextboxNumeric
               minimum={0}
