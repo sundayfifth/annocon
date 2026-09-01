@@ -126,6 +126,16 @@ export const DEFAULT_DETOUR: ConnectorDetour = 'AUTO'
 export const DEFAULT_LABEL = ''
 
 /**
+ * A ceiling on pinned points, enforced on the way in and on the way out.
+ *
+ * Well past what anyone routes by hand — but a runaway that pins a point per
+ * redraw is a mistake this code has made twice, and a cap turns "the file
+ * fills with handles until the plugin is closed" into "the line stops
+ * gaining bends". A limit that only a bug can reach costs nothing to keep.
+ */
+export const MAX_WAYPOINTS = 12
+
+/**
  * The style fields a new connector inherits from whatever was last set —
  * everything in `ConnectorRecord` except its anchors, its label, and its
  * detour.
@@ -292,7 +302,9 @@ export function parseConnectorRecord(raw: string): ConnectorRecord | null {
     label: typeof candidate.label === 'string' ? candidate.label : DEFAULT_LABEL,
     // Filtered rather than rejected wholesale: one corrupt entry costs that
     // bend, not every bend a person had pinned on this line.
-    waypoints: Array.isArray(candidate.waypoints) ? candidate.waypoints.filter(isPoint) : []
+    waypoints: Array.isArray(candidate.waypoints)
+      ? candidate.waypoints.filter(isPoint).slice(0, MAX_WAYPOINTS)
+      : []
   }
 }
 

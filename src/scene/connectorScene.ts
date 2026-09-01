@@ -26,6 +26,7 @@ import {
   parseConnectorStylePrefs,
   pointAlongPolyline,
   obstaclesInPlay,
+  MAX_WAYPOINTS,
   waypointInsertionIndex,
   pointOnCurve,
   resolveConnectorGeometry,
@@ -46,6 +47,18 @@ const LAST_STYLE_KEY = 'lastConnectorStyle'
 const HANDLE_OWNER_KEY = 'connectorHandleOwner'
 /** A pinned point's index in `record.waypoints`, or `''` for a handle that has not pinned one yet. */
 const HANDLE_INDEX_KEY = 'connectorHandleIndex'
+/**
+ * Where this plugin last put a handle, as `x,y`.
+ *
+ * Suppression alone cannot tell our own writes from a person's here.
+ * Redrawing handles happens after `updateConnectorStyle`, whose awaits mean
+ * the `nodechange` for moving a handle can arrive after the suppression
+ * window has closed — and one such stray is enough to pin a point, redraw,
+ * and go round again. Comparing against where we put it settles the question
+ * without depending on when an event turns up, the same way a card's own
+ * width tells a drag from a re-render.
+ */
+const HANDLE_AT_KEY = 'connectorHandleAt'
 /**
  * A capsule lying along its stretch of the line, FigJam-style, rather than a
  * dot: the shape says which way it slides before anyone drags it, and it
@@ -378,6 +391,7 @@ export function showConnectorHandles(connector: VectorNode | null): void {
     handle.name = ' '
     handle.setPluginData(HANDLE_OWNER_KEY, connector.id)
     handle.setPluginData(HANDLE_INDEX_KEY, key)
+    handle.setPluginData(HANDLE_AT_KEY, `${handle.x},${handle.y}`)
     figma.currentPage.appendChild(handle)
   }
 }
@@ -423,6 +437,10 @@ export async function captureHandleDrag(node: SceneNode): Promise<boolean> {
   if (record === null) return false
   const box = node.absoluteBoundingBox
   if (box === null) return false
+  // Exactly where we left it means nobody has dragged it — this is our own
+  // redraw coming back to us, and acting on it is how the plugin ends up
+  // pinning a point per redraw until the page is full of handles.
+  if (node.getPluginData(HANDLE_AT_KEY) === `${node.x},${node.y}`) return false
   const dropped: Point = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
 
   const key = node.getPluginData(HANDLE_INDEX_KEY)
@@ -431,6 +449,7 @@ export async function captureHandleDrag(node: SceneNode): Promise<boolean> {
   if (Number.isInteger(index) && index >= 0 && index < waypoints.length) {
     waypoints[index] = dropped
   } else {
+    if (waypoints.length >= MAX_WAYPOINTS) return false
     waypoints.splice(waypointInsertionIndex(renderedRouteOf(connector), dropped, waypoints), 0, dropped)
   }
   await updateConnectorStyle(connector, { waypoints })
