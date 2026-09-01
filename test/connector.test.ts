@@ -626,6 +626,32 @@ describe('connectorRoutePoints — obstacle avoidance', () => {
     expect(routeCrossings(asForeign, own)).toBe(0)
   })
 
+  /**
+   * A real file: a column of screens stacked down the canvas, and a
+   * connector running from the top of it to the bottom. Both ends face
+   * sideways, so the router used to treat this as a horizontal run and offer
+   * only ways round that go up and over — the same axis the screens are
+   * stacked along, where there is always another screen. The way out is to
+   * leave the column sideways and run down beside it, which has to be
+   * offered before it can be chosen.
+   */
+  it('goes around a column of screens by leaving it sideways', () => {
+    const column = [
+      { x: 0, y: 200, width: 375, height: 800 },
+      { x: 0, y: 1100, width: 375, height: 800 },
+      { x: 0, y: 2000, width: 375, height: 800 }
+    ]
+    const points = connectorRoutePoints(
+      { x: 350, y: 100 },
+      { x: 350, y: 3000 },
+      'ELBOW',
+      'RIGHT',
+      'RIGHT',
+      { ...facing, obstacles: foreign(column) }
+    )
+    expect(routeCrossings(points, column)).toBe(0)
+  })
+
   it('ignores obstacles for STRAIGHT and CURVE, which have no bend to re-aim', () => {
     const obstacles = [{ x: 150, y: -50, width: 100, height: 100 }]
     const straight = connectorRoutePoints({ x: 0, y: 0 }, { x: 400, y: 0 }, 'STRAIGHT', 'RIGHT', 'LEFT', {

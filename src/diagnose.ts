@@ -3,7 +3,7 @@
  * text node on the canvas. Delete once the question is settled.
  */
 
-import type { Rect } from './core/anchor.js'
+import { routeCrossings } from './core/connector.js'
 import { collectRouteObstacles, getConnectorRecord } from './scene/connectorScene.js'
 
 function box(node: SceneNode): string {
@@ -79,51 +79,37 @@ export default async function diagnose(): Promise<void> {
       }
     }
 
-    const drawn = node.absoluteBoundingBox
-    if (drawn !== null) {
-      lines.push('')
-      lines.push('  BOXES OVERLAPPING THE LINE (what it should have avoided):')
-      const overlaps = (b: Rect): boolean =>
-        b.x < drawn.x + drawn.width && b.x + b.width > drawn.x && b.y < drawn.y + drawn.height && b.y + b.height > drawn.y
-      let found = 0
-      const scan = (nodes: ReadonlyArray<SceneNode>, depth: number): void => {
-        for (const child of nodes) {
-          const b = 'absoluteBoundingBox' in child ? child.absoluteBoundingBox : null
-          if (b !== null && overlaps(b) && ['FRAME', 'COMPONENT', 'INSTANCE', 'SECTION'].includes(child.type)) {
-            found += 1
-            if (found <= 25) lines.push(`${'  '.repeat(depth + 2)}${child.type} "${child.name}" ${box(child)}`)
-          }
-          if ((child.type === 'GROUP' || child.type === 'SECTION' || child.type === 'FRAME') && 'children' in child && depth < 2) {
-            scan(child.children, depth + 1)
-          }
-        }
-      }
-      scan(page.children, 0)
-      lines.push(`  (${found} overlapping in total)`)
+    // The route as drawn, segment by segment — not its bounding box, which
+    // for an elbow covers a great deal of canvas the line never touches.
+    const transform = node.absoluteTransform
+    const originX = transform[0]?.[2] ?? node.x
+    const originY = transform[1]?.[2] ?? node.y
+    const route = node.vectorNetwork.vertices.map((vertex) => ({
+      x: vertex.x + originX,
+      y: vertex.y + originY
+    }))
+    lines.push('')
+    lines.push(`  ROUTE AS DRAWN (${route.length} points):`)
+    for (const point of route.slice(0, 12)) {
+      lines.push(`    ${Math.round(point.x)},${Math.round(point.y)}`)
     }
 
+    const collected = collectRouteObstacles()
     lines.push('')
-    lines.push('  DOES THE ROUTER SEE THE BOXES THE LINE HITS?')
-    if (drawn !== null) {
-      const seen = collectRouteObstacles()
-      const seenIds = new Set(seen.map((o) => o.id))
-      lines.push(`    router collected ${seen.length} boxes from this page`)
-      const overlapsDrawn = (b: Rect): boolean =>
-        b.x < drawn.x + drawn.width && b.x + b.width > drawn.x && b.y < drawn.y + drawn.height && b.y + b.height > drawn.y
-      let hit = 0
-      for (const child of page.children) {
-        if (!('absoluteBoundingBox' in child)) continue
-        const b = child.absoluteBoundingBox
-        if (b === null || !overlapsDrawn(b)) continue
-        if (!['FRAME', 'COMPONENT', 'INSTANCE', 'SECTION'].includes(child.type)) continue
-        hit += 1
-        if (hit > 20) continue
-        const isOwn = seenIds.has(child.id) ? '' : ' ← NOT COLLECTED'
-        const gap = Math.round(b.x + b.width - drawn.x)
-        lines.push(`    ${child.type} "${child.name}" ${box(child)} overlap=${gap}px${isOwn}`)
-      }
-      lines.push(`    (${hit} top-level boxes overlap the line)`)
+    lines.push(`  router collected ${collected.length} boxes`)
+    lines.push('  BOXES THE DRAWN LINE ACTUALLY CUTS THROUGH:')
+    let crossed = 0
+    for (const obstacle of collected) {
+      if (routeCrossings(route, [obstacle.rect]) === 0) continue
+      crossed += 1
+      if (crossed > 15) continue
+      const owner = await figma.getNodeByIdAsync(obstacle.id)
+      const name = owner === null ? obstacle.id : `"${owner.name}"`
+      lines.push(
+        `    ${name} ${Math.round(obstacle.rect.x)},${Math.round(obstacle.rect.y)} ${Math.round(obstacle.rect.width)}x${Math.round(obstacle.rect.height)}`
+      )
     }
+    lines.push(`    (${crossed} of ${collected.length} collected boxes are actually crossed)`)
 
     lines.push('')
     lines.push('  what the router treats as boxes (page level, groups/sections descended):')
