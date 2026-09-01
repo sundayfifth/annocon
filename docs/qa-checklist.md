@@ -56,6 +56,10 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       with something stale
 - [ ] Empty a label pill by typing nothing into it → the pill goes away, as
       clearing the field in the panel does
+- [ ] Empty a **card** by deleting all its text on the canvas → the whole
+      annotation goes, exactly as emptying the note field in the panel does
+- [ ] Select All on a page holding a good number of annotations → the panel
+      keeps up; resolving the selection must not scan the page once per card
 - [ ] Select a layer **and** its own card together → Connect does not offer to
       join the layer to itself
 - [ ] No frame name is drawn above an annotation card or a connector's label

@@ -261,7 +261,8 @@ export function ownerIdOf(node: SceneNode): string | null {
 }
 
 /**
- * The annotated layer a rendered node belongs to — `null` when `node` is not
+ * The annotated layer each rendered node in `nodes` belongs to, keyed by the
+ * rendered node's own id — `null` when `node` is not
  * one of ours, or its target is gone.
  *
  * Lets a selection of a card stand for a selection of the note it shows: the
@@ -269,17 +270,35 @@ export function ownerIdOf(node: SceneNode): string | null {
  * has just dragged a card is holding the one thing the panel has nothing to
  * say about.
  *
- * Scans rather than taking the id to `getNodeByIdAsync` so it can stay
- * synchronous — its caller runs on every `selectionchange`.
+ * Takes the whole selection rather than one node at a time, and answers all
+ * of it from a single page scan. Called on every `selectionchange`, where
+ * Select All on a page of annotations would otherwise scan once per card.
+ * Scans at all — rather than taking each id to `getNodeByIdAsync` — so it can
+ * stay synchronous, which that caller needs.
  */
-export function annotationTargetOf(node: SceneNode): SceneNode | null {
-  const ownerId = ownerIdOf(node)
-  if (ownerId === null) return null
-  return (
-    figma.currentPage
-      .findAllWithCriteria({ pluginData: { keys: [ANNOTATION_KEY] } })
-      .find((candidate) => candidate.id === ownerId) ?? null
-  )
+export function annotationTargetsBehind(
+  nodes: ReadonlyArray<SceneNode>
+): Map<string, SceneNode> {
+  const wanted = new Map<string, Array<string>>()
+  for (const node of nodes) {
+    const ownerId = ownerIdOf(node)
+    if (ownerId === null) continue
+    const asking = wanted.get(ownerId)
+    if (typeof asking === 'undefined') wanted.set(ownerId, [node.id])
+    else asking.push(node.id)
+  }
+  const resolved = new Map<string, SceneNode>()
+  // Nothing rendered by us is selected, so there is nothing to look up and no
+  // reason to scan — which is every ordinary selection.
+  if (wanted.size === 0) return resolved
+  for (const target of figma.currentPage.findAllWithCriteria({
+    pluginData: { keys: [ANNOTATION_KEY] }
+  })) {
+    const asking = wanted.get(target.id)
+    if (typeof asking === 'undefined') continue
+    for (const id of asking) resolved.set(id, target)
+  }
+  return resolved
 }
 
 export function roleOf(node: SceneNode): Role | null {
@@ -1083,6 +1102,15 @@ export async function captureCardTextEdit(text: TextNode): Promise<boolean> {
   if (typeof target === 'undefined') return false
   const record = getAnnotationRecord(target)
   if (record === null || record.text === text.characters) return false
+  // Emptying the card is deleting the note, exactly as emptying the field in
+  // the panel is (`setAnnotationText`). Without this the two ways of editing
+  // the same words disagree about what erasing them means, and the canvas
+  // keeps an empty card that nothing offers to remove.
+  if (text.characters.trim() === '') {
+    clearAnnotation(target)
+    await finalizeLayout()
+    return true
+  }
   writeAnnotationRecord(target, { ...record, text: text.characters })
   await syncAnnotation(target)
   await finalizeLayout()

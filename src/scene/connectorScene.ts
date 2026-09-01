@@ -246,17 +246,32 @@ export function collectConnectorLabels(): LabelIndex {
 const labelOwnerByRenderedNodeId = new Map<string, string>()
 
 /**
- * The connector a label pill belongs to — `null` when `node` is not one.
+ * The connector each label pill in `nodes` belongs to, keyed by the pill's id.
  *
- * Lets a selection of the pill stand for a selection of its line, so
- * clicking the label on the canvas opens that connector for editing rather
- * than selecting a frame the panel has nothing to say about. Same idea as
- * `annotationTargetOf`, and synchronous for the same reason.
+ * Lets a selection of the pill stand for a selection of its line, so clicking
+ * the label on the canvas opens that connector for editing rather than
+ * selecting a frame the panel has nothing to say about. Whole-selection and
+ * single-scan for the same reason as `annotationTargetsBehind`.
  */
-export function connectorBehindLabel(node: SceneNode): VectorNode | null {
-  const ownerId = node.getPluginData(LABEL_OWNER_KEY)
-  if (ownerId === '') return null
-  return findAllConnectors().find((connector) => connector.id === ownerId) ?? null
+export function connectorsBehindLabels(
+  nodes: ReadonlyArray<SceneNode>
+): Map<string, VectorNode> {
+  const wanted = new Map<string, Array<string>>()
+  for (const node of nodes) {
+    const ownerId = node.getPluginData(LABEL_OWNER_KEY)
+    if (ownerId === '') continue
+    const asking = wanted.get(ownerId)
+    if (typeof asking === 'undefined') wanted.set(ownerId, [node.id])
+    else asking.push(node.id)
+  }
+  const resolved = new Map<string, VectorNode>()
+  if (wanted.size === 0) return resolved
+  for (const connector of findAllConnectors()) {
+    const asking = wanted.get(connector.id)
+    if (typeof asking === 'undefined') continue
+    for (const id of asking) resolved.set(id, connector)
+  }
+  return resolved
 }
 
 /** The connector a now-deleted label used to belong to — see `labelOwnerByRenderedNodeId`. */

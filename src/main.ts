@@ -33,7 +33,7 @@ import {
   getAnnotationRecord,
   lastKnownOwnerOf,
   lastKnownRoleOf,
-  annotationTargetOf,
+  annotationTargetsBehind,
   ownerIdOf,
   reconcileAllAnnotations,
   removeRenderedNodesForOwner,
@@ -57,7 +57,7 @@ import {
   collectConnectorLabels,
   captureLabelTextEdit,
   collectRouteObstacles,
-  connectorBehindLabel,
+  connectorsBehindLabels,
   createConnector,
   findAllConnectorsOnPage,
   findConnectorBetween,
@@ -111,15 +111,37 @@ const POSITIONAL_PROPERTIES = [
   'visible'
 ]
 
+/**
+ * What each selected node stands for: a card or leader stands for its note's
+ * layer, a label pill for its connector, everything else for itself.
+ *
+ * Two page scans at most, however much is selected — and none at all when
+ * nothing rendered by this plugin is in the selection, which is the ordinary
+ * case. Resolving one node at a time scanned once per node, so Select All on
+ * a page of annotations paid for a scan per card.
+ */
+function resolveSelectionOwners(nodes: ReadonlyArray<SceneNode>): Map<string, SceneNode> {
+  const owners = new Map<string, SceneNode>(annotationTargetsBehind(nodes))
+  for (const [pillId, connector] of connectorsBehindLabels(nodes)) {
+    owners.set(pillId, connector)
+  }
+  return owners
+}
+
 function summariseSelection(): Array<SelectionSummary> {
   trackSelectionOrder()
   const nodesById = new Map(figma.currentPage.selection.map((node) => [node.id, node]))
-  const orderedNodes = selectionOrder
+  const selected = selectionOrder
     .map((id) => nodesById.get(id))
     .filter((node): node is SceneNode => typeof node !== 'undefined')
+  const owners = resolveSelectionOwners(selected)
+  const orderedNodes = selected
     // A selected card, leader or label pill stands for the thing it belongs
-    // to — see `annotationTargetOf` / `connectorBehindLabel`.
-    .map((node) => annotationTargetOf(node) ?? connectorBehindLabel(node) ?? node)
+    // to — see `annotationTargetOf` / `connectorBehindLabel`. Both scan the
+    // page, but only after reading the node's own pluginData, so a selection
+    // of ordinary layers costs nothing; it is Select All on a page full of
+    // cards that would otherwise pay for a scan per card.
+    .map((node) => owners.get(node.id) ?? node)
   // Selecting a layer together with its own card resolves to that layer
   // twice, and two entries is what Connect reads as "two things to join" —
   // it would offer to string a connector between a layer and itself.
