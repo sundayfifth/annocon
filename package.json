@@ -56,6 +56,14 @@
           "src": "src/main.ts",
           "handler": "resyncPage"
         }
+      },
+      "-",
+      {
+        "name": "Diagnose: why is this line not avoiding",
+        "main": {
+          "src": "src/diagnose.ts",
+          "handler": "default"
+        }
       }
     ],
     "relaunchButtons": {
