@@ -114,10 +114,10 @@ const POSITIONAL_PROPERTIES = [
   'visible',
   // Reshaping a connector need not change its box at all — pull a bend
   // inwards and the two ends still define the same rectangle with the same
-  // number of vertices. Without these, that edit is filtered out here and
-  // then quietly redrawn over on the next sync.
-  'vectorNetwork',
-  'vectorPaths'
+  // number of vertices. Without this, that edit is filtered out here and
+  // then quietly redrawn over on the next sync. (`vectorPaths` is not a
+  // property Figma reports a change on; `vectorNetwork` is the one.)
+  'vectorNetwork'
 ]
 
 /**
@@ -518,6 +518,14 @@ async function resyncTouched({
 
   let capturedAReshape = false
   for (const node of movedNodes.values()) {
+    // Held from the loop above rather than fetched fresh, and both loops
+    // yield the thread — so a node can be deleted out from under this map
+    // between being looked up and being used. Reading anything off a removed
+    // node throws, the same reason the edited-text loop below checks it.
+    if (node.removed) {
+      await maybeYield()
+      continue
+    }
     if (await captureManualReshape(node)) {
       touched = true
       capturedAReshape = true
@@ -526,7 +534,10 @@ async function resyncTouched({
   }
 
   for (const id of movedTargetIds) {
-    const node = movedNodes.get(id) ?? null
+    const cached = movedNodes.get(id) ?? null
+    // Same reasoning as the reshape loop above: a cached node may have been
+    // deleted while this batch was yielding.
+    const node = cached !== null && cached.removed ? null : cached
     if (node !== null && 'absoluteBoundingBox' in node && getAnnotationRecord(node) !== null) {
       await syncAnnotation(node)
       touched = true

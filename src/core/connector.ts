@@ -633,6 +633,44 @@ export function shiftManualShape(
 }
 
 /**
+ * Points a walked shape the same way round as the record does.
+ *
+ * A vector network lists its vertices in whatever order the editor left them
+ * in, so walking one from end to end can come out back to front — starting
+ * at the vertex nearest the connector's `end` rather than its `start`. Left
+ * unchecked that costs twice over: the two ends get each other's arrowheads,
+ * and `shiftManualShape` carries each end by the *other* end's movement, so
+ * moving one screen drags the line away from it instead of with it.
+ *
+ * Reversing a walk swaps every vertex's two tangents with it: `tangentIn`
+ * and `tangentOut` are recorded relative to the direction of travel.
+ */
+export function orientedTowards(
+  drawn: { vertices: ReadonlyArray<ManualVertex>; order: ReadonlyArray<number> },
+  start: Point,
+  end: Point
+): { vertices: ReadonlyArray<ManualVertex>; order: ReadonlyArray<number> } {
+  const first = drawn.vertices[drawn.order[0] ?? -1]
+  const last = drawn.vertices[drawn.order[drawn.order.length - 1] ?? -1]
+  if (typeof first === 'undefined' || typeof last === 'undefined') return drawn
+  const asDrawn = squaredDistance(first.at, start) + squaredDistance(last.at, end)
+  const reversed = squaredDistance(first.at, end) + squaredDistance(last.at, start)
+  if (asDrawn <= reversed) return drawn
+  return {
+    order: [...drawn.order].reverse(),
+    vertices: drawn.vertices.map((vertex) => ({
+      at: vertex.at,
+      tangentIn: vertex.tangentOut,
+      tangentOut: vertex.tangentIn
+    }))
+  }
+}
+
+function squaredDistance(a: Point, b: Point): number {
+  return (a.x - b.x) ** 2 + (a.y - b.y) ** 2
+}
+
+/**
  * Narrows a page's worth of boxes down to the ones that could plausibly
  * matter for this connector: those overlapping the span between its two
  * ends, with `margin` of slack for a route that bulges outside it.

@@ -708,14 +708,20 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
             value={opacityText}
           />
         </div>
-        <div style={{ flex: '0 0 auto' }}>
-          <LineStylePicker
-            onChange={(lineStyle) => {
-              update({ lineStyle })
-            }}
-            value={style.lineStyle}
-          />
-        </div>
+        {/* Hidden on a hand-drawn line, along with corner radius and Go
+            around: the shape is no longer the plugin's to decide, so
+            switching between straight, curved and elbowed would change
+            nothing. A control that does nothing is worse than no control. */}
+        {style.manualGeometry ? null : (
+          <div style={{ flex: '0 0 auto' }}>
+            <LineStylePicker
+              onChange={(lineStyle) => {
+                update({ lineStyle })
+              }}
+              value={style.lineStyle}
+            />
+          </div>
+        )}
         {style.lineStyle === 'ELBOW' && !style.manualGeometry ? (
           <div style={{ flex: '1 1 0' }}>
             <TextboxNumeric

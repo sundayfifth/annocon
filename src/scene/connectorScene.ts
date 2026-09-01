@@ -28,6 +28,7 @@ import {
   parseConnectorStylePrefs,
   pointAlongPolyline,
   obstaclesInPlay,
+  orientedTowards,
   pointOnCurve,
   resolveConnectorGeometry,
   serialiseConnectorRecord,
@@ -334,7 +335,13 @@ function shapeFingerprint(node: VectorNode): string {
     .map((vertex) => `${Math.round(vertex.x)},${Math.round(vertex.y)}`)
     .join(';')
   const segments = network.segments.map((segment) => `${segment.start}>${segment.end}`).join(';')
-  return `${Math.round(node.x)},${Math.round(node.y)}|${vertices}|${segments}`
+  // Vertices and joins only, never the node's position. Vertices are stored
+  // relative to the node, so nudging a whole connector with an arrow key —
+  // or dropping it onto a frame, which reparents it and rewrites x/y —
+  // changes the position and not one thing about the shape. Including
+  // position would hand routing over for good on a keystroke that reshaped
+  // nothing, which is not what "somebody reshaped this" should mean.
+  return `${vertices}|${segments}`
 }
 
 /** Records the shape just drawn, so the next change to it can be attributed. */
@@ -379,7 +386,11 @@ export async function captureManualReshape(node: SceneNode): Promise<boolean> {
   const manualShape =
     geometry.start === null || geometry.end === null || drawn === null
       ? null
-      : { ...drawn, start: geometry.start, end: geometry.end }
+      : {
+          ...orientedTowards(drawn, geometry.start, geometry.end),
+          start: geometry.start,
+          end: geometry.end
+        }
 
   writeConnectorRecord(node, { ...record, manualGeometry: true, manualShape })
   if (!record.manualGeometry) {
@@ -492,8 +503,17 @@ export async function restoreAutomaticRoute(connector: VectorNode): Promise<void
  * of a hand-drawn line is.
  */
 function midpointOfDrawnLine(node: VectorNode): Point {
-  const vertices = node.vectorNetwork.vertices
-  const points = vertices.map((vertex) => ({ x: vertex.x + node.x, y: vertex.y + node.y }))
+  // Walked, not listed. The vertex list is not the path — a point added
+  // mid-line with the pen tool is appended to the end of it — so measuring
+  // "halfway along" down the list would zig-zag out to one end and back, and
+  // park the label somewhere the line never goes. `drawnShapeOf` answers
+  // `null` for a shape it cannot walk (a cut line, a closed loop); there is
+  // no better order to fall back on for those than the one on the node.
+  const drawn = drawnShapeOf(node)
+  const points =
+    drawn === null
+      ? node.vectorNetwork.vertices.map((vertex) => ({ x: vertex.x + node.x, y: vertex.y + node.y }))
+      : drawn.order.map((index) => (drawn.vertices[index] as ManualVertex).at)
   if (points.length === 0) {
     const box = node.absoluteBoundingBox
     return box === null
@@ -822,7 +842,7 @@ export async function syncConnector(
     endBoxes.frameRect
   )
   const obstacles =
-    record.lineStyle === 'ELBOW'
+    record.lineStyle === 'ELBOW' && !record.manualGeometry
       ? splitRouteObstacles(known ?? collectRouteObstacles(), geometry, startBoxes, endBoxes)
       : EMPTY_OBSTACLES
 
@@ -853,7 +873,20 @@ async function syncConnectorBody(
     // will auto-reparent it there. Reparent back to the page before
     // writing any x/y below, or those page-absolute coordinates get
     // reinterpreted as relative to whatever frame it drifted into.
+    //
+    // Reparenting keeps the node's `x`/`y` *numbers*, which is the same as
+    // teleporting it by the old parent's origin. Every path that draws a
+    // route writes x/y afterwards and so never notices; the paths that
+    // return without drawing — a dangling line, and a hand-drawn one with no
+    // recorded shape to carry — would leave the line a whole frame origin
+    // from where it was. So the absolute position is put back straight away,
+    // and the drawing paths overwrite it as before.
+    const before = node.absoluteTransform
+    const absoluteX = before[0]?.[2] ?? node.x
+    const absoluteY = before[1]?.[2] ?? node.y
     figma.currentPage.appendChild(node)
+    node.x = absoluteX
+    node.y = absoluteY
     node.opacity = record.opacity
     if (!geometry.complete) {
       // Dangling — an endpoint's node is gone. Flag it visually and leave
@@ -979,8 +1012,26 @@ async function drawManualShape(
 ): Promise<Point> {
   const walked = shape.order.map((index) => (shape.vertices[index] as ManualVertex).at)
   const carried = shiftManualShape(walked, shape, now)
-  const originX = Math.min(...carried.map((point) => point.x))
-  const originY = Math.min(...carried.map((point) => point.y))
+  // The curve handles count towards the origin, for the same reason
+  // `positionCurve` folds its control points in: a bezier stays inside the
+  // convex hull of its control points, so a bend that bulges past the
+  // furthest vertex would otherwise be written at a negative coordinate and
+  // the whole shape would land offset from where it was drawn. Generous by
+  // a little, which costs nothing, rather than short by a little.
+  const bounds = carried.flatMap((point, i) => {
+    const vertex = shape.vertices[shape.order[i] as number] as ManualVertex
+    return [
+      point,
+      ...(vertex.tangentIn === null
+        ? []
+        : [{ x: point.x + vertex.tangentIn.x, y: point.y + vertex.tangentIn.y }]),
+      ...(vertex.tangentOut === null
+        ? []
+        : [{ x: point.x + vertex.tangentOut.x, y: point.y + vertex.tangentOut.y }])
+    ]
+  })
+  const originX = Math.min(...bounds.map((point) => point.x))
+  const originY = Math.min(...bounds.map((point) => point.y))
   node.x = originX
   node.y = originY
 

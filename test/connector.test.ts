@@ -21,6 +21,7 @@ import {
   connectorRoutePoints,
   connectorStubClearance,
   obstaclesInPlay,
+  orientedTowards,
   routeCost,
   shiftManualShape,
   routeCrossings,
@@ -828,6 +829,45 @@ describe('shiftManualShape', () => {
     expect(shiftManualShape([{ x: 0, y: 0 }], was, { start: { x: 10, y: 10 }, end: { x: 10, y: 10 } })).toEqual([
       { x: 10, y: 10 }
     ])
+  })
+})
+
+describe('orientedTowards', () => {
+  const at = (x: number, y: number) => ({ at: { x, y }, tangentIn: null, tangentOut: null })
+  const start = { x: 0, y: 0 }
+  const end = { x: 200, y: 100 }
+
+  it('leaves a walk that already runs start-to-end alone', () => {
+    const drawn = { vertices: [at(0, 0), at(50, 0), at(200, 100)], order: [0, 1, 2] }
+    expect(orientedTowards(drawn, start, end).order).toEqual([0, 1, 2])
+  })
+
+  /**
+   * A vector network lists its vertices in whatever order the editor left
+   * them, so a walk can come out back to front. Uncorrected, the two ends
+   * swap arrowheads and each end follows the *other* end's layer.
+   */
+  it('turns a walk that runs end-to-start around', () => {
+    const drawn = { vertices: [at(200, 100), at(50, 0), at(0, 0)], order: [0, 1, 2] }
+    expect(orientedTowards(drawn, start, end).order).toEqual([2, 1, 0])
+  })
+
+  /** Reversing the direction of travel swaps what "in" and "out" mean. */
+  it('swaps a vertex\'s two tangents when it turns one around', () => {
+    const drawn = {
+      vertices: [
+        { at: { x: 200, y: 100 }, tangentIn: { x: 1, y: 1 }, tangentOut: { x: 2, y: 2 } },
+        { at: { x: 0, y: 0 }, tangentIn: null, tangentOut: { x: 3, y: 3 } }
+      ],
+      order: [0, 1]
+    }
+    const turned = orientedTowards(drawn, start, end)
+    expect(turned.vertices[0]).toEqual({
+      at: { x: 200, y: 100 },
+      tangentIn: { x: 2, y: 2 },
+      tangentOut: { x: 1, y: 1 }
+    })
+    expect(turned.vertices[1]?.tangentIn).toEqual({ x: 3, y: 3 })
   })
 })
 
