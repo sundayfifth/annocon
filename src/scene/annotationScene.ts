@@ -385,6 +385,16 @@ async function ensureCategoryPill(
   if (label.characters !== category.name) {
     label.characters = category.name
   }
+  // Belt as well as braces. The floor above keeps a card wide enough for its
+  // own pill at a sensible category name, but a long enough name overflows
+  // any width — and a pill hanging out past the card reads as broken rather
+  // than as a long name. Capped at what the card can hold, so it truncates
+  // instead.
+  const room = card.width - metrics.paddingX * 2 - Math.round(metrics.categoryFontSize * 1.6)
+  if (room > 0 && label.width > room) {
+    label.textAutoResize = 'HEIGHT'
+    label.resize(room, label.height)
+  }
   // Reasserted every sync, not just on creation — a recolour needs the
   // label to flip between black and white right along with it, and this is
   // cheap enough that a pill created before this fix self-heals too.
@@ -645,8 +655,28 @@ function shrinkToFit(
 ): number {
   const gap = nearestNeighborGap(frameRect, side, ownFrameId)
   if (!Number.isFinite(gap)) return metrics.cardWidth
-  const floor = Math.min(MIN_OUTSIDE_CARD_WIDTH, metrics.cardWidth)
-  return Math.max(floor, Math.min(metrics.cardWidth, gap - OUTSIDE_MARGIN - NEIGHBOR_SAFETY_GAP))
+  return Math.max(
+    floorFor(metrics),
+    Math.min(metrics.cardWidth, gap - OUTSIDE_MARGIN - NEIGHBOR_SAFETY_GAP)
+  )
+}
+
+/**
+ * How narrow this size is allowed to be squeezed.
+ *
+ * `MIN_OUTSIDE_CARD_WIDTH` was tuned when every card was one width, and it
+ * squeezes a Large card down to a Medium one — at which point its type and
+ * its category pill, still sized for Large, no longer fit and the pill runs
+ * out past the edge. Reported exactly that way.
+ *
+ * So the floor is proportional as well as absolute: never below the tuned
+ * minimum, never below three quarters of what this size asks for, and never
+ * above the size's own width (a Small card is already narrower than the
+ * minimum and must not be widened by it). Medium and Small come out exactly
+ * where they always did; only Large stops short of where it used to go.
+ */
+function floorFor(metrics: CardMetrics): number {
+  return Math.min(metrics.cardWidth, Math.max(MIN_OUTSIDE_CARD_WIDTH, metrics.cardWidth * 0.75))
 }
 
 // `ensureBadge`/`ensureCard` each have an `await` (font loading) between

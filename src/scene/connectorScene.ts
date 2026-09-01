@@ -676,20 +676,32 @@ export interface RouteObstacle {
 }
 
 /**
- * The types that count as "another screen in the way". Deliberately only
- * the page's own children (groups and sections aside, which are looked
- * inside), and only container-ish types: the point is to
- * route around the *screens* on the page, which is what a person means by
- * "it doesn't dodge anything". Treating every layer as an obstacle would
- * make a route bend around a button inside a frame it was already routing
- * around, and cost a full-page `findAll` per connector per drag frame to
- * discover.
+ * What a connector will *not* route around, by type.
+ *
+ * This list used to be the other way up — a set of container types, on the
+ * grounds that the job is to route around screens. A board holds more than
+ * screens, though: section labels, legends and notes, often built from a
+ * rectangle and some text rather than from a frame. A line through one of
+ * those looks exactly as wrong as a line through a screen, and it was
+ * reported as such. Anything sitting at the top of the page was put there on
+ * purpose and is worth going around, whatever it is made of.
+ *
+ * Lines stay out. A connector should not treat another connector, or a
+ * hand-drawn arrow, as a wall: they have no inside to be inside of, and
+ * avoiding them would have every line on a busy board shoving the rest
+ * aside.
+ *
+ * Depth is what keeps this affordable, not type: only the page's own
+ * children (and whatever sits inside a group or section at that level) are
+ * ever collected, so a button inside a screen is never an obstacle and no
+ * `findAll` runs.
  */
-const OBSTACLE_TYPES: ReadonlySet<string> = new Set([
-  'FRAME',
-  'COMPONENT',
-  'COMPONENT_SET',
-  'INSTANCE'
+const NOT_AN_OBSTACLE: ReadonlySet<string> = new Set([
+  'VECTOR',
+  'LINE',
+  'CONNECTOR',
+  'SLICE',
+  'WIDGET'
 ])
 
 /**
@@ -805,7 +817,7 @@ function collectObstaclesFrom(
       collectObstaclesFrom(node.children, into)
       continue
     }
-    if (!OBSTACLE_TYPES.has(node.type)) continue
+    if (NOT_AN_OBSTACLE.has(node.type)) continue
     if (ownerIdOf(node) !== null) continue
     if (node.getPluginData(LABEL_OWNER_KEY) !== '') continue
     const rect = node.absoluteBoundingBox

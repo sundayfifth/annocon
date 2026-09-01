@@ -26,7 +26,11 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       is there.
 - [ ] An annotation made before sizes existed → renders at Medium, unchanged
 - [ ] A Large card next to a frame with a narrow gap → shrinks to fit rather
-      than bleeding into the neighbouring frame
+      than bleeding into the neighbouring frame, and its category pill still
+      sits inside it (a Large card must not be squeezed to a Medium width,
+      where its own pill no longer fits)
+- [ ] A category with a long name on a Large card → the pill stays inside the
+      card rather than hanging out past its edge
 - [ ] Drag a card's side edge → it stays at the width you left it, the text
       reflows into the wider column, and the type size does not change
 - [ ] Drag it *narrower* too, not just wider: the text has to reflow down with
@@ -90,6 +94,10 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       and cut straight through, as designed.
 - [ ] A connector whose label pill sits between the two frames: the line does
       not swerve around its own label.
+- [ ] A label, legend or note built from a rectangle and text (not a frame),
+      sitting on the board between two screens: the line goes around it. Only
+      lines are exempt — a connector does not treat another connector as a
+      wall.
 - [ ] Endpoints nested inside frames: the line does not try to avoid the frame
       it starts or ends in.
 - [ ] Three screens **inside a section**, connector from the first to the
