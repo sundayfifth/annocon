@@ -4,7 +4,7 @@
  */
 
 import type { Rect } from './core/anchor.js'
-import { getConnectorRecord } from './scene/connectorScene.js'
+import { collectRouteObstacles, getConnectorRecord } from './scene/connectorScene.js'
 
 function box(node: SceneNode): string {
   const b = 'absoluteBoundingBox' in node ? node.absoluteBoundingBox : null
@@ -100,6 +100,29 @@ export default async function diagnose(): Promise<void> {
       }
       scan(page.children, 0)
       lines.push(`  (${found} overlapping in total)`)
+    }
+
+    lines.push('')
+    lines.push('  DOES THE ROUTER SEE THE BOXES THE LINE HITS?')
+    if (drawn !== null) {
+      const seen = collectRouteObstacles()
+      const seenIds = new Set(seen.map((o) => o.id))
+      lines.push(`    router collected ${seen.length} boxes from this page`)
+      const overlapsDrawn = (b: Rect): boolean =>
+        b.x < drawn.x + drawn.width && b.x + b.width > drawn.x && b.y < drawn.y + drawn.height && b.y + b.height > drawn.y
+      let hit = 0
+      for (const child of page.children) {
+        if (!('absoluteBoundingBox' in child)) continue
+        const b = child.absoluteBoundingBox
+        if (b === null || !overlapsDrawn(b)) continue
+        if (!['FRAME', 'COMPONENT', 'INSTANCE', 'SECTION'].includes(child.type)) continue
+        hit += 1
+        if (hit > 20) continue
+        const isOwn = seenIds.has(child.id) ? '' : ' ← NOT COLLECTED'
+        const gap = Math.round(b.x + b.width - drawn.x)
+        lines.push(`    ${child.type} "${child.name}" ${box(child)} overlap=${gap}px${isOwn}`)
+      }
+      lines.push(`    (${hit} top-level boxes overlap the line)`)
     }
 
     lines.push('')
