@@ -627,13 +627,10 @@ describe('connectorRoutePoints — obstacle avoidance', () => {
   })
 
   /**
-   * A real file: a column of screens stacked down the canvas, and a
-   * connector running from the top of it to the bottom. Both ends face
-   * sideways, so the router used to treat this as a horizontal run and offer
-   * only ways round that go up and over — the same axis the screens are
-   * stacked along, where there is always another screen. The way out is to
-   * leave the column sideways and run down beside it, which has to be
-   * offered before it can be chosen.
+   * A column of screens stacked down the canvas with a connector running its
+   * length, both ends facing sideways. Worth pinning because it looks like
+   * the case that should defeat the router — the ways round it offers are on
+   * the axis the screens are stacked along — and does not.
    */
   it('goes around a column of screens by leaving it sideways', () => {
     const column = [
@@ -650,6 +647,40 @@ describe('connectorRoutePoints — obstacle avoidance', () => {
       { ...facing, obstacles: foreign(column) }
     )
     expect(routeCrossings(points, column)).toBe(0)
+  })
+
+  /**
+   * Coordinates lifted from a real file, where a connector was reported as
+   * cutting through screens: a control near the top of one column, a screen
+   * 8000 units below it, and a solid column of screens down the side the
+   * anchor's nearest edge opens onto.
+   *
+   * It routes cleanly — which is the point of keeping it. The reported line
+   * was on a page of nearly three hundred screens, and reproducing it took
+   * three attempts that all passed; the routing rules handle this shape, and
+   * what defeats them is density rather than any of the shapes tried here.
+   */
+  it('leaves by a further edge when the near one opens onto a wall of screens', () => {
+    const leftColumn = [
+      { x: 3290, y: 900, width: 375, height: 812 },
+      { x: 3290, y: 2282, width: 375, height: 812 },
+      { x: 3290, y: 5426, width: 375, height: 812 },
+      { x: 3290, y: 9052, width: 375, height: 812 }
+    ]
+    const ownScreen = { x: 3825, y: 900, width: 375, height: 812 }
+    const points = connectorRoutePoints(
+      { x: 3841, y: 1286 },
+      { x: 4360, y: 9768 },
+      'ELBOW',
+      'LEFT',
+      'TOP',
+      {
+        startClearance: 36,
+        endClearance: 24,
+        obstacles: { foreign: leftColumn, own: [ownScreen] }
+      }
+    )
+    expect(routeCrossings(points, leftColumn)).toBe(0)
   })
 
   it('ignores obstacles for STRAIGHT and CURVE, which have no bend to re-aim', () => {

@@ -102,7 +102,22 @@ fiddling, and keep dodging them when things move. The whole decision lives in
 `src/core/connector.ts`, which never touches the `figma` global, so it is unit
 tested directly. `src/scene/` only had to learn how to collect the boxes.
 
-**Bad.** Avoidance is coarse. It only sees top-level boxes, so a connector
+**Bad.** Density defeats it, and we now know roughly where. On a page of
+~300 screens laid out in columns, a connector running 8000 units down the
+board was reported cutting through three of them. The router had collected
+every screen on the page — 295 boxes, none missed — and still had no
+candidate that crossed nothing: the shape is generated from one obstacle
+boundary at a time, and on a board that dense there is no single boundary
+that clears the rest. It picks the least-bad route, as designed, and the
+least-bad route goes through three screens.
+
+Three attempts to reproduce it in a unit test, with coordinates taken
+straight from the file, all routed cleanly. The rules handle the shapes; what
+they cannot handle is that many of them at once. Reaching for real
+pathfinding is the fix, and `manualGeometry` (ADR 0003) is what makes it
+survivable in the meantime.
+
+Avoidance is also coarse. It only sees top-level boxes, so a connector
 routes around a whole screen rather than through an empty region of it, and
 ignores anything nested. `FRAME_EXIT_PENALTY` and `ROUTE_SEARCH_MARGIN` are both
 tuned by eye rather than measured. It considers one obstacle boundary at a time, so a
