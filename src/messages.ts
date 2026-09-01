@@ -22,8 +22,6 @@ export interface ConnectorStyleSummary {
   readonly cornerRadius: number
   /** Which way an `ELBOW` goes around whatever is in its path. */
   readonly detour: ConnectorDetour
-  /** How many bends someone has pinned by dragging a handle — 0 when the route is entirely automatic. */
-  readonly pinnedCount: number
   /** Which side of the start/end node the connector exits/enters from. `AUTO` picks based on relative position. */
   readonly startMagnet: Magnet
   readonly endMagnet: Magnet
@@ -96,15 +94,6 @@ export interface SetAnnotationSizePayload {
 export interface SetAnnotationSizeHandler {
   name: 'SET_ANNOTATION_SIZE'
   handler: (payload: SetAnnotationSizePayload) => void
-}
-
-export interface ClearWaypointsPayload {
-  readonly connectorId: string
-}
-
-export interface ClearWaypointsHandler {
-  name: 'CLEAR_WAYPOINTS'
-  handler: (payload: ClearWaypointsPayload) => void
 }
 
 export interface AddCategoryPayload {

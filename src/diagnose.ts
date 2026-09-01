@@ -43,7 +43,7 @@ export default async function diagnose(): Promise<void> {
       continue
     }
     lines.push('')
-    lines.push(`CONNECTOR lineStyle=${record.lineStyle} detour=${record.detour} pinned=${record.waypoints.length}`)
+    lines.push(`CONNECTOR lineStyle=${record.lineStyle} detour=${record.detour}`)
     lines.push(`  drawn bbox: ${box(node)}`)
     for (const [which, anchor] of [['start', record.start], ['end', record.end]] as const) {
       if (anchor.kind === 'free') {

@@ -32,7 +32,6 @@ import { ICON_DATA_URL } from './icon.js'
 import type {
   AddCategoryHandler,
   CategoriesChangedHandler,
-  ClearWaypointsHandler,
   CreateConnectorHandler,
   DeleteCategoryHandler,
   RecolorCategoryHandler,
@@ -787,20 +786,6 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
             options={DETOUR_OPTIONS}
             value={style.detour}
           />
-          {style.pinnedCount > 0 ? (
-            <>
-              <VerticalSpace space="extraSmall" />
-              <Button
-                fullWidth
-                onClick={() => {
-                  emit<ClearWaypointsHandler>('CLEAR_WAYPOINTS', { connectorId: node.id })
-                }}
-                secondary
-              >
-                {`ล้างจุดที่ปรับเอง (${style.pinnedCount})`}
-              </Button>
-            </>
-          ) : null}
         </>
       ) : null}
       <VerticalSpace space="medium" />

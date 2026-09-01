@@ -116,28 +116,6 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] Connect two whole frames (not nested layers): the exit sides are the ones
       facing each other, exactly as before.
 
-## Connect — drag handles
-
-- [ ] Select an elbow connector → small round handles appear along it: one at
-      the middle of each stretch. Click elsewhere → they all disappear.
-- [ ] Drag a middle handle → the line bends through where it was dropped, and
-      the stretches either side still route themselves
-- [ ] Drag a screen into one of those untouched stretches → it still goes
-      around, so pinning one bend did not turn the whole line manual
-- [ ] Drag a handle that already stands for a pinned point → it moves that
-      point rather than adding another
-- [ ] Pin two points, then drag the second one back past the first → the line
-      does not tie itself in a knot (points stay in the order the line
-      travels)
-- [ ] **ล้างจุดที่ปรับเอง** in the panel → back to the automatic route, and
-      the count on the button matches how many were pinned
-- [ ] Select a `STRAIGHT` or `CURVE` connector → no handles (there are no
-      bends to pin)
-- [ ] Close the plugin with handles on screen, reopen → no handles left over
-      on canvas
-- [ ] Someone else's cursor: handles are real nodes, so they are visible to a
-      collaborator while a line is selected. Check this is tolerable.
-
 ## Cross-cutting
 
 - [ ] ⌘Z right after creating a connector leaves no stray nodes
