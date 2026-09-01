@@ -3,6 +3,7 @@
  * text node on the canvas. Delete once the question is settled.
  */
 
+import type { Rect } from './core/anchor.js'
 import { getConnectorRecord } from './scene/connectorScene.js'
 
 function box(node: SceneNode): string {
@@ -58,6 +59,49 @@ export default async function diagnose(): Promise<void> {
       lines.push(`  ${which}: ${box(target)}`)
       lines.push(`    nesting: ${ancestry(target)}`)
     }
+    lines.push('')
+    lines.push('  THE TWO SCREENS THE ROUTER EXEMPTS AS "OWN":')
+    for (const [which, anchor] of [['start', record.start], ['end', record.end]] as const) {
+      if (anchor.kind === 'free') continue
+      const target = await figma.getNodeByIdAsync(anchor.nodeId)
+      if (target === null || !('absoluteBoundingBox' in target)) continue
+      let top: BaseNode = target
+      while (top.parent !== null && top.parent.type !== 'PAGE' && top.parent.type !== 'DOCUMENT') {
+        top = top.parent
+      }
+      const b = 'absoluteBoundingBox' in top ? top.absoluteBoundingBox : null
+      lines.push(`    ${which} → ${top.type}("${top.name}") ${b === null ? '?' : `${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.width)}x${Math.round(b.height)}`}`)
+      if ('children' in top) {
+        lines.push(`      children: ${top.children.length}`)
+        for (const child of top.children.slice(0, 12)) {
+          lines.push(`        ${child.type} "${child.name}" ${box(child)}`)
+        }
+      }
+    }
+
+    const drawn = node.absoluteBoundingBox
+    if (drawn !== null) {
+      lines.push('')
+      lines.push('  BOXES OVERLAPPING THE LINE (what it should have avoided):')
+      const overlaps = (b: Rect): boolean =>
+        b.x < drawn.x + drawn.width && b.x + b.width > drawn.x && b.y < drawn.y + drawn.height && b.y + b.height > drawn.y
+      let found = 0
+      const scan = (nodes: ReadonlyArray<SceneNode>, depth: number): void => {
+        for (const child of nodes) {
+          const b = 'absoluteBoundingBox' in child ? child.absoluteBoundingBox : null
+          if (b !== null && overlaps(b) && ['FRAME', 'COMPONENT', 'INSTANCE', 'SECTION'].includes(child.type)) {
+            found += 1
+            if (found <= 25) lines.push(`${'  '.repeat(depth + 2)}${child.type} "${child.name}" ${box(child)}`)
+          }
+          if ((child.type === 'GROUP' || child.type === 'SECTION' || child.type === 'FRAME') && 'children' in child && depth < 2) {
+            scan(child.children, depth + 1)
+          }
+        }
+      }
+      scan(page.children, 0)
+      lines.push(`  (${found} overlapping in total)`)
+    }
+
     lines.push('')
     lines.push('  what the router treats as boxes (page level, groups/sections descended):')
     const walk = (nodes: ReadonlyArray<SceneNode>, depth: number): void => {
