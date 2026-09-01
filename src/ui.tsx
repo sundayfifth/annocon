@@ -723,7 +723,7 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
           <VerticalSpace space="extraSmall" />
           <Text>
             <Muted>
-              ปลั๊กอินไม่คำนวณเส้นทางให้แล้ว แก้รูปทรงด้วยเครื่องมือ vector ได้ตามใจ
+              ปลั๊กอินจะเลื่อนเส้นตาม layer ให้ แต่จะไม่คำนวณเส้นทางใหม่ — รูปทรงเป็นของคุณแล้ว
               สี หัวลูกศร และป้ายกำกับยังปรับได้ปกติ
             </Muted>
           </Text>
@@ -805,7 +805,7 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
           <VerticalSpace space="extraSmall" />
           <Text>
             <Muted>
-              ปลั๊กอินไม่คำนวณเส้นทางให้แล้ว แก้รูปทรงด้วยเครื่องมือ vector ได้ตามใจ
+              ปลั๊กอินจะเลื่อนเส้นตาม layer ให้ แต่จะไม่คำนวณเส้นทางใหม่ — รูปทรงเป็นของคุณแล้ว
               สี หัวลูกศร และป้ายกำกับยังปรับได้ปกติ
             </Muted>
           </Text>

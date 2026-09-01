@@ -122,6 +122,12 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       the shape stays, and the panel says the line is now hand-drawn
 - [ ] Move a screen the line is attached to → the line does **not** re-route,
       and does not snap back to the shape the plugin would have drawn
+- [ ] Move **both** screens together (select both, drag) → the hand-drawn
+      shape slides along with them, unchanged
+- [ ] Move **one** screen → both ends stay on their layers and the bends are
+      carried in proportion; the shape is recognisably the one drawn
+- [ ] Reshape it a second time → the new shape is the one that follows from
+      then on
 - [ ] Colour, weight, caps and the label still apply to a hand-drawn line —
       only its shape is out of the plugin's hands
 - [ ] **กลับไปใช้เส้นอัตโนมัติ** → routing takes over again, obstacles and all

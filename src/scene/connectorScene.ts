@@ -29,6 +29,7 @@ import {
   pointOnCurve,
   resolveConnectorGeometry,
   serialiseConnectorRecord,
+  shiftManualShape,
   serialiseConnectorStylePrefs
 } from '../core/connector.js'
 import { ownerIdOf } from './annotationScene.js'
@@ -330,24 +331,56 @@ function rememberDrawnShape(node: VectorNode): void {
  * Returns `false` for a shape that matches what this plugin drew — every
  * ordinary sync — so the caller can carry on.
  */
-export function captureManualReshape(node: SceneNode): boolean {
+export async function captureManualReshape(node: SceneNode): Promise<boolean> {
   if (node.type !== 'VECTOR') return false
   const record = getConnectorRecord(node)
-  if (record === null || record.manualGeometry) return false
+  if (record === null) return false
   const remembered = node.getPluginData(DRAWN_AS_KEY)
   // Nothing remembered means this line predates the fingerprint. Treating
   // that as an edit would hand over every old connector in the file the
   // first time anything moved, so it is left alone and fingerprinted on its
   // next sync.
   if (remembered === '' || remembered === shapeFingerprint(node)) return false
-  writeConnectorRecord(node, { ...record, manualGeometry: true })
-  figma.notify('เส้นนี้ถูกปรับเอง ปลั๊กอินจะไม่คำนวณเส้นทางให้อีก')
+
+  // Read once, here, and kept on the record — after this, drawing goes back
+  // to flowing one way like everything else. Reading the node on every sync
+  // instead is what the project's own rule warns against, and what made the
+  // handles loop.
+  const [startBoxes, endBoxes] = await Promise.all([
+    record.start.kind === 'free' ? Promise.resolve(NO_ENDPOINT) : boxesOf(record.start.nodeId),
+    record.end.kind === 'free' ? Promise.resolve(NO_ENDPOINT) : boxesOf(record.end.nodeId)
+  ])
+  const geometry = resolveConnectorGeometry(
+    record,
+    startBoxes.rect,
+    endBoxes.rect,
+    startBoxes.frameRect,
+    endBoxes.frameRect
+  )
+  const points = drawnPointsOf(node)
+  const manualShape =
+    geometry.start === null || geometry.end === null || points.length < 2
+      ? null
+      : { points, start: geometry.start, end: geometry.end }
+
+  writeConnectorRecord(node, { ...record, manualGeometry: true, manualShape })
+  if (!record.manualGeometry) {
+    figma.notify('เส้นนี้ถูกปรับเอง ปลั๊กอินจะเลื่อนตาม layer ให้ แต่จะไม่คำนวณเส้นทางใหม่')
+  }
   return true
+}
+
+/** The vertices as drawn, in absolute coordinates. */
+function drawnPointsOf(node: VectorNode): ReadonlyArray<Point> {
+  return node.vectorNetwork.vertices.map((vertex) => ({
+    x: vertex.x + node.x,
+    y: vertex.y + node.y
+  }))
 }
 
 /** Puts a hand-drawn connector back under the plugin's own routing. */
 export async function restoreAutomaticRoute(connector: VectorNode): Promise<void> {
-  await updateConnectorStyle(connector, { manualGeometry: false })
+  await updateConnectorStyle(connector, { manualGeometry: false, manualShape: null })
 }
 
 /**
@@ -748,12 +781,21 @@ async function syncConnectorBody(
     // placed from the shape actually on the node rather than from a route
     // this code no longer computes.
     if (record.manualGeometry) {
+      const carried =
+        record.manualShape === null
+          ? null
+          : shiftManualShape(record.manualShape.points, record.manualShape, { start, end })
+      const midpoint =
+        carried === null
+          ? midpointOfDrawnLine(node)
+          : await drawPoints(node, carried, record)
       await ensureConnectorLabel(
         node.id,
         findConnectorLabel(node.id, labels),
         record.label,
-        midpointOfDrawnLine(node)
+        midpoint
       )
+      rememberDrawnShape(node)
       return
     }
 
@@ -820,14 +862,25 @@ async function positionPolyline(
   record: ConnectorRecord,
   route: PolylineRoute
 ): Promise<Point> {
-  const points = connectorRoutePoints(
-    start,
-    end,
-    record.lineStyle,
-    route.startSide,
-    route.endSide,
-    route
+  return drawPoints(
+    node,
+    connectorRoutePoints(start, end, record.lineStyle, route.startSide, route.endSide, route),
+    record
   )
+}
+
+/**
+ * Writes a polyline onto the node and answers with its midpoint.
+ *
+ * Shared by the routed path and the hand-drawn one: a shape carried to
+ * follow its layers is drawn exactly the way a computed route is, so caps,
+ * corner rounding and the node's origin behave identically either way.
+ */
+async function drawPoints(
+  node: VectorNode,
+  points: ReadonlyArray<Point>,
+  record: ConnectorRecord
+): Promise<Point> {
   const originX = Math.min(...points.map((point) => point.x))
   const originY = Math.min(...points.map((point) => point.y))
   node.x = originX
@@ -917,6 +970,7 @@ export async function updateConnectorStyle(
       | 'detour'
       | 'label'
       | 'manualGeometry'
+      | 'manualShape'
     >
   >
 ): Promise<void> {

@@ -116,6 +116,19 @@ export interface ConnectorRecord {
    * honest way to keep that promise while moving the shape around.
    */
   readonly manualGeometry: boolean
+  /**
+   * The shape somebody drew, with the endpoints it was drawn against.
+   *
+   * Read off the node once, when the edit is noticed, and written to the
+   * record — after which drawing goes back to flowing one way, record to
+   * node, like everything else here. Keeping it lets a hand-drawn line
+   * follow its layers instead of being stranded the first time one moves.
+   *
+   * `null` for a line that has not been reshaped, and for one reshaped
+   * before this was recorded — which is drawn where it stands and left
+   * there, since there is nothing to carry it by.
+   */
+  readonly manualShape: ManualShape | null
 }
 
 export const DEFAULT_CONNECTOR_WEIGHT = 1.5
@@ -176,7 +189,8 @@ export function createConnectorRecord(
     // Always AUTO, never inherited — see `ConnectorStylePrefs`.
     detour: DEFAULT_DETOUR,
     label: DEFAULT_LABEL,
-    manualGeometry: false
+    manualGeometry: false,
+    manualShape: null
   }
 }
 
@@ -184,6 +198,18 @@ const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
 const CAP_SET = new Set<string>(CONNECTOR_CAPS)
 const LINE_STYLES: ReadonlySet<string> = new Set<ConnectorLineStyle>(['STRAIGHT', 'ELBOW', 'CURVE'])
 const DETOURS = new Set<string>(CONNECTOR_DETOURS)
+
+function parseManualShape(value: unknown): ManualShape | null {
+  if (typeof value !== 'object' || value === null) return null
+  const candidate = value as Record<string, unknown>
+  if (!Array.isArray(candidate.points)) return null
+  const points = candidate.points.filter(isPoint)
+  // Two points is the least that can describe a line; anything less is
+  // corruption, and drawing it would put a connector nowhere.
+  if (points.length < 2) return null
+  if (!isPoint(candidate.start) || !isPoint(candidate.end)) return null
+  return { points, start: candidate.start, end: candidate.end }
+}
 
 function isDetour(value: unknown): value is ConnectorDetour {
   return typeof value === 'string' && DETOURS.has(value)
@@ -293,7 +319,8 @@ export function parseConnectorRecord(raw: string): ConnectorRecord | null {
     // its own detour but never hands it on to the next one.
     detour: isDetour(candidate.detour) ? candidate.detour : DEFAULT_DETOUR,
     label: typeof candidate.label === 'string' ? candidate.label : DEFAULT_LABEL,
-    manualGeometry: candidate.manualGeometry === true
+    manualGeometry: candidate.manualGeometry === true,
+    manualShape: parseManualShape(candidate.manualShape)
   }
 }
 
@@ -499,6 +526,61 @@ function edgesOn(obstacles: RouteObstacles, axis: 'x' | 'y'): ReadonlyArray<[num
     edges.push([rect[axis] - OBSTACLE_CLEARANCE, rect[axis] + rect[size] + OBSTACLE_CLEARANCE])
   }
   return edges
+}
+
+/** A shape somebody drew, and where its two ends were when they drew it. */
+export interface ManualShape {
+  readonly points: ReadonlyArray<Point>
+  readonly start: Point
+  readonly end: Point
+}
+
+/**
+ * Moves a hand-drawn shape to follow endpoints that have since moved.
+ *
+ * Each point is carried by a blend of how far the two ends moved, weighted
+ * by how far along the line that point sits. One rule covers both cases
+ * worth caring about, which is why it is this rule and not two:
+ *
+ * - Both ends moved the same way — dragging a group of screens somewhere
+ *   else — and every blend is that same amount, so the whole line slides and
+ *   the drawn shape is preserved exactly.
+ * - One end moved, and the ends stay on their layers while the middle is
+ *   carried in proportion, so a bend a third of the way down still looks a
+ *   third of the way down.
+ *
+ * It does not re-route: the shape is the person's, and this only carries it.
+ * Move an endpoint far enough and the drawn shape will stop making sense —
+ * that is what the button back to automatic routing is for.
+ */
+export function shiftManualShape(
+  points: ReadonlyArray<Point>,
+  was: { start: Point; end: Point },
+  now: { start: Point; end: Point }
+): ReadonlyArray<Point> {
+  if (points.length === 0) return []
+  const startDelta = { x: now.start.x - was.start.x, y: now.start.y - was.start.y }
+  const endDelta = { x: now.end.x - was.end.x, y: now.end.y - was.end.y }
+
+  const lengths: Array<number> = [0]
+  let total = 0
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const from = points[i]
+    const to = points[i + 1]
+    if (typeof from === 'undefined' || typeof to === 'undefined') continue
+    total += Math.hypot(to.x - from.x, to.y - from.y)
+    lengths.push(total)
+  }
+
+  return points.map((point, index) => {
+    // A zero-length line has no "along" to speak of; treat every point as
+    // being at the start, which makes this the plain translation it should be.
+    const t = total === 0 ? 0 : (lengths[index] ?? 0) / total
+    return {
+      x: point.x + startDelta.x + (endDelta.x - startDelta.x) * t,
+      y: point.y + startDelta.y + (endDelta.y - startDelta.y) * t
+    }
+  })
 }
 
 /**

@@ -551,7 +551,7 @@ async function resyncTouched({
   for (const id of movedTargetIds) {
     const node = await figma.getNodeByIdAsync(id)
     if (node === null || !('absoluteBoundingBox' in node)) continue
-    if (captureManualReshape(node)) touched = true
+    if (await captureManualReshape(node)) touched = true
     await maybeYield()
   }
 
