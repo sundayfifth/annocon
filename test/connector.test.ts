@@ -34,6 +34,8 @@ import {
   serialiseConnectorStylePrefs
 } from '../src/core/connector.js'
 
+const anchor = (nodeId: string) => ({ kind: 'magnet', nodeId, magnet: 'AUTO' })
+
 const startRect: Rect = { x: 0, y: 0, width: 100, height: 100 }
 const endRect: Rect = { x: 400, y: 0, width: 100, height: 100 }
 
@@ -52,7 +54,8 @@ describe('createConnectorRecord', () => {
       lineStyle: DEFAULT_LINE_STYLE,
       cornerRadius: DEFAULT_CORNER_RADIUS,
       detour: DEFAULT_DETOUR,
-      label: DEFAULT_LABEL
+      label: DEFAULT_LABEL,
+      waypoints: []
     })
   })
 
@@ -73,7 +76,8 @@ describe('createConnectorRecord', () => {
       end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' },
       ...stylePrefs,
       detour: DEFAULT_DETOUR,
-      label: DEFAULT_LABEL
+      label: DEFAULT_LABEL,
+      waypoints: []
     })
   })
 })
@@ -669,6 +673,75 @@ describe('obstaclesInPlay', () => {
       }
     })
     expect(filtered).toEqual(withNoise)
+  })
+})
+
+describe('waypoints — a route through points a person pinned', () => {
+  const facing = { startClearance: 24, endClearance: 24 }
+
+  it('has none until someone drags a handle', () => {
+    expect(createConnectorRecord('a', 'b').waypoints).toEqual([])
+  })
+
+  it('round-trips, and drops ones that are not points', () => {
+    const pinned = [
+      { x: 40, y: 80 },
+      { x: 200, y: 80 }
+    ]
+    expect(parseConnectorRecord(serialiseConnectorRecord({ ...createConnectorRecord('a', 'b'), waypoints: pinned }))?.waypoints).toEqual(pinned)
+    expect(parseConnectorRecord(JSON.stringify({ start: anchor('a'), end: anchor('b') }))?.waypoints).toEqual([])
+    expect(parseConnectorRecord(JSON.stringify({ start: anchor('a'), end: anchor('b'), waypoints: 'nope' }))?.waypoints).toEqual([])
+    expect(parseConnectorRecord(JSON.stringify({ start: anchor('a'), end: anchor('b'), waypoints: [{ x: 1 }, { x: 2, y: 3 }] }))?.waypoints).toEqual([{ x: 2, y: 3 }])
+  })
+
+  /**
+   * Passes *through*, which is not the same as having a corner there: a
+   * pinned point that lands mid-way along a straight run is simplified out
+   * of the vertex list while the line still goes exactly where it was told.
+   */
+  const routePassesThrough = (points: ReadonlyArray<{ x: number; y: number }>, at: { x: number; y: number }) =>
+    points.some((p, i) => {
+      const next = points[i + 1]
+      if (typeof next === 'undefined') return p.x === at.x && p.y === at.y
+      const onX = Math.min(p.x, next.x) <= at.x && at.x <= Math.max(p.x, next.x)
+      const onY = Math.min(p.y, next.y) <= at.y && at.y <= Math.max(p.y, next.y)
+      return onX && onY && (p.x === next.x || p.y === next.y)
+    })
+
+  it('passes through the pinned point', () => {
+    const points = connectorRoutePoints({ x: 0, y: 0 }, { x: 400, y: 0 }, 'ELBOW', 'RIGHT', 'LEFT', {
+      ...facing,
+      waypoints: [{ x: 200, y: 160 }]
+    })
+    expect(routePassesThrough(points, { x: 200, y: 160 })).toBe(true)
+    expect(points[0]).toEqual({ x: 0, y: 0 })
+    expect(points[points.length - 1]).toEqual({ x: 400, y: 0 })
+  })
+
+  /**
+   * The whole point of pinning one bend rather than drawing the line by
+   * hand: everything either side of it is still worked out, obstacles and
+   * all, so a screen that lands in the untouched half is still avoided.
+   */
+  it('still avoids obstacles in the stretches it was left to work out', () => {
+    const inTheWay = { x: 250, y: -40, width: 80, height: 80 }
+    const points = connectorRoutePoints({ x: 0, y: 0 }, { x: 500, y: 0 }, 'ELBOW', 'RIGHT', 'LEFT', {
+      ...facing,
+      waypoints: [{ x: 120, y: 120 }],
+      obstacles: { foreign: [inTheWay], own: [] }
+    })
+    expect(routeCrossings(points, [inTheWay])).toBe(0)
+  })
+
+  it('ignores waypoints for STRAIGHT and CURVE, which have no bends to pin', () => {
+    const straight = connectorRoutePoints({ x: 0, y: 0 }, { x: 400, y: 0 }, 'STRAIGHT', 'RIGHT', 'LEFT', {
+      ...facing,
+      waypoints: [{ x: 200, y: 160 }]
+    })
+    expect(straight).toEqual([
+      { x: 0, y: 0 },
+      { x: 400, y: 0 }
+    ])
   })
 })
 

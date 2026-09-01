@@ -101,6 +101,18 @@ export interface ConnectorRecord {
   readonly detour: ConnectorDetour
   /** An optional label drawn at the midpoint of the route, FigJam/Autoflow-style. Empty string means no label. */
   readonly label: string
+  /**
+   * Points the route must pass through, set by dragging a handle on the
+   * canvas. Empty until somebody does.
+   *
+   * Each one pins a bend and nothing else: the stretches between them are
+   * still routed, obstacles and all. That is the difference from drawing the
+   * line by hand — overrule the one bend the automatic route got wrong, and
+   * the rest keeps looking after itself as things move.
+   *
+   * Meaningless for `STRAIGHT` and `CURVE`, which have no bends to pin.
+   */
+  readonly waypoints: ReadonlyArray<Point>
 }
 
 export const DEFAULT_CONNECTOR_WEIGHT = 1.5
@@ -160,7 +172,8 @@ export function createConnectorRecord(
     ...stylePrefs,
     // Always AUTO, never inherited — see `ConnectorStylePrefs`.
     detour: DEFAULT_DETOUR,
-    label: DEFAULT_LABEL
+    label: DEFAULT_LABEL,
+    waypoints: []
   }
 }
 
@@ -276,7 +289,10 @@ export function parseConnectorRecord(raw: string): ConnectorRecord | null {
     // Read here rather than in `stylePrefsFrom`, because a connector records
     // its own detour but never hands it on to the next one.
     detour: isDetour(candidate.detour) ? candidate.detour : DEFAULT_DETOUR,
-    label: typeof candidate.label === 'string' ? candidate.label : DEFAULT_LABEL
+    label: typeof candidate.label === 'string' ? candidate.label : DEFAULT_LABEL,
+    // Filtered rather than rejected wholesale: one corrupt entry costs that
+    // bend, not every bend a person had pinned on this line.
+    waypoints: Array.isArray(candidate.waypoints) ? candidate.waypoints.filter(isPoint) : []
   }
 }
 
@@ -482,6 +498,84 @@ function edgesOn(obstacles: RouteObstacles, axis: 'x' | 'y'): ReadonlyArray<[num
     edges.push([rect[axis] - OBSTACLE_CLEARANCE, rect[axis] + rect[size] + OBSTACLE_CLEARANCE])
   }
   return edges
+}
+
+/**
+ * Stitches a route out of one leg per pinned point.
+ *
+ * Each leg is routed by the ordinary elbow rules — obstacles and all — so
+ * pinning a bend overrules that bend and leaves every other stretch still
+ * looking after itself. The alternative, treating the pinned points as the
+ * whole route, would turn one drag into a hand-drawn line that stops
+ * adapting to anything.
+ *
+ * Only the first leg leaves by the start's side and only the last arrives at
+ * the end's; the joins in between are free, since a pinned point is a place
+ * to pass through rather than a box with sides.
+ */
+/**
+ * Which way a leg is heading, as a side.
+ *
+ * A pinned point has no edges, so a leg touching one has no side to leave by
+ * or arrive at — and the router falls back to a plain two-bend elbow when a
+ * side is missing, which is the one path that ignores obstacles entirely.
+ * Reading a side off the direction of travel keeps every leg on the
+ * obstacle-aware path, which is the whole reason for routing leg by leg.
+ */
+function sideTowards(from: Point, to: Point): ResolvedMagnet {
+  if (Math.abs(to.x - from.x) >= Math.abs(to.y - from.y)) {
+    return to.x >= from.x ? 'RIGHT' : 'LEFT'
+  }
+  return to.y >= from.y ? 'BOTTOM' : 'TOP'
+}
+
+const OPPOSITE_SIDE: Readonly<Record<ResolvedMagnet, ResolvedMagnet>> = {
+  LEFT: 'RIGHT',
+  RIGHT: 'LEFT',
+  TOP: 'BOTTOM',
+  BOTTOM: 'TOP',
+  CENTER: 'CENTER'
+}
+
+function routeThroughWaypoints(
+  start: Point,
+  end: Point,
+  waypoints: ReadonlyArray<Point>,
+  startSide: ResolvedMagnet | null,
+  endSide: ResolvedMagnet | null,
+  options: ElbowRouteOptions
+): ReadonlyArray<Point> {
+  const stops = [start, ...waypoints, end]
+  const points: Array<Point> = []
+  for (let i = 0; i < stops.length - 1; i += 1) {
+    const from = stops[i]
+    const to = stops[i + 1]
+    if (typeof from === 'undefined' || typeof to === 'undefined') continue
+    const first = i === 0
+    const last = i === stops.length - 2
+    // The stub that clears an endpoint's own frame belongs to the leg that
+    // actually leaves or arrives; a middle leg starts and ends in open canvas
+    // and has nothing to clear. `preferredMid` goes for the same reason: it
+    // is the gap between the two endpoints' frames, which no middle leg sits
+    // between.
+    const legOptions: ElbowRouteOptions = {
+      ...(typeof options.obstacles === 'undefined' ? {} : { obstacles: options.obstacles }),
+      ...(typeof options.detour === 'undefined' ? {} : { detour: options.detour }),
+      startClearance: first ? (options.startClearance ?? ELBOW_STUB) : 0,
+      endClearance: last ? (options.endClearance ?? ELBOW_STUB) : 0
+    }
+    const heading = sideTowards(from, to)
+    const leg = connectorRoutePoints(
+      from,
+      to,
+      'ELBOW',
+      first ? startSide : heading,
+      last ? endSide : OPPOSITE_SIDE[heading],
+      legOptions
+    )
+    points.push(...(points.length === 0 ? leg : leg.slice(1)))
+  }
+  return simplifyRoute(points)
 }
 
 /**
@@ -970,6 +1064,8 @@ export interface ElbowRouteOptions {
   readonly preferredMid?: number | null
   /** Boxes the route should avoid cutting through, split by `RouteObstacles`. Overrides `preferredMid` when the two disagree. */
   readonly obstacles?: RouteObstacles
+  /** Points the route must pass through — see `ConnectorRecord.waypoints`. */
+  readonly waypoints?: ReadonlyArray<Point>
   /** Which way to go around them. Defaults to `AUTO` — whichever way is shorter. */
   readonly detour?: ConnectorDetour
 }
@@ -1002,6 +1098,10 @@ export function connectorRoutePoints(
 ): ReadonlyArray<Point> {
   if (lineStyle !== 'ELBOW') {
     return [start, end]
+  }
+  const waypoints = options.waypoints ?? []
+  if (waypoints.length > 0) {
+    return routeThroughWaypoints(start, end, waypoints, startSide, endSide, options)
   }
   if (startSide === null || endSide === null) {
     return dominantAxisElbow(start, end)

@@ -704,7 +704,8 @@ async function syncConnectorBody(
             endClearance,
             preferredMid,
             detour: record.detour,
-            obstacles
+            obstacles,
+            waypoints: record.waypoints
           })
     figma.currentPage.appendChild(node)
 
