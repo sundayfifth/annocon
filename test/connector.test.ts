@@ -937,6 +937,45 @@ describe('findRouteAround — the fallback for boards the ordinary rules cannot 
   })
 })
 
+describe('findRouteAround — cost cap on a grid-aligned board', () => {
+  /**
+   * The shape a real board actually is: screens line up in columns and rows,
+   * so dozens of them collapse onto a handful of shared edges. The search's
+   * real cost is the grid it builds from those edges, not the number of
+   * screens that produced them — and the routes with the most screens nearby
+   * are exactly the long ones that most need the search. A cap on the raw
+   * count rejects those first.
+   */
+  it('still searches a tidy board with far more than the old raw-count cap', () => {
+    const board: Array<Rect> = []
+    for (let col = 0; col < 6; col += 1) {
+      for (let row = 0; row < 12; row += 1) {
+        board.push({ x: col * 535, y: row * 900, width: 375, height: 812 })
+      }
+    }
+    expect(board.length).toBeGreaterThan(60)
+    const points = findRouteAround({ x: 187, y: -100 }, { x: 187, y: 10900 }, board)
+    expect(points).not.toBeNull()
+    expect(routeCrossings(points ?? [], board)).toBe(0)
+  })
+
+  /**
+   * The genuine escape hatch: obstacles scattered at unrelated coordinates
+   * never share an edge, so the grid grows with every one of them. This has
+   * to still bail before it costs real time.
+   */
+  it('bails on a board with no shared structure at all', () => {
+    const scattered: Array<Rect> = []
+    for (let i = 0; i < 80; i += 1) {
+      scattered.push({ x: i * 47, y: (i * 83) % 5000, width: 30, height: 30 })
+    }
+    const start = Date.now()
+    const points = findRouteAround({ x: -100, y: 0 }, { x: 4000, y: 0 }, scattered)
+    expect(Date.now() - start).toBeLessThan(200)
+    expect(points).toBeNull()
+  })
+})
+
 describe('routeCost', () => {
   /** Two screens side by side with a gap, an endpoint nested in each. */
   const leftScreen = { x: 0, y: 0, width: 100, height: 100 }

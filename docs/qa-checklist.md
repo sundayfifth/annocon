@@ -138,6 +138,11 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] Drag a screen around a page with a few hundred objects: still tracks.
       The search is capped and skipped past that cap, so it must not turn a
       drag into a slideshow.
+- [ ] A grid of screens in tidy rows and columns — 60, 100, more — with a
+      connector spanning most of it: the search still runs and finds a way
+      through. The cap is on the grid it builds, not on how many screens are
+      nearby, so a tidy board with a great many screens must not be skipped
+      the way a raw count would skip it.
 
 ## Connect — reshaping a line by hand
 

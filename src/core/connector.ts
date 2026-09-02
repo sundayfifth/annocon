@@ -727,12 +727,22 @@ function squaredDistance(a: Point, b: Point): number {
 }
 
 /**
- * The most boxes a search will look at. Past this the grid it builds gets
- * expensive enough to be felt on a thread that also has to redraw the
- * editor, and the ordinary route — least-bad, but instant — is the better
- * trade. Chosen so the grid stays under about 7,000 crossings.
+ * The most a search will do — cell count times obstacle count, which
+ * approximates the total number of "does this edge cross that box" checks
+ * A* ends up making. Past this it costs more than it is worth on a thread
+ * that also has to redraw the editor, and the ordinary route — least-bad,
+ * but instant — is the better trade.
+ *
+ * Not a cap on obstacle count. A real board is grid-aligned — screens line
+ * up in columns and rows — so dozens of them collapse onto a handful of
+ * shared edges, and the grid built from those edges stays small regardless
+ * of how many screens produced it. A raw count cap rejects exactly the
+ * boards this is for: the busiest ones, which are also the most likely to
+ * be tidy grids. Genuinely scattered obstacles, which never share an edge,
+ * still hit this budget quickly because their grid grows with every one of
+ * them.
  */
-const MAX_SEARCHED_OBSTACLES = 40
+const MAX_SEARCH_COST = 250000
 
 /** Turning costs something, so a route with the same length but fewer corners wins. */
 const TURN_PENALTY = 40
@@ -767,10 +777,10 @@ export function findRouteAround(
   end: Point,
   obstacles: ReadonlyArray<Rect>
 ): ReadonlyArray<Point> | null {
-  if (obstacles.length > MAX_SEARCHED_OBSTACLES) return null
-
   const xs = gridLines(obstacles, 'x', start.x, end.x)
   const ys = gridLines(obstacles, 'y', start.y, end.y)
+  if (xs.length * ys.length * obstacles.length > MAX_SEARCH_COST) return null
+
   const startCell = { x: xs.indexOf(start.x), y: ys.indexOf(start.y) }
   const endCell = { x: xs.indexOf(end.x), y: ys.indexOf(end.y) }
   if (startCell.x < 0 || startCell.y < 0 || endCell.x < 0 || endCell.y < 0) return null
