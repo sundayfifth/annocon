@@ -1016,6 +1016,12 @@ async function positionPolyline(
  * are all as the person left them. Only position is carried, and only by
  * `shiftManualShape`.
  */
+/** Distance between two points, or 0 when either is missing (the ends of a run). */
+function segmentLength(from: Point | undefined, to: Point | undefined): number {
+  if (typeof from === 'undefined' || typeof to === 'undefined') return 0
+  return Math.hypot(to.x - from.x, to.y - from.y)
+}
+
 async function drawManualShape(
   node: VectorNode,
   shape: ManualShape,
@@ -1056,11 +1062,24 @@ async function drawManualShape(
     // rounding somebody set.
     vertices: carried.map((point, i) => {
       const isEnd = i === 0 || i === lastIndex
+      const source = shape.vertices[shape.order[i] as number] as ManualVertex
+      // Rounding applies to a corner, and only where there is room for it.
+      // A vertex the person curved is not a corner — a radius on top of a
+      // bezier handle is two answers to the same question. And a radius
+      // longer than the segments either side has nothing to round into: a
+      // route this plugin generates always leaves itself room, a shape
+      // somebody dragged by hand need not.
+      const curved = source.tangentIn !== null || source.tangentOut !== null
+      const room = Math.min(
+        segmentLength(carried[i - 1], point),
+        segmentLength(point, carried[i + 1])
+      )
+      const rounded = !isEnd && !curved && room > record.cornerRadius * 2
       return {
         x: point.x - originX,
         y: point.y - originY,
         strokeCap: i === 0 ? record.startCap : i === lastIndex ? record.endCap : ('NONE' as const),
-        ...(isEnd ? {} : { cornerRadius: record.cornerRadius })
+        ...(rounded ? { cornerRadius: record.cornerRadius } : {})
       }
     }),
     segments: carried.slice(1).map((_point, i) => {

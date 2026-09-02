@@ -558,9 +558,30 @@ export function routeCost(points: ReadonlyArray<Point>, obstacles: RouteObstacle
 }
 
 /** Every edge of every box, as a candidate coordinate on `axis`. Used to seed the search. */
-function edgesOn(obstacles: RouteObstacles, axis: 'x' | 'y'): ReadonlyArray<[number, number]> {
+export function edgesOn(obstacles: RouteObstacles, axis: 'x' | 'y'): ReadonlyArray<[number, number]> {
   const size = axis === 'x' ? 'width' : 'height'
-  const all = [...obstacles.foreign, ...obstacles.own]
+  const across = axis === 'x' ? 'y' : 'x'
+  const acrossSize = axis === 'x' ? 'height' : 'width'
+  // Sorted, so the order candidates are offered in — and therefore which
+  // side a line takes when two routes tie on length — depends on where the
+  // boxes are rather than on whether each was bucketed as foreign or as an
+  // endpoint's own screen, which is an implementation detail a person cannot
+  // see or predict.
+  const all = [...obstacles.foreign, ...obstacles.own].sort(
+    (a, b) => a[axis] - b[axis] || a[across] - b[across]
+  )
+  // Finding each box's neighbours compares every box with every other, and
+  // this runs twice per connector per frame of a drag. Measured at 121 boxes
+  // it costs about 70% more than the flat standoff it replaced. Past this
+  // many, the flat one is the better trade: the difference is how pretty a
+  // line looks passing a screen, and nothing looks good in a stuttering
+  // editor.
+  if (all.length > MAX_MEASURED_NEIGHBOURS) {
+    return all.map((rect) => [
+      rect[axis] - OBSTACLE_CLEARANCE,
+      rect[axis] + rect[size] + OBSTACLE_CLEARANCE
+    ])
+  }
   const edges: Array<[number, number]> = []
   for (const rect of all) {
     const low = rect[axis]
@@ -572,6 +593,18 @@ function edgesOn(obstacles: RouteObstacles, axis: 'x' | 'y'): ReadonlyArray<[num
     let gapAfter = Number.POSITIVE_INFINITY
     for (const other of all) {
       if (other === rect) continue
+      // Only a box that overlaps this one across the other axis is in a
+      // position to crowd it: a screen in the next column along is not
+      // above or below this one however its coordinates compare, and
+      // counting it made a screen in an ordinary row report no neighbours
+      // at all while a dense board reported the tightest possible ones —
+      // backwards from what the widening was for.
+      if (
+        other[across] >= rect[across] + rect[acrossSize] ||
+        other[across] + other[acrossSize] <= rect[across]
+      ) {
+        continue
+      }
       const otherHigh = other[axis] + other[size]
       if (otherHigh <= low) gapBefore = Math.min(gapBefore, low - otherHigh)
       if (other[axis] >= high) gapAfter = Math.min(gapAfter, other[axis] - high)
@@ -919,6 +952,9 @@ export const OBSTACLE_CLEARANCE = 20
  * touch. A fixed 20 was the old answer, and read as cramped beside a
  * 375-wide screen — the same complaint that widened the stub.
  */
+/** Past this many boxes, standoffs go back to the flat minimum — see `edgesOn`. */
+const MAX_MEASURED_NEIGHBOURS = 60
+
 export function clearanceBeside(gap: number): number {
   if (!Number.isFinite(gap)) return ELBOW_STUB
   return Math.max(OBSTACLE_CLEARANCE, Math.min(ELBOW_STUB, gap / 2))

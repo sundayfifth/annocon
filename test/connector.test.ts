@@ -17,6 +17,7 @@ import {
   ELBOW_STUB,
   OBSTACLE_CLEARANCE,
   clearanceBeside,
+  edgesOn,
   ROUTE_SEARCH_MARGIN,
   boxCouldAffectRoute,
   connectorAxisOf,
@@ -989,6 +990,48 @@ describe('routeCost', () => {
       { x: 200, y: 250 }
     ]
     expect(routeCost(through, { foreign: [parked], own: [] })).toBe(1)
+  })
+})
+
+describe('edgesOn — how far a route stands off each box', () => {
+  /**
+   * Proved by running it: three screens in a row share a y range, so on the
+   * y axis neither "entirely above" nor "entirely below" was ever true and
+   * the gap stayed infinite — every screen in an ordinary row got the widest
+   * standoff, while a dense board of several rows, the case the widening was
+   * for, got the narrowest. Exactly backwards.
+   *
+   * A box only crowds another on this axis if the two overlap across it.
+   */
+  it('measures the gap only against boxes that actually sit above or below', () => {
+    const row = [
+      { x: 0, y: 0, width: 375, height: 812 },
+      { x: 535, y: 0, width: 375, height: 812 },
+      { x: 1070, y: 0, width: 375, height: 812 }
+    ]
+    // Nothing above or below any of them, so nothing is crowding them.
+    for (const [low, high] of edgesOn({ foreign: row, own: [] }, 'y')) {
+      expect(high - low).toBe(812 + ELBOW_STUB * 2)
+    }
+  })
+
+  it('halves the gap to the row below when there is one', () => {
+    const board = [
+      { x: 0, y: 0, width: 375, height: 812 },
+      { x: 0, y: 892, width: 375, height: 812 }
+    ]
+    const [first] = edgesOn({ foreign: board, own: [] }, 'y')
+    // 80 apart, so 40 each — not the 20 floor, and not the 80 cap.
+    expect((first as [number, number])[1]).toBe(812 + 40)
+  })
+
+  it('ignores a box in the next column over, which crowds nothing', () => {
+    const board = [
+      { x: 0, y: 0, width: 375, height: 812 },
+      { x: 535, y: 892, width: 375, height: 812 }
+    ]
+    const [first] = edgesOn({ foreign: board, own: [] }, 'y')
+    expect((first as [number, number])[1]).toBe(812 + ELBOW_STUB)
   })
 })
 
