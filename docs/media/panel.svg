@@ -11,12 +11,12 @@
     .ph { font: 400 11px -apple-system, sans-serif; fill: #B5B5BE; }
     .pill { fill: #F5F5F7; stroke: #E1E1E6; stroke-width: 1; }
     .pill-on { fill: #FECC00; }
-    .pill-text { font: 600 10px -apple-system, sans-serif; fill: #6B6B76; }
-    .pill-text-on { font: 600 10px -apple-system, sans-serif; fill: #1E1E24; }
+    .pill-text { font: 600 10px -apple-system, sans-serif; fill: #6B6B76; text-anchor: middle; dominant-baseline: central; }
+    .pill-text-on { font: 600 10px -apple-system, sans-serif; fill: #1E1E24; text-anchor: middle; dominant-baseline: central; }
     .seg { fill: #FFFFFF; stroke: #D5D5DC; stroke-width: 1; }
     .seg-on { fill: #1E1E24; }
-    .seg-text { font: 500 10px -apple-system, sans-serif; fill: #6B6B76; }
-    .seg-text-on { font: 500 10px -apple-system, sans-serif; fill: #FFFFFF; }
+    .seg-text { font: 500 10px -apple-system, sans-serif; fill: #6B6B76; text-anchor: middle; dominant-baseline: central; }
+    .seg-text-on { font: 500 10px -apple-system, sans-serif; fill: #FFFFFF; text-anchor: middle; dominant-baseline: central; }
     @media (prefers-color-scheme: dark) {
       .win { fill: #1E1E24; stroke: #35353E; }
       .hair { stroke: #35353E; }
@@ -25,7 +25,8 @@
       .label { fill: #F2F2F5; }
       .box { fill: #26262C; stroke: #35353E; }
       .pill { fill: #26262C; stroke: #35353E; }
-      .pill-text { fill: #A8A8B2; }
+      .pill { fill: #34343C; stroke: #45454F; }
+      .pill-text { fill: #C8C8D0; }
       .seg { fill: #26262C; stroke: #3A3A44; }
       .seg-text { fill: #A8A8B2; }
     }
@@ -46,14 +47,14 @@
   <text class="muted" x="61" y="104">INSTANCE</text>
 
   <g>
-    <rect class="pill" x="16" y="120" width="38" height="22" rx="11"/>
-    <text class="pill-text" x="27" y="134">None</text>
-    <rect class="pill-on" x="60" y="120" width="34" height="22" rx="11"/>
-    <text class="pill-text-on" x="69" y="134">Note</text>
-    <rect class="pill" x="100" y="120" width="30" height="22" rx="11"/>
-    <text class="pill-text" x="109" y="134">Dev</text>
-    <rect class="pill" x="136" y="120" width="30" height="22" rx="11"/>
-    <text class="pill-text" x="145" y="134">Idea</text>
+    <rect class="pill" x="16" y="120" width="46" height="22" rx="11"/>
+    <text class="pill-text" x="39" y="132">None</text>
+    <rect class="pill-on" x="68" y="120" width="44" height="22" rx="11"/>
+    <text class="pill-text-on" x="90" y="132">Note</text>
+    <rect class="pill" x="118" y="120" width="39" height="22" rx="11"/>
+    <text class="pill-text" x="137.5" y="132">Dev</text>
+    <rect class="pill" x="163" y="120" width="42" height="22" rx="11"/>
+    <text class="pill-text" x="184" y="132">Idea</text>
   </g>
 
   <rect class="box" x="16" y="154" width="268" height="72" rx="6"/>
@@ -61,10 +62,10 @@
 
   <g>
     <rect class="seg" x="16" y="240" width="268" height="26" rx="6"/>
-    <rect class="seg-on" x="109" y="241" width="88" height="24" rx="5"/>
-    <text class="seg-text" x="44" y="257">Small</text>
-    <text class="seg-text-on" x="135" y="257">Medium</text>
-    <text class="seg-text" x="230" y="257">Large</text>
+    <rect class="seg-on" x="105" y="241" width="89" height="24" rx="5"/>
+    <text class="seg-text" x="60.7" y="253">Small</text>
+    <text class="seg-text-on" x="150" y="253">Medium</text>
+    <text class="seg-text" x="239.3" y="253">Large</text>
   </g>
 
   <text class="muted" x="16" y="290">Drag the card's side edge on the</text>
