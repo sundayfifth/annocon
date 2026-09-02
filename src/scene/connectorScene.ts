@@ -1049,16 +1049,20 @@ async function drawManualShape(
 
   const lastIndex = carried.length - 1
   await node.setVectorNetworkAsync({
-    // Caps on the two ends, as the routed path does — dropping them left a
-    // hand-drawn line with no arrowhead. No cornerRadius on any of them,
-    // though: a corner the person made sharp stays sharp, and the record's
-    // radius describes the route this plugin draws rather than the one it
-    // was handed.
-    vertices: carried.map((point, i) => ({
-      x: point.x - originX,
-      y: point.y - originY,
-      strokeCap: i === 0 ? record.startCap : i === lastIndex ? record.endCap : ('NONE' as const)
-    })),
+    // Caps on the two ends, and the record's corner radius on the bends, both
+    // as the routed path does. The radius is a style choice about how this
+    // connector's corners look, and reshaping the line was a choice about
+    // where it goes — hand-drawing a route should not silently reset a
+    // rounding somebody set.
+    vertices: carried.map((point, i) => {
+      const isEnd = i === 0 || i === lastIndex
+      return {
+        x: point.x - originX,
+        y: point.y - originY,
+        strokeCap: i === 0 ? record.startCap : i === lastIndex ? record.endCap : ('NONE' as const),
+        ...(isEnd ? {} : { cornerRadius: record.cornerRadius })
+      }
+    }),
     segments: carried.slice(1).map((_point, i) => {
       const from = shape.vertices[shape.order[i] as number] as ManualVertex
       const to = shape.vertices[shape.order[i + 1] as number] as ManualVertex

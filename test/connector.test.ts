@@ -15,6 +15,8 @@ import {
   DEFAULT_LINE_STYLE,
   DEFAULT_START_CAP,
   ELBOW_STUB,
+  OBSTACLE_CLEARANCE,
+  clearanceBeside,
   ROUTE_SEARCH_MARGIN,
   boxCouldAffectRoute,
   connectorAxisOf,
@@ -987,6 +989,22 @@ describe('routeCost', () => {
       { x: 200, y: 250 }
     ]
     expect(routeCost(through, { foreign: [parked], own: [] })).toBe(1)
+  })
+})
+
+describe('clearanceBeside', () => {
+  it('runs down the middle of the space it has', () => {
+    expect(clearanceBeside(60)).toBe(30)
+  })
+
+  it('never crowds an edge, however tight the gap', () => {
+    expect(clearanceBeside(10)).toBe(OBSTACLE_CLEARANCE)
+    expect(clearanceBeside(0)).toBe(OBSTACLE_CLEARANCE)
+  })
+
+  it('does not wander off across an empty board', () => {
+    expect(clearanceBeside(4000)).toBe(ELBOW_STUB)
+    expect(clearanceBeside(Number.POSITIVE_INFINITY)).toBe(ELBOW_STUB)
   })
 })
 

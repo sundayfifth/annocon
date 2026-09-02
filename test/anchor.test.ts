@@ -180,6 +180,27 @@ describe('sameRect', () => {
   })
 })
 
+describe('resolveMagnetEscapingFrame — which way a nested anchor leaves', () => {
+  /** A phone screen, and a control sitting a little in from its left edge. */
+  const screen = { x: 0, y: 0, width: 375, height: 812 }
+  const control = { x: 65, y: 400, width: 180, height: 44 }
+
+  it('leaves by the nearest edge when the counterpart is that way', () => {
+    expect(resolveMagnetEscapingFrame(control, screen, { x: -800, y: 400 })).toBe('LEFT')
+  })
+
+  /**
+   * Reported from a real board: a control near a screen's left edge, and the
+   * line coming from far to the right — it left by the left edge, ran all
+   * the way around the screen and came back in. Leaving by the near edge is
+   * worth something, but not worth a detour of the whole screen and back.
+   */
+  it('leaves by the far edge when the counterpart is a long way that way', () => {
+    expect(resolveMagnetEscapingFrame(control, screen, { x: 1200, y: 400 })).toBe('RIGHT')
+  })
+
+})
+
 describe('outwardNormal', () => {
   it('points away from the box on each side', () => {
     expect(outwardNormal('TOP')).toEqual({ x: 0, y: -1 })

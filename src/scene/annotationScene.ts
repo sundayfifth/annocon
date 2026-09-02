@@ -423,11 +423,11 @@ async function ensureCategoryPill(
   if (label.characters !== category.name) {
     label.characters = category.name
   }
-  // Belt as well as braces. The floor above keeps a card wide enough for its
-  // own pill at a sensible category name, but a long enough name overflows
-  // any width — and a pill hanging out past the card reads as broken rather
-  // than as a long name. Capped at what the card can hold, so it truncates
-  // instead.
+  // Measured from its natural width every sync, never from whatever width it
+  // was left at. Capping it once and leaving it capped meant a pill narrowed
+  // to fit a squeezed card stayed narrow when the card grew again — the name
+  // wrapped onto two lines forever, with room to spare either side.
+  label.textAutoResize = 'WIDTH_AND_HEIGHT'
   const room = card.width - metrics.paddingX * 2 - Math.round(metrics.categoryFontSize * 1.6)
   if (room > 0 && label.width > room) {
     label.textAutoResize = 'HEIGHT'

@@ -560,9 +560,23 @@ export function routeCost(points: ReadonlyArray<Point>, obstacles: RouteObstacle
 /** Every edge of every box, as a candidate coordinate on `axis`. Used to seed the search. */
 function edgesOn(obstacles: RouteObstacles, axis: 'x' | 'y'): ReadonlyArray<[number, number]> {
   const size = axis === 'x' ? 'width' : 'height'
+  const all = [...obstacles.foreign, ...obstacles.own]
   const edges: Array<[number, number]> = []
-  for (const rect of [...obstacles.foreign, ...obstacles.own]) {
-    edges.push([rect[axis] - OBSTACLE_CLEARANCE, rect[axis] + rect[size] + OBSTACLE_CLEARANCE])
+  for (const rect of all) {
+    const low = rect[axis]
+    const high = rect[axis] + rect[size]
+    // The nearest box on each side, so the line can sit midway between the
+    // two rather than a fixed distance off one and possibly on top of the
+    // other.
+    let gapBefore = Number.POSITIVE_INFINITY
+    let gapAfter = Number.POSITIVE_INFINITY
+    for (const other of all) {
+      if (other === rect) continue
+      const otherHigh = other[axis] + other[size]
+      if (otherHigh <= low) gapBefore = Math.min(gapBefore, low - otherHigh)
+      if (other[axis] >= high) gapAfter = Math.min(gapAfter, other[axis] - high)
+    }
+    edges.push([low - clearanceBeside(gapBefore), high + clearanceBeside(gapAfter)])
   }
   return edges
 }
@@ -887,8 +901,28 @@ export function boxCouldAffectRoute(routeBounds: Rect, box: Rect, margin: number
   )
 }
 
-/** How far clear of an obstacle's edge a re-aimed route passes. */
+/**
+ * The least a re-aimed route passes clear of an obstacle's edge.
+ *
+ * A floor rather than the answer — see `clearanceBeside`.
+ */
 export const OBSTACLE_CLEARANCE = 20
+
+/**
+ * How far outside a box a route should run: half the gap to whatever is next
+ * along, capped at the stub width and floored at the minimum clearance.
+ *
+ * Half the gap puts the line down the middle of the space it has, which is
+ * where it looks like it belongs and where it cannot crowd either side. The
+ * cap stops it drifting hundreds of units out just because that part of the
+ * board is empty; the floor keeps it off the edge where two screens nearly
+ * touch. A fixed 20 was the old answer, and read as cramped beside a
+ * 375-wide screen — the same complaint that widened the stub.
+ */
+export function clearanceBeside(gap: number): number {
+  if (!Number.isFinite(gap)) return ELBOW_STUB
+  return Math.max(OBSTACLE_CLEARANCE, Math.min(ELBOW_STUB, gap / 2))
+}
 
 function clamp(value: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, value))
