@@ -426,8 +426,17 @@ function dominantAxisElbow(start: Point, end: Point): ReadonlyArray<Point> {
   return [start, { x: start.x, y: midY }, { x: end.x, y: midY }, end]
 }
 
-/** How far a sided elbow pokes straight out from the edge before it's allowed to turn. */
-const ELBOW_STUB = 24
+/**
+ * How far a sided elbow pokes straight out from the edge before it's allowed
+ * to turn.
+ *
+ * Wider than it reads on paper, and wider than the equivalent on an
+ * annotation leader, on purpose: a connector between two screens turning 24
+ * units out looks cramped against a 375-wide screen, as though it changed
+ * its mind immediately. An annotation's leader runs a short distance to a
+ * card parked right beside its target and wants the opposite.
+ */
+export const ELBOW_STUB = 80
 
 /**
  * Collapses runs of collinear points and drops repeats, so a stub glued to
@@ -668,6 +677,148 @@ export function orientedTowards(
 
 function squaredDistance(a: Point, b: Point): number {
   return (a.x - b.x) ** 2 + (a.y - b.y) ** 2
+}
+
+/**
+ * The most boxes a search will look at. Past this the grid it builds gets
+ * expensive enough to be felt on a thread that also has to redraw the
+ * editor, and the ordinary route — least-bad, but instant — is the better
+ * trade. Chosen so the grid stays under about 7,000 crossings.
+ */
+const MAX_SEARCHED_OBSTACLES = 40
+
+/** Turning costs something, so a route with the same length but fewer corners wins. */
+const TURN_PENALTY = 40
+
+/**
+ * Finds a right-angled route that crosses nothing, by searching the space
+ * rather than by aiming at one box at a time.
+ *
+ * The ordinary rules generate a handful of candidates, each aimed at one
+ * obstacle's edge, and pick the best. That is fast, and on an ordinary page
+ * it is right — but it cannot solve a wall with a gap in it, because no
+ * single box's edge lines up with the gap. On a board of a few hundred
+ * screens there is often no candidate that crosses nothing at all, and the
+ * least-bad one goes through three of them.
+ *
+ * So: build a grid from the boxes' own edges — every obstacle contributes
+ * one line a clearance outside each of its four sides — and walk it with
+ * A*. Compressing the coordinates this way keeps the grid small (a few
+ * dozen lines each way rather than thousands of pixels) while still
+ * containing an optimal orthogonal route, since a route only ever needs to
+ * turn where something's edge is.
+ *
+ * Takes the points it is given as they are: a caller that wants the line to
+ * leave a screen by a particular side hands in the point it should leave
+ * from, not the anchor itself.
+ *
+ * `null` when there is no way through at all, or when there are more boxes
+ * than are worth searching — the caller keeps the route it already had.
+ */
+export function findRouteAround(
+  start: Point,
+  end: Point,
+  obstacles: ReadonlyArray<Rect>
+): ReadonlyArray<Point> | null {
+  if (obstacles.length > MAX_SEARCHED_OBSTACLES) return null
+
+  const xs = gridLines(obstacles, 'x', start.x, end.x)
+  const ys = gridLines(obstacles, 'y', start.y, end.y)
+  const startCell = { x: xs.indexOf(start.x), y: ys.indexOf(start.y) }
+  const endCell = { x: xs.indexOf(end.x), y: ys.indexOf(end.y) }
+  if (startCell.x < 0 || startCell.y < 0 || endCell.x < 0 || endCell.y < 0) return null
+
+  const at = (cell: { x: number; y: number }): Point => ({
+    x: xs[cell.x] as number,
+    y: ys[cell.y] as number
+  })
+  const blocked = (from: Point, to: Point): boolean =>
+    obstacles.some((rect) => segmentEntersRect(from, to, rect))
+  const key = (cell: { x: number; y: number }): number => cell.y * xs.length + cell.x
+
+  const came = new Map<number, { cell: { x: number; y: number }; from: number | null }>()
+  const best = new Map<number, number>()
+  const open: Array<{ cell: { x: number; y: number }; cost: number; guess: number }> = [
+    { cell: startCell, cost: 0, guess: 0 }
+  ]
+  best.set(key(startCell), 0)
+  came.set(key(startCell), { cell: startCell, from: null })
+
+  while (open.length > 0) {
+    // A plain scan for the cheapest open cell. The grid is small by
+    // construction, and a heap would be more machinery than the sizes here
+    // repay.
+    let pick = 0
+    for (let i = 1; i < open.length; i += 1) {
+      if ((open[i] as { guess: number }).guess < (open[pick] as { guess: number }).guess) pick = i
+    }
+    const current = open.splice(pick, 1)[0] as { cell: { x: number; y: number }; cost: number }
+    if (current.cell.x === endCell.x && current.cell.y === endCell.y) {
+      return simplifyRoute(walkBack(came, key(endCell), at))
+    }
+    const here = at(current.cell)
+    const previous = came.get(key(current.cell))?.from
+    const cameHorizontally =
+      typeof previous === 'number' ? (previous % xs.length) !== current.cell.x : null
+
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1]
+    ]) {
+      const next = { x: current.cell.x + (dx as number), y: current.cell.y + (dy as number) }
+      if (next.x < 0 || next.y < 0 || next.x >= xs.length || next.y >= ys.length) continue
+      const there = at(next)
+      if (blocked(here, there)) continue
+      const goingHorizontally = dx !== 0
+      const turn = cameHorizontally !== null && cameHorizontally !== goingHorizontally ? TURN_PENALTY : 0
+      const cost = current.cost + Math.hypot(there.x - here.x, there.y - here.y) + turn
+      if (cost >= (best.get(key(next)) ?? Number.POSITIVE_INFINITY)) continue
+      best.set(key(next), cost)
+      came.set(key(next), { cell: next, from: key(current.cell) })
+      const guess = cost + Math.abs(there.x - end.x) + Math.abs(there.y - end.y)
+      open.push({ cell: next, cost, guess })
+    }
+  }
+  return null
+}
+
+function walkBack(
+  came: Map<number, { cell: { x: number; y: number }; from: number | null }>,
+  from: number,
+  at: (cell: { x: number; y: number }) => Point
+): Array<Point> {
+  const points: Array<Point> = []
+  let step = came.get(from)
+  while (typeof step !== 'undefined') {
+    points.push(at(step.cell))
+    step = step.from === null ? undefined : came.get(step.from)
+  }
+  return points.reverse()
+}
+
+/**
+ * The lines a route may turn on: one a clearance outside each of an
+ * obstacle's four sides, plus the two endpoints' own coordinates.
+ *
+ * A route only ever needs to turn where something's edge is, so this holds
+ * an optimal orthogonal route while being a few dozen values instead of
+ * tens of thousands of pixels.
+ */
+function gridLines(
+  obstacles: ReadonlyArray<Rect>,
+  axis: 'x' | 'y',
+  from: number,
+  to: number
+): ReadonlyArray<number> {
+  const size = axis === 'x' ? 'width' : 'height'
+  const lines = new Set<number>([from, to])
+  for (const rect of obstacles) {
+    lines.add(rect[axis] - OBSTACLE_CLEARANCE)
+    lines.add(rect[axis] + rect[size] + OBSTACLE_CLEARANCE)
+  }
+  return [...lines].sort((a, b) => a - b)
 }
 
 /**
@@ -1078,21 +1229,30 @@ function sidedElbow(
       // on a clear page that is the entire cost of the feature, paid for
       // nothing.
       if (!hasObstacles(obstacles) || routeCost(direct, obstacles) === 0) return direct
-      return bestRoute(
-        sameAxisCandidates(
-          direct,
-          start,
-          end,
-          axis,
-          startSign,
-          endSign,
-          startClearance,
-          endClearance,
-          lo,
-          hi,
-          detour,
+      return orSearched(
+        bestRoute(
+          sameAxisCandidates(
+            direct,
+            start,
+            end,
+            axis,
+            startSign,
+            endSign,
+            startClearance,
+            endClearance,
+            lo,
+            hi,
+            detour,
+            obstacles
+          ),
           obstacles
         ),
+        start,
+        end,
+        startSide,
+        endSide,
+        startClearance,
+        endClearance,
         obstacles
       )
     }
@@ -1114,14 +1274,75 @@ function sidedElbow(
       // longer stub-then-bend route. Worth one comparison: it often clears
       // a box the corner cuts straight across, and `bestRoute` keeps the
       // corner whenever it doesn't.
-      return bestRoute(
-        [single, detourElbow(start, end, startSide, endSide, startClearance, endClearance)],
+      return orSearched(
+        bestRoute(
+          [single, detourElbow(start, end, startSide, endSide, startClearance, endClearance)],
+          obstacles
+        ),
+        start,
+        end,
+        startSide,
+        endSide,
+        startClearance,
+        endClearance,
         obstacles
       )
     }
   }
 
-  return detourElbow(start, end, startSide, endSide, startClearance, endClearance)
+  return orSearched(
+    detourElbow(start, end, startSide, endSide, startClearance, endClearance),
+    start,
+    end,
+    startSide,
+    endSide,
+    startClearance,
+    endClearance,
+    obstacles
+  )
+}
+
+/**
+ * Hands over to the search when the chosen route still crosses something.
+ *
+ * The ordinary rules are kept as the first answer, not replaced: they are
+ * instant, and on a page where they work they are also the prettier route —
+ * a search optimises for getting through, and will happily take a long way
+ * round that a person would not have drawn. This is the escape hatch for the
+ * boards they cannot solve, and it costs nothing on the ones they can, since
+ * a route that crosses nothing never reaches here.
+ *
+ * The search starts from each end's stub point rather than the anchor
+ * itself, so the line still leaves and arrives by the sides it was told to.
+ */
+function orSearched(
+  chosen: ReadonlyArray<Point>,
+  start: Point,
+  end: Point,
+  startSide: ResolvedMagnet,
+  endSide: ResolvedMagnet,
+  startClearance: number,
+  endClearance: number,
+  obstacles: RouteObstacles
+): ReadonlyArray<Point> {
+  if (routeCost(chosen, obstacles) === 0) return chosen
+  const startNormal = outwardNormal(startSide)
+  const endNormal = outwardNormal(endSide)
+  const from: Point = {
+    x: start.x + startNormal.x * startClearance,
+    y: start.y + startNormal.y * startClearance
+  }
+  const to: Point = {
+    x: end.x + endNormal.x * endClearance,
+    y: end.y + endNormal.y * endClearance
+  }
+  const found = findRouteAround(from, to, obstacles.foreign)
+  if (found === null) return chosen
+  const full = simplifyRoute([start, ...found, end])
+  // Only if it is actually better. The search ignores the own-screen
+  // exemptions `routeCost` applies, so a route it calls clean can still
+  // score worse by the rules everything else is judged on.
+  return routeCost(full, obstacles) < routeCost(chosen, obstacles) ? full : chosen
 }
 
 /**

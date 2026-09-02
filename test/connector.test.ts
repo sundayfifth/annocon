@@ -14,6 +14,7 @@ import {
   DEFAULT_LABEL,
   DEFAULT_LINE_STYLE,
   DEFAULT_START_CAP,
+  ELBOW_STUB,
   ROUTE_SEARCH_MARGIN,
   boxCouldAffectRoute,
   connectorAxisOf,
@@ -22,6 +23,7 @@ import {
   connectorStubClearance,
   obstaclesInPlay,
   orientedTowards,
+  findRouteAround,
   routeCost,
   shiftManualShape,
   routeCrossings,
@@ -333,7 +335,7 @@ describe('connectorRoutePoints', () => {
     // immediately run horizontally out of the start, ignoring its side.
     const points = connectorRoutePoints({ x: 0, y: 0 }, { x: 200, y: 10 }, 'ELBOW', 'BOTTOM', 'LEFT')
     expect(points[0]).toEqual({ x: 0, y: 0 })
-    expect(points[1]).toEqual({ x: 0, y: 24 }) // straight down out of the BOTTOM side first
+    expect(points[1]).toEqual({ x: 0, y: ELBOW_STUB }) // straight down out of the BOTTOM side first
     const last = points[points.length - 1]
     const secondLast = points[points.length - 2]
     expect(last).toEqual({ x: 200, y: 10 })
@@ -380,7 +382,7 @@ describe('connectorRoutePoints', () => {
       'LEFT',
       { startClearance: 24, endClearance: 24, preferredMid: 1000 } // way past what the end's clearance allows
     )
-    expect(points[1]?.x).toBe(176) // clamped to 200 - 24
+    expect(points[1]?.x).toBe(176) // clamped to 200 - endClearance
   })
 
   it('honours a larger clearance to poke out past an enclosing frame first', () => {
@@ -871,6 +873,67 @@ describe('orientedTowards', () => {
   })
 })
 
+describe('findRouteAround — the fallback for boards the ordinary rules cannot solve', () => {
+  it('goes straight when nothing is in the way', () => {
+    const points = findRouteAround({ x: 0, y: 0 }, { x: 300, y: 0 }, [])
+    expect(points).not.toBeNull()
+    expect(routeCrossings(points ?? [], [])).toBe(0)
+  })
+
+  /**
+   * The shape the boundary-at-a-time rules cannot solve: a wall with one gap
+   * in it. Every candidate they generate is aimed at one box's edge, and no
+   * single box's edge lines up with the gap — but a search over the whole
+   * space finds it.
+   */
+  it('finds the one gap in a wall', () => {
+    const wall = [
+      { x: 140, y: -400, width: 60, height: 380 },
+      { x: 140, y: 60, width: 60, height: 400 }
+    ]
+    const points = findRouteAround({ x: 0, y: 0 }, { x: 340, y: 0 }, wall)
+    expect(points).not.toBeNull()
+    expect(routeCrossings(points ?? [], wall)).toBe(0)
+  })
+
+  it('is every-turn-a-right-angle, like the routes it stands in for', () => {
+    const wall = [{ x: 140, y: -400, width: 60, height: 380 }, { x: 140, y: 60, width: 60, height: 400 }]
+    const points = findRouteAround({ x: 0, y: 0 }, { x: 340, y: 0 }, wall) ?? []
+    for (let i = 0; i < points.length - 1; i += 1) {
+      const from = points[i] as { x: number; y: number }
+      const to = points[i + 1] as { x: number; y: number }
+      expect(from.x === to.x || from.y === to.y).toBe(true)
+    }
+  })
+
+  it('answers null when the destination is walled in, rather than guessing', () => {
+    const boxed = [
+      { x: 250, y: -60, width: 200, height: 40 },
+      { x: 250, y: 40, width: 200, height: 40 },
+      { x: 250, y: -60, width: 40, height: 140 },
+      { x: 410, y: -60, width: 40, height: 140 }
+    ]
+    expect(findRouteAround({ x: 0, y: 0 }, { x: 350, y: 10 }, boxed)).toBeNull()
+  })
+
+  /**
+   * The board that started this: screens in columns, a connector running its
+   * whole height. The ordinary rules pick the least-bad route and cut
+   * through three of them.
+   */
+  it('crosses nothing on a column-laid board', () => {
+    const board = []
+    for (let column = 0; column < 3; column += 1) {
+      for (let row = 0; row < 6; row += 1) {
+        board.push({ x: 3290 + column * 535, y: 900 + row * 1390, width: 375, height: 812 })
+      }
+    }
+    const points = findRouteAround({ x: 3400, y: 700 }, { x: 4500, y: 9500 }, board)
+    expect(points).not.toBeNull()
+    expect(routeCrossings(points ?? [], board)).toBe(0)
+  })
+})
+
 describe('routeCost', () => {
   /** Two screens side by side with a gap, an endpoint nested in each. */
   const leftScreen = { x: 0, y: 0, width: 100, height: 100 }
@@ -1011,18 +1074,20 @@ describe('connectorStubClearance', () => {
     // Node's right edge (the point) sits at x=100, well inside a frame
     // whose own right edge is at x=400.
     expect(connectorStubClearance({ x: 100, y: 50 }, 'RIGHT', frame)).toBe(400 + 20 - 100)
-    expect(connectorStubClearance({ x: 300, y: 50 }, 'LEFT', frame)).toBe(300 - (0 - 20))
-    expect(connectorStubClearance({ x: 100, y: 20 }, 'TOP', frame)).toBe(20 - (0 - 20))
-    expect(connectorStubClearance({ x: 100, y: 150 }, 'BOTTOM', frame)).toBe(200 + 20 - 150)
+    expect(connectorStubClearance({ x: 300, y: 50 }, 'LEFT', frame)).toBe(320)
+    // Below the flat stub, so the stub wins — see the test that follows.
+    expect(connectorStubClearance({ x: 100, y: 20 }, 'TOP', frame)).toBe(ELBOW_STUB)
+    // Below the flat stub, so the stub wins.
+    expect(connectorStubClearance({ x: 100, y: 150 }, 'BOTTOM', frame)).toBe(ELBOW_STUB)
   })
 
   it('never goes below the flat stub, even right at the frame edge', () => {
-    expect(connectorStubClearance({ x: 399, y: 50 }, 'RIGHT', frame)).toBe(24)
+    expect(connectorStubClearance({ x: 399, y: 50 }, 'RIGHT', frame)).toBe(ELBOW_STUB)
   })
 
   it('falls back to the flat stub with no frame or no side', () => {
-    expect(connectorStubClearance({ x: 100, y: 50 }, 'RIGHT', null)).toBe(24)
-    expect(connectorStubClearance({ x: 100, y: 50 }, null, frame)).toBe(24)
+    expect(connectorStubClearance({ x: 100, y: 50 }, 'RIGHT', null)).toBe(ELBOW_STUB)
+    expect(connectorStubClearance({ x: 100, y: 50 }, null, frame)).toBe(ELBOW_STUB)
   })
 })
 

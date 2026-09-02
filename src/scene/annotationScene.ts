@@ -216,6 +216,44 @@ function dedupe<T extends SceneNode>(nodes: ReadonlyArray<T>): T | null {
   return null
 }
 
+/**
+ * Every rendered node on the page, grouped by the target it belongs to.
+ *
+ * One page scan for the whole reconcile, rather than `findRenderedNodes`'s
+ * one per annotation. Opening the plugin reconciles the page, so on a file
+ * with fifty notes that was fifty scans of everything before the panel
+ * appeared — which is what "it takes a while to open" was.
+ */
+export function collectRenderedByOwner(): Map<string, RenderedNodes> {
+  const badges = new Map<string, Array<FrameNode>>()
+  const cards = new Map<string, Array<FrameNode>>()
+  const leaders = new Map<string, Array<VectorNode>>()
+  const push = <T>(into: Map<string, Array<T>>, ownerId: string, node: T): void => {
+    const list = into.get(ownerId)
+    if (typeof list === 'undefined') into.set(ownerId, [node])
+    else list.push(node)
+  }
+  for (const node of figma.currentPage.findAllWithCriteria({ pluginData: { keys: [OWNER_KEY] } })) {
+    const ownerId = node.getPluginData(OWNER_KEY)
+    if (ownerId === '') continue
+    const role = node.getPluginData(ROLE_KEY)
+    if (role === 'badge' && node.type === 'FRAME') push(badges, ownerId, node)
+    else if (role === 'card' && node.type === 'FRAME') push(cards, ownerId, node)
+    else if (role === 'leader' && node.type === 'VECTOR') push(leaders, ownerId, node)
+  }
+  const byOwner = new Map<string, RenderedNodes>()
+  for (const ownerId of new Set([...badges.keys(), ...cards.keys(), ...leaders.keys()])) {
+    byOwner.set(ownerId, {
+      badge: dedupe(badges.get(ownerId) ?? []),
+      card: dedupe(cards.get(ownerId) ?? []),
+      leader: dedupe(leaders.get(ownerId) ?? [])
+    })
+  }
+  return byOwner
+}
+
+const NOTHING_RENDERED: RenderedNodes = { badge: null, card: null, leader: null }
+
 function findRenderedNodes(ownerId: string): RenderedNodes {
   const owned = figma.currentPage.findAllWithCriteria({ pluginData: { keys: [OWNER_KEY] } })
   const badges: Array<FrameNode> = []
@@ -1156,9 +1194,13 @@ export async function reconcileAllAnnotations(): Promise<{
     .findAllWithCriteria({ pluginData: { keys: [ANNOTATION_KEY] } })
     .filter((node) => getAnnotationRecord(node) !== null)
 
+  // One scan for the whole page, handed to each target below — see
+  // `collectRenderedByOwner`.
+  const renderedByOwner = collectRenderedByOwner()
+
   let synced = 0
   for (const target of targets) {
-    const rendered = findRenderedNodes(target.id)
+    const rendered = renderedByOwner.get(target.id) ?? NOTHING_RENDERED
     if (rendered.card === null) {
       // The card is gone — same "this counts as a delete" rule the live
       // in-session path uses (`resyncTouched` treats losing the card,

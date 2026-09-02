@@ -124,6 +124,21 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] Connect two whole frames (not nested layers): the exit sides are the ones
       facing each other, exactly as before.
 
+## Connect — the search fallback
+
+- [ ] A wall of screens with one gap in it, and a connector that has to get
+      through: the line finds the gap. The ordinary rules cannot — every
+      candidate they generate aims at one screen's edge, and no edge lines up
+      with the gap.
+- [ ] The same board with the gap closed: the line still draws, taking the
+      least-bad way through rather than failing.
+- [ ] An ordinary page with one screen in the way: the route is the same
+      simple bend it always was. The search only runs when the ordinary route
+      still crosses something, so a clear page must be untouched by it.
+- [ ] Drag a screen around a page with a few hundred objects: still tracks.
+      The search is capped and skipped past that cap, so it must not turn a
+      drag into a slideshow.
+
 ## Connect — reshaping a line by hand
 
 - [ ] Double-click a connector to enter vector edit, move a point, leave →
@@ -160,6 +175,15 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] Re-sync this page with a hand-drawn line present → still not redrawn
 - [ ] A connector made before this existed → not treated as hand-drawn the
       first time something moves (no fingerprint yet means "not an edit")
+
+## Speed
+
+- [ ] Open the plugin on a file with a good number of annotations: the panel
+      appears without a long wait. Reconciling used to scan the whole page
+      once per note.
+- [ ] Elbow connectors leave their screens by a wider run before turning
+      (80 units), which should read as less cramped than before against a
+      full-width screen.
 
 ## Cross-cutting
 
