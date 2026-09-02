@@ -139,7 +139,27 @@ export function metricsForSize(size: AnnotationSize): CardMetrics {
 
 export const DEFAULT_METRICS: CardMetrics = METRICS_BY_SIZE[DEFAULT_ANNOTATION_SIZE]
 
-export const DEFAULT_CARD_OFFSET: Point = { x: 22, y: -10 }
+/**
+ * How far a card sits from the frame it was routed outside of. Declared
+ * before `DEFAULT_METRICS`/`DEFAULT_CARD_OFFSET` reuse it, below, to give the
+ * near-target placement the same gap.
+ */
+export const OUTSIDE_MARGIN = 20
+
+/**
+ * A newly created note's starting card position, before anyone drags it.
+ *
+ * `x` is chosen so the total gap from the target's own edge to the card —
+ * the badge's offset plus this — comes to `OUTSIDE_MARGIN`, the same 20px a
+ * card routed outside an enclosing frame sits from that frame's edge. Before
+ * this it was a plain 22, giving a target with no enclosing frame a 38px
+ * gap where one inside a frame got 20 — two numbers for what reads as the
+ * same gap. `y` is an unrelated vertical nudge and keeps its old value.
+ */
+export const DEFAULT_CARD_OFFSET: Point = {
+  x: OUTSIDE_MARGIN - DEFAULT_METRICS.badgeGap - DEFAULT_METRICS.badgeDiameter / 2,
+  y: -10
+}
 
 export interface AnnotationLayout {
   /** Centre of the badge, in the same space as the target rect. */
@@ -295,7 +315,6 @@ export function annotationLayout(
   }
 }
 
-export const OUTSIDE_MARGIN = 20
 /** Never shrink an outside card narrower than this to fit a tight gap between frames. */
 export const MIN_OUTSIDE_CARD_WIDTH = 120
 /** How far into the card's top edge the leader points, so it reads as "pointing at this card" rather than at a bare corner. */

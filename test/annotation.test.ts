@@ -163,6 +163,29 @@ describe('metricsForSize', () => {
   })
 })
 
+describe('annotationLayout — the near-target gap', () => {
+  /**
+   * Matches OUTSIDE_MARGIN: a target with no enclosing frame has no frame
+   * edge to measure 20px from, so the card sits 20px past the target's own
+   * edge instead. Reported as 38px, which is what DEFAULT_CARD_OFFSET
+   * produced before this — two different numbers for what reads as the
+   * same gap in both layouts.
+   */
+  it('places the card 20px past the target on a pinned RIGHT side', () => {
+    const wide = { x: 0, y: 0, width: 200, height: 40 }
+    const layout = annotationLayout(wide, record({ side: 'RIGHT', cardOffset: DEFAULT_CARD_OFFSET }))
+    const radius = DEFAULT_METRICS.badgeDiameter / 2
+    const targetEdgeX = wide.x + wide.width
+    const gap = layout.cardTopLeft.x - targetEdgeX
+    expect(Math.round(gap)).toBe(20)
+    // Sanity check against the actual formula, so this fails loudly if the
+    // metrics it reads change out from under it.
+    expect(Math.round(gap)).toBe(
+      Math.round(DEFAULT_METRICS.badgeGap + radius + DEFAULT_CARD_OFFSET.x)
+    )
+  })
+})
+
 describe('resolveSide', () => {
   it('respects an explicit side', () => {
     expect(resolveSide(target, record({ side: 'TOP' }))).toBe('TOP')
