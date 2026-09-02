@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400" width="300" height="400" role="img" aria-label="หน้าตาแผงปลั๊กอิน ANNOCON แท็บ Annotate">
+  <style>
+    .win { fill: #FFFFFF; stroke: #E1E1E6; stroke-width: 1; }
+    .hair { stroke: #E5E5EA; stroke-width: 1; }
+    .title { font: 600 12px -apple-system, sans-serif; fill: #1E1E24; }
+    .tab-on { font: 600 11px -apple-system, sans-serif; fill: #1E1E24; }
+    .tab-off { font: 400 11px -apple-system, sans-serif; fill: #9A9AA6; }
+    .label { font: 600 11px -apple-system, sans-serif; fill: #1E1E24; }
+    .muted { font: 400 10px -apple-system, sans-serif; fill: #9A9AA6; }
+    .box { fill: #F5F5F7; stroke: #E1E1E6; stroke-width: 1; }
+    .ph { font: 400 11px -apple-system, sans-serif; fill: #B5B5BE; }
+    .pill { fill: #F5F5F7; stroke: #E1E1E6; stroke-width: 1; }
+    .pill-on { fill: #FECC00; }
+    .pill-text { font: 600 10px -apple-system, sans-serif; fill: #6B6B76; }
+    .pill-text-on { font: 600 10px -apple-system, sans-serif; fill: #1E1E24; }
+    .seg { fill: #FFFFFF; stroke: #D5D5DC; stroke-width: 1; }
+    .seg-on { fill: #1E1E24; }
+    .seg-text { font: 500 10px -apple-system, sans-serif; fill: #6B6B76; }
+    .seg-text-on { font: 500 10px -apple-system, sans-serif; fill: #FFFFFF; }
+    @media (prefers-color-scheme: dark) {
+      .win { fill: #1E1E24; stroke: #35353E; }
+      .hair { stroke: #35353E; }
+      .title { fill: #F2F2F5; }
+      .tab-on { fill: #F2F2F5; }
+      .label { fill: #F2F2F5; }
+      .box { fill: #26262C; stroke: #35353E; }
+      .pill { fill: #26262C; stroke: #35353E; }
+      .pill-text { fill: #A8A8B2; }
+      .seg { fill: #26262C; stroke: #3A3A44; }
+      .seg-text { fill: #A8A8B2; }
+    }
+  </style>
+
+  <rect class="win" x="1" y="1" width="298" height="398" rx="10"/>
+
+  <text class="title" x="16" y="26">Annotate &amp; Connect</text>
+  <line class="hair" x1="0" y1="40" x2="300" y2="40"/>
+
+  <text class="tab-on" x="16" y="60">Annotate</text>
+  <line class="hair" x1="14" y1="68" x2="70" y2="68" stroke="#1E1E24" stroke-width="2"/>
+  <text class="tab-off" x="82" y="60">Connect</text>
+  <text class="tab-off" x="146" y="60">Categories</text>
+  <line class="hair" x1="0" y1="80" x2="300" y2="80"/>
+
+  <text class="label" x="16" y="104">Button</text>
+  <text class="muted" x="61" y="104">INSTANCE</text>
+
+  <g>
+    <rect class="pill" x="16" y="120" width="38" height="22" rx="11"/>
+    <text class="pill-text" x="27" y="134">None</text>
+    <rect class="pill-on" x="60" y="120" width="34" height="22" rx="11"/>
+    <text class="pill-text-on" x="69" y="134">Note</text>
+    <rect class="pill" x="100" y="120" width="30" height="22" rx="11"/>
+    <text class="pill-text" x="109" y="134">Dev</text>
+    <rect class="pill" x="136" y="120" width="30" height="22" rx="11"/>
+    <text class="pill-text" x="145" y="134">Idea</text>
+  </g>
+
+  <rect class="box" x="16" y="154" width="268" height="72" rx="6"/>
+  <text class="ph" x="26" y="172">Type a note…</text>
+
+  <g>
+    <rect class="seg" x="16" y="240" width="268" height="26" rx="6"/>
+    <rect class="seg-on" x="109" y="241" width="88" height="24" rx="5"/>
+    <text class="seg-text" x="44" y="257">Small</text>
+    <text class="seg-text-on" x="135" y="257">Medium</text>
+    <text class="seg-text" x="230" y="257">Large</text>
+  </g>
+
+  <text class="muted" x="16" y="290">Drag the card's side edge on the</text>
+  <text class="muted" x="16" y="302">canvas to widen it.</text>
+
+  <text class="muted" x="16" y="330">Renders as a leader line and note</text>
+  <text class="muted" x="16" y="342">card on the canvas.</text>
+</svg>

@@ -2,9 +2,15 @@
 
 # ANNOCON
 
+[![CI](https://github.com/sundayfifth/annocon/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sundayfifth/annocon/actions/workflows/ci.yml)
+
 ปลั๊กอิน Figma สำหรับใส่โน้ตอธิบาย (**Annotate**) และลากเส้นเชื่อม layer (**Connect**)
 แบบที่ผูกติดอยู่กับไฟล์จริง ไม่ใช่ overlay ชั่วคราวที่หายไปตอน export หรือ present —
 เปิดไฟล์ที่ไหน เห็นครบทุกคนที่ไหน ไม่ต้องเปิด Dev Mode หรือสลับโหมดดูอะไรเป็นพิเศษ
+
+> [!NOTE]
+> เครื่องมือใช้ภายในทีมเท่านั้น ไม่ได้เผยแพร่บน Figma Community และไม่ใช่ผลิตภัณฑ์ของ Figma —
+> ติดตั้งเองผ่านเมนู Development ตามขั้นตอนด้านล่าง ไม่ควรแจกจ่ายต่อนอกทีม
 
 ---
 
@@ -88,6 +94,8 @@ npm run build
 ---
 
 ## วิธีใช้งาน
+
+<img src="docs/media/panel.svg" width="260" alt="แผงปลั๊กอิน ANNOCON แท็บ Annotate">
 
 เปิดจาก **Plugins → Development → ANNOCON → Annotate & Connect** แล้วทำอันไหนก่อนก็ได้
 
