@@ -37,7 +37,7 @@ import {
 } from '../core/connector.js'
 import { ownerIdOf } from './annotationScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
-import { findEnclosingFrame, topLevelAncestorIdOf } from './frames.js'
+import { commonSectionOf, findEnclosingFrame, topLevelAncestorIdOf } from './frames.js'
 import { removeOrphansByOwnerKey } from './orphans.js'
 import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
 
@@ -510,15 +510,19 @@ function midpointOfDrawnLine(node: VectorNode): Point {
   // `null` for a shape it cannot walk (a cut line, a closed loop); there is
   // no better order to fall back on for those than the one on the node.
   const drawn = drawnShapeOf(node)
+  // `absoluteOriginOf`, not `x`/`y`: those are measured against the parent,
+  // which is the page only until the connector is moved into a section.
+  const origin = absoluteOriginOf(node)
   const points =
     drawn === null
-      ? node.vectorNetwork.vertices.map((vertex) => ({ x: vertex.x + node.x, y: vertex.y + node.y }))
+      ? node.vectorNetwork.vertices.map((vertex) => ({
+          x: vertex.x + origin.x,
+          y: vertex.y + origin.y
+        }))
       : drawn.order.map((index) => (drawn.vertices[index] as ManualVertex).at)
   if (points.length === 0) {
     const box = node.absoluteBoundingBox
-    return box === null
-      ? { x: node.x, y: node.y }
-      : { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    return box === null ? origin : { x: box.x + box.width / 2, y: box.y + box.height / 2 }
   }
   return pointAlongPolyline(points, 0.5)
 }
@@ -544,6 +548,7 @@ const LABEL_PADDING_Y = 4
  * editing it has to go through the plugin, not a direct double-click.
  */
 async function ensureConnectorLabel(
+  container: SectionNode | PageNode,
   connectorId: string,
   existing: FrameNode | null,
   text: string,
@@ -601,9 +606,13 @@ async function ensureConnectorLabel(
     label.characters = trimmed
   }
 
+  // Positioned in absolute coordinates first, then moved into the same
+  // container as its line — a label on the page while its connector sits in a
+  // section would be left behind the moment the section moved.
   figma.currentPage.appendChild(pill)
   pill.x = midpoint.x - pill.width / 2
   pill.y = midpoint.y - pill.height / 2
+  reparentInPlace(pill, container)
 }
 
 interface EndpointBoxes {
@@ -612,9 +621,16 @@ interface EndpointBoxes {
   readonly frameRect: Rect | null
   /** Which entry in `collectRouteObstacles` this endpoint lives in, so the route isn't asked to avoid its own screen. */
   readonly obstacleId: string | null
+  /** The endpoint itself, for working out which section the line belongs inside. */
+  readonly node: SceneNode | null
 }
 
-const NO_ENDPOINT: EndpointBoxes = { rect: null, frameRect: null, obstacleId: null }
+const NO_ENDPOINT: EndpointBoxes = {
+  rect: null,
+  frameRect: null,
+  obstacleId: null,
+  node: null
+}
 
 async function boxesOf(nodeId: string): Promise<EndpointBoxes> {
   const node = await figma.getNodeByIdAsync(nodeId)
@@ -623,8 +639,49 @@ async function boxesOf(nodeId: string): Promise<EndpointBoxes> {
   return {
     rect: node.absoluteBoundingBox,
     frameRect: frame?.absoluteBoundingBox ?? null,
-    obstacleId: topLevelAncestorIdOf(node)
+    obstacleId: topLevelAncestorIdOf(node),
+    node
   }
+}
+
+/**
+ * Where a connector and its label should live: the section holding both its
+ * ends, or the page when there isn't one.
+ *
+ * A line drawn between two frames inside a section used to sit on the page
+ * instead, so the section did not really contain it — moving the section left
+ * the line behind until something re-routed it, and duplicating the section
+ * copied the frames without their connectors. Reported exactly that way.
+ */
+function containerFor(startBoxes: EndpointBoxes, endBoxes: EndpointBoxes): SectionNode | PageNode {
+  const start = startBoxes.node
+  const end = endBoxes.node
+  if (start === null || end === null) return figma.currentPage
+  return commonSectionOf(start, end) ?? figma.currentPage
+}
+
+/**
+ * Moves `node` into `container` without moving it on screen.
+ *
+ * Reparenting keeps the node's `x`/`y` numbers while changing what they are
+ * measured against, so the node jumps by the difference between the two
+ * origins. Rather than assume what that difference is — which would mean
+ * betting on how a section measures its children — this reads back where the
+ * node actually landed and nudges it by however far it moved. Correct for a
+ * page (where the difference is zero) and for a section either way round,
+ * without depending on knowing which.
+ */
+function reparentInPlace(node: SceneNode, container: SectionNode | PageNode): void {
+  const wasAt = absoluteOriginOf(node)
+  container.appendChild(node)
+  const nowAt = absoluteOriginOf(node)
+  node.x += wasAt.x - nowAt.x
+  node.y += wasAt.y - nowAt.y
+}
+
+function absoluteOriginOf(node: SceneNode): Point {
+  const transform = node.absoluteTransform
+  return { x: transform[0]?.[2] ?? node.x, y: transform[1]?.[2] ?? node.y }
 }
 
 const EMPTY_OBSTACLES: RouteObstacles = { foreign: [], own: [] }
@@ -927,13 +984,16 @@ async function syncConnectorBody(
         record.manualShape === null
           ? midpointOfDrawnLine(node)
           : await drawManualShape(node, record.manualShape, { start, end }, record)
+      rememberDrawnShape(node)
+      const manualContainer = containerFor(startBoxes, endBoxes)
+      reparentInPlace(node, manualContainer)
       await ensureConnectorLabel(
+        manualContainer,
         node.id,
         findConnectorLabel(node.id, labels),
         record.label,
         midpoint
       )
-      rememberDrawnShape(node)
       return
     }
 
@@ -974,12 +1034,14 @@ async function syncConnectorBody(
             detour: record.detour,
             obstacles
           })
-    figma.currentPage.appendChild(node)
+    const container = containerFor(startBoxes, endBoxes)
+    reparentInPlace(node, container)
     // Fingerprinted after every draw, so the next change to this node can be
     // attributed: matching means we drew it, differing means somebody else did.
     rememberDrawnShape(node)
 
     await ensureConnectorLabel(
+      container,
       node.id,
       findConnectorLabel(node.id, labels),
       record.label,

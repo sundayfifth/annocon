@@ -40,6 +40,43 @@ export function findEnclosingFrame(node: SceneNode): FrameNode | null {
  */
 const STEPPED_OVER: ReadonlySet<string> = new Set(['GROUP', 'SECTION'])
 
+/**
+ * The innermost `SECTION` that contains both `a` and `b`, or `null` when no
+ * one section contains them both.
+ *
+ * A connector belongs inside the section its two ends live in, so that moving
+ * or duplicating the section takes the line with it the way Figma moves
+ * anything else inside — rather than leaving it on the page, where it only
+ * catches up if the plugin happens to be open to re-route it.
+ *
+ * Innermost rather than outermost: with sections nested inside sections, the
+ * tightest one that still holds both ends is the one the line is really part
+ * of.
+ */
+export function commonSectionOf(a: SceneNode, b: SceneNode): SectionNode | null {
+  const enclosing = new Map<string, SectionNode>()
+  for (const section of sectionsAbove(a)) enclosing.set(section.id, section)
+  if (enclosing.size === 0) return null
+  // `b`'s chain is walked innermost first, so the first hit is the deepest
+  // section the two have in common.
+  for (const section of sectionsAbove(b)) {
+    const shared = enclosing.get(section.id)
+    if (typeof shared !== 'undefined') return shared
+  }
+  return null
+}
+
+/** Every `SECTION` above `node`, innermost first. */
+function sectionsAbove(node: SceneNode): Array<SectionNode> {
+  const sections: Array<SectionNode> = []
+  let current: BaseNode | null = node.parent
+  while (current !== null && current.type !== 'PAGE' && current.type !== 'DOCUMENT') {
+    if (current.type === 'SECTION') sections.push(current)
+    current = current.parent
+  }
+  return sections
+}
+
 export function topLevelAncestorIdOf(node: SceneNode): string {
   let current: BaseNode = node
   let outermost: BaseNode = node

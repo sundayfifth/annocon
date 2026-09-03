@@ -124,6 +124,24 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] Connect two whole frames (not nested layers): the exit sides are the ones
       facing each other, exactly as before.
 
+## Connect — living inside a section
+
+- [ ] Draw a connector between two frames in the same section, then **move
+      the section**: the line moves with it, and does so with the plugin
+      closed as well as open
+- [ ] Check the layers panel: the connector and its label pill sit inside the
+      section, not beside it on the page
+- [ ] **Duplicate the section**: the copy brings its connectors with it
+- [ ] A connector with one end inside a section and one end outside stays on
+      the page — putting it in the section would have the section drag the
+      line away from the end it does not contain
+- [ ] Sections nested in sections: the line lands in the innermost one that
+      holds both ends
+- [ ] Move a frame *out* of the section so the ends no longer share one: the
+      line returns to the page on the next sync
+- [ ] A hand-drawn line inside a section keeps its shape, and its label stays
+      on it
+
 ## Connect — the search fallback
 
 - [ ] A wall of screens with one gap in it, and a connector that has to get
