@@ -1054,8 +1054,45 @@ export async function applyCardStacking(): Promise<void> {
 }
 
 /** Everything that needs to run after a batch of annotation changes settles. */
-export async function finalizeLayout(): Promise<void> {
-  await applyCardStacking()
+/**
+ * How long to wait for changes to stop before restacking.
+ *
+ * Long enough that a drag — which delivers a change every frame — restacks
+ * once at the end instead of on every frame, short enough that letting go and
+ * looking at the result feels immediate.
+ */
+const STACKING_SETTLE_MS = 120
+
+let pendingStacking: Promise<void> | null = null
+
+/**
+ * Restacks the page's cards once the changes stop arriving.
+ *
+ * Stacking is a whole-page pass — it resolves every annotated target and
+ * measures each card against its neighbours — and it used to run on every
+ * sync. Dragging one screen delivers a change per frame, so a pass that costs
+ * a page walk per card was being paid thirty times a second for an answer
+ * nobody could see until the drag ended.
+ *
+ * Callers still get a promise that resolves when the stacking they asked for
+ * has actually happened, so nothing has to know this is deferred; calls
+ * arriving inside the same window collapse onto one pass.
+ */
+export function finalizeLayout(): Promise<void> {
+  if (pendingStacking !== null) return pendingStacking
+  pendingStacking = new Promise<void>((resolve) => {
+    setTimeout(() => {
+      // Cleared before the pass runs, not after: a change arriving *during*
+      // stacking is a change this pass did not see, and needs its own.
+      pendingStacking = null
+      applyCardStacking()
+        .catch((error: unknown) => {
+          console.error(error)
+        })
+        .finally(resolve)
+    }, STACKING_SETTLE_MS)
+  })
+  return pendingStacking
 }
 
 /**

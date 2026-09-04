@@ -160,13 +160,49 @@ export function findConnectorsWithEndpointUnder(
   ancestor: SceneNode & ChildrenMixin,
   known?: ReadonlyArray<VectorNode>
 ): ReadonlyArray<VectorNode> {
+  const cached = recentlyAnswered(ancestor.id)
+  if (cached !== null) return cached
+  // The expensive line, and the reason for the cache above it: `findAll`
+  // visits every node under `ancestor`. For a frame that is a few dozen; for
+  // a section holding a flow of screens it is tens of thousands, and a drag
+  // asks once per frame.
   const descendantIds = new Set(ancestor.findAll().map((node) => node.id))
-  if (descendantIds.size === 0) return []
-  return (known ?? findAllConnectors()).filter((node) => {
-    const record = getConnectorRecord(node)
-    if (record === null) return false
-    return anchorIn(record.start, descendantIds) || anchorIn(record.end, descendantIds)
-  })
+  const found =
+    descendantIds.size === 0
+      ? []
+      : (known ?? findAllConnectors()).filter((node) => {
+          const record = getConnectorRecord(node)
+          if (record === null) return false
+          return anchorIn(record.start, descendantIds) || anchorIn(record.end, descendantIds)
+        })
+  endpointsUnder.set(ancestor.id, { at: Date.now(), found })
+  return found
+}
+
+/**
+ * Answers from the last few moments, keyed by the node being dragged.
+ *
+ * What lives under a given node only changes when something is reparented,
+ * which a drag does not do — so during one the answer is the same every
+ * frame, and worth not recomputing. Kept for a moment rather than until
+ * something invalidates it: a stale answer costs one connector one late
+ * re-route, and an expiry that short cannot outlive the drag that filled it,
+ * which is cheaper to reason about than tracking every way the tree can
+ * change.
+ */
+const ENDPOINT_CACHE_MS = 400
+const endpointsUnder = new Map<string, { at: number; found: ReadonlyArray<VectorNode> }>()
+
+function recentlyAnswered(ancestorId: string): ReadonlyArray<VectorNode> | null {
+  const entry = endpointsUnder.get(ancestorId)
+  if (typeof entry === 'undefined') return null
+  if (Date.now() - entry.at > ENDPOINT_CACHE_MS) {
+    endpointsUnder.delete(ancestorId)
+    return null
+  }
+  // A connector deleted since the answer was cached would be a dead node to
+  // hand back; cheaper to check than to track deletions.
+  return entry.found.some((node) => node.removed) ? null : entry.found
 }
 
 /**
@@ -1155,27 +1191,88 @@ async function drawPoints(
 ): Promise<Point> {
   const originX = Math.min(...points.map((point) => point.x))
   const originY = Math.min(...points.map((point) => point.y))
-  node.x = originX
-  node.y = originY
   const lastIndex = points.length - 1
-  await node.setVectorNetworkAsync({
-    vertices: points.map((point: Point, index) => {
-      const isEnd = index === 0 || index === lastIndex
-      return {
-        x: point.x - originX,
-        y: point.y - originY,
-        // Only the true ends get a cap — a bend is a corner, not a cap.
-        // The reverse is true for corner rounding: a cap is drawn past
-        // the end of the line, so rounding an end vertex would have no
-        // visible effect — only the bends in between benefit from it.
-        strokeCap: index === 0 ? record.startCap : index === lastIndex ? record.endCap : 'NONE',
-        ...(isEnd ? {} : { cornerRadius: record.cornerRadius })
-      }
-    }),
-    segments: points.slice(1).map((_point, index) => ({ start: index, end: index + 1 })),
-    regions: []
+  const vertices = points.map((point: Point, index) => {
+    const isEnd = index === 0 || index === lastIndex
+    return {
+      x: point.x - originX,
+      y: point.y - originY,
+      // Only the true ends get a cap — a bend is a corner, not a cap.
+      // The reverse is true for corner rounding: a cap is drawn past
+      // the end of the line, so rounding an end vertex would have no
+      // visible effect — only the bends in between benefit from it.
+      strokeCap: index === 0 ? record.startCap : index === lastIndex ? record.endCap : 'NONE',
+      ...(isEnd ? {} : { cornerRadius: record.cornerRadius })
+    }
   })
+
+  // `setVectorNetworkAsync` is the most expensive thing this file asks Figma
+  // for, and a great deal of the time it is asked to draw what is already
+  // there. Moving a section is the clearest case: every connector inside it
+  // travelled with it, so its shape relative to its own origin has not
+  // changed at all, and re-drawing every one of them on every frame of the
+  // drag is the whole cost for no visible difference.
+  //
+  // Compared against what is actually on the node rather than against a note
+  // of what we last drew, so the plugin still repairs a line somebody else
+  // has altered — the canvas stays untrusted, which is the rule.
+  if (!alreadyDrawn(node, vertices, originX, originY)) {
+    node.x = originX
+    node.y = originY
+    await node.setVectorNetworkAsync({
+      vertices,
+      segments: points.slice(1).map((_point, index) => ({ start: index, end: index + 1 })),
+      regions: []
+    })
+  }
   return pointAlongPolyline(points, 0.5)
+}
+
+interface DrawnVertex {
+  readonly x: number
+  readonly y: number
+  readonly strokeCap?: string
+  readonly cornerRadius?: number
+}
+
+/**
+ * Whether the node already carries exactly this shape, in this place.
+ *
+ * Deliberately strict: every way of answering "yes" wrongly leaves a line
+ * looking like something it is not, while answering "no" wrongly costs one
+ * redundant redraw. Rounded to whole units because the numbers make a
+ * round trip through Figma and come back with the drift a float round trip
+ * leaves.
+ */
+function alreadyDrawn(
+  node: VectorNode,
+  vertices: ReadonlyArray<DrawnVertex>,
+  originX: number,
+  originY: number
+): boolean {
+  if (Math.round(node.x) !== Math.round(originX)) return false
+  if (Math.round(node.y) !== Math.round(originY)) return false
+  const current = node.vectorNetwork.vertices
+  if (current.length !== vertices.length) return false
+  const segments = node.vectorNetwork.segments
+  if (segments.length !== Math.max(0, vertices.length - 1)) return false
+  for (let i = 0; i < vertices.length; i += 1) {
+    const was = current[i]
+    const now = vertices[i]
+    if (typeof was === 'undefined' || typeof now === 'undefined') return false
+    if (Math.round(was.x) !== Math.round(now.x)) return false
+    if (Math.round(was.y) !== Math.round(now.y)) return false
+    if ((was.strokeCap ?? 'NONE') !== (now.strokeCap ?? 'NONE')) return false
+    if (Math.round(was.cornerRadius ?? 0) !== Math.round(now.cornerRadius ?? 0)) return false
+  }
+  // The chain has to be the one this function builds, or the vertices being
+  // right says nothing about the line joining them in that order.
+  for (let i = 0; i < segments.length; i += 1) {
+    const segment = segments[i]
+    if (typeof segment === 'undefined') return false
+    if (segment.start !== i || segment.end !== i + 1) return false
+  }
+  return true
 }
 
 /**

@@ -212,6 +212,22 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] A connector made before this existed → not treated as hand-drawn the
       first time something moves (no fingerprint yet means "not an edit")
 
+## Speed — dragging and opening
+
+- [ ] Open the plugin on the busiest real file: the panel appears without a
+      long wait
+- [ ] Drag a **section** full of screens around while the plugin is open: it
+      keeps up. This used to walk every node inside the section on every
+      frame of the drag, and restack every card on the page alongside it.
+- [ ] Drag a single screen with connectors attached: they still re-route live
+      as it moves
+- [ ] Drag a screen into a connector's path: it still goes around, live
+- [ ] Cards still nudge apart so they do not overlap — they settle a moment
+      after the drag ends rather than during it, which is the point
+- [ ] Change a connector's colour, weight, caps or corner radius: the change
+      still applies. A redraw is now skipped when the line is already exactly
+      right, so anything that *should* redraw must still do so.
+
 ## Speed
 
 - [ ] Open the plugin on a file with a good number of annotations: the panel
