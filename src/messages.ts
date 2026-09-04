@@ -24,6 +24,8 @@ export interface ConnectorStyleSummary {
   readonly detour: ConnectorDetour
   /** True once someone has reshaped the line by hand and the plugin has stopped routing it. */
   readonly manualGeometry: boolean
+  /** The label pill's fill. */
+  readonly labelColor: string
   /** Which side of the start/end node the connector exits/enters from. `AUTO` picks based on relative position. */
   readonly startMagnet: Magnet
   readonly endMagnet: Magnet
@@ -157,6 +159,7 @@ export interface UpdateConnectorStylePayload {
   readonly cornerRadius?: number
   readonly detour?: ConnectorDetour
   readonly label?: string
+  readonly labelColor?: string
 }
 
 export interface UpdateConnectorStyleHandler {

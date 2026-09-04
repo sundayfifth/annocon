@@ -187,6 +187,7 @@ function summariseSelection(): Array<SelectionSummary> {
               cornerRadius: connectorRecord.cornerRadius,
               detour: connectorRecord.detour,
               manualGeometry: connectorRecord.manualGeometry,
+              labelColor: connectorRecord.labelColor,
               startMagnet: connectorRecord.start.kind === 'magnet' ? connectorRecord.start.magnet : 'AUTO',
               endMagnet: connectorRecord.end.kind === 'magnet' ? connectorRecord.end.magnet : 'AUTO',
               label: connectorRecord.label

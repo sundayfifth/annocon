@@ -66,6 +66,14 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       with something stale
 - [ ] Empty a label pill by typing nothing into it → the pill goes away, as
       clearing the field in the panel does
+- [ ] Give a connector a label, then pick a colour for it: the pill takes that
+      colour and its text flips between black and white to stay readable
+- [ ] A connector with no label shows no colour picker — there is nothing on
+      the canvas for it to colour
+- [ ] Draw a new connector and give it a label: it starts from the colour last
+      picked, like the line's own colour does
+- [ ] A label made before this existed is still white, with its hairline
+      border
 - [ ] Empty a **card** by deleting all its text on the canvas → the whole
       annotation goes, exactly as emptying the note field in the panel does
 - [ ] Select All on a page holding a good number of annotations → the panel

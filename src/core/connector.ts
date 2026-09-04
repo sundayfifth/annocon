@@ -102,6 +102,15 @@ export interface ConnectorRecord {
   /** An optional label drawn at the midpoint of the route, FigJam/Autoflow-style. Empty string means no label. */
   readonly label: string
   /**
+   * The label pill's fill. Its text takes whichever of black or white reads
+   * against it, so one choice covers both.
+   *
+   * Unlike the label itself — this connector's own words — a colour is a
+   * look-and-feel choice like the line's, and carries to the next connector
+   * with the rest of the style.
+   */
+  readonly labelColor: string
+  /**
    * Set once somebody has reshaped the line themselves with Figma's own
    * vector tools. From then on the plugin stops deciding where it goes.
    *
@@ -140,6 +149,8 @@ export const DEFAULT_LINE_STYLE: ConnectorLineStyle = 'ELBOW'
 export const DEFAULT_CORNER_RADIUS = 20
 export const DEFAULT_DETOUR: ConnectorDetour = 'AUTO'
 export const DEFAULT_LABEL = ''
+/** White: what every label pill was before the colour could be chosen. */
+export const DEFAULT_LABEL_COLOR = '#FFFFFF'
 
 /**
  * The style fields a new connector inherits from whatever was last set —
@@ -164,6 +175,7 @@ export interface ConnectorStylePrefs {
   readonly endCap: ConnectorCap
   readonly lineStyle: ConnectorLineStyle
   readonly cornerRadius: number
+  readonly labelColor: string
 }
 
 export const DEFAULT_CONNECTOR_STYLE_PREFS: ConnectorStylePrefs = {
@@ -173,7 +185,8 @@ export const DEFAULT_CONNECTOR_STYLE_PREFS: ConnectorStylePrefs = {
   startCap: DEFAULT_START_CAP,
   endCap: DEFAULT_END_CAP,
   lineStyle: DEFAULT_LINE_STYLE,
-  cornerRadius: DEFAULT_CORNER_RADIUS
+  cornerRadius: DEFAULT_CORNER_RADIUS,
+  labelColor: DEFAULT_LABEL_COLOR
 }
 
 export function createConnectorRecord(
@@ -281,7 +294,11 @@ function stylePrefsFrom(candidate: Record<string, unknown>): ConnectorStylePrefs
     cornerRadius:
       typeof candidate.cornerRadius === 'number' && candidate.cornerRadius >= 0
         ? candidate.cornerRadius
-        : DEFAULT_CORNER_RADIUS
+        : DEFAULT_CORNER_RADIUS,
+    labelColor:
+      typeof candidate.labelColor === 'string' && HEX_COLOR.test(candidate.labelColor)
+        ? candidate.labelColor
+        : DEFAULT_LABEL_COLOR
   }
 }
 

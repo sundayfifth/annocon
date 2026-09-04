@@ -24,6 +24,7 @@ import { ANNOTATION_SIZES, type AnnotationSize, DEFAULT_ANNOTATION_SIZE } from '
 import { CATEGORY_PALETTE, type Category, contrastingTextColor } from './core/category.js'
 import {
   CONNECTOR_CAPS,
+  DEFAULT_LABEL_COLOR,
   type ConnectorCap,
   type ConnectorDetour,
   type ConnectorLineStyle
@@ -104,15 +105,26 @@ function Swatch({
   )
 }
 
-function SwatchPicker({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+function SwatchPicker({
+  value,
+  onChange,
+  palette = CATEGORY_PALETTE
+}: {
+  value: string
+  onChange: (color: string) => void
+  palette?: ReadonlyArray<string>
+}) {
   return (
     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-      {CATEGORY_PALETTE.map((color) => (
+      {palette.map((color) => (
         <Swatch key={color} color={color} onClick={() => onChange(color)} selected={color === value} />
       ))}
     </div>
   )
 }
+
+/** White first, because that is what every label pill has been until now. */
+const LABEL_PALETTE: ReadonlyArray<string> = [DEFAULT_LABEL_COLOR, ...CATEGORY_PALETTE]
 
 /** One selectable pill — coloured for a real category, neutral for "None". Same colour+label shape as the pill rendered on the canvas card, so picking one previews what it'll look like there. */
 function CategoryPill({
@@ -640,6 +652,7 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
       cornerRadius: number
       detour: ConnectorDetour
       label: string
+      labelColor: string
     }>
   ) => {
     emit<UpdateConnectorStyleHandler>('UPDATE_CONNECTOR_STYLE', { targetId: node.id, ...changes })
@@ -829,6 +842,20 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
         placeholder="Add text…"
         value={labelText}
       />
+      {/* Only once there is a label to colour — a picker for something that
+          is not on the canvas is a control that appears to do nothing. */}
+      {style.label.trim() === '' ? null : (
+        <>
+          <VerticalSpace space="extraSmall" />
+          <SwatchPicker
+            onChange={(labelColor) => {
+              update({ labelColor })
+            }}
+            palette={LABEL_PALETTE}
+            value={style.labelColor}
+          />
+        </>
+      )}
       <VerticalSpace space="medium" />
     </>
   )

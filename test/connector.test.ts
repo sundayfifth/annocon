@@ -12,6 +12,7 @@ import {
   DEFAULT_DETOUR,
   DEFAULT_END_CAP,
   DEFAULT_LABEL,
+  DEFAULT_LABEL_COLOR,
   DEFAULT_LINE_STYLE,
   DEFAULT_START_CAP,
   ELBOW_STUB,
@@ -62,6 +63,7 @@ describe('createConnectorRecord', () => {
       cornerRadius: DEFAULT_CORNER_RADIUS,
       detour: DEFAULT_DETOUR,
       label: DEFAULT_LABEL,
+      labelColor: DEFAULT_LABEL_COLOR,
       manualGeometry: false,
       manualShape: null
     })
@@ -75,7 +77,8 @@ describe('createConnectorRecord', () => {
       startCap: 'NONE' as const,
       endCap: 'DIAMOND_FILLED' as const,
       lineStyle: 'CURVE' as const,
-      cornerRadius: 8
+      cornerRadius: 8,
+      labelColor: DEFAULT_LABEL_COLOR
     }
     const record = createConnectorRecord('a', 'b', stylePrefs)
     expect(record).toEqual({
@@ -85,9 +88,36 @@ describe('createConnectorRecord', () => {
       ...stylePrefs,
       detour: DEFAULT_DETOUR,
       label: DEFAULT_LABEL,
+      labelColor: DEFAULT_LABEL_COLOR,
       manualGeometry: false,
       manualShape: null
     })
+  })
+})
+
+describe('a connector label\'s colour', () => {
+  it('starts white, the colour every label has been until now', () => {
+    expect(createConnectorRecord('a', 'b').labelColor).toBe(DEFAULT_LABEL_COLOR)
+  })
+
+  it('round-trips, and falls back to the default for anything untrustworthy', () => {
+    const coloured = { ...createConnectorRecord('a', 'b'), labelColor: '#FECC00' }
+    expect(parseConnectorRecord(serialiseConnectorRecord(coloured))?.labelColor).toBe('#FECC00')
+    expect(
+      parseConnectorRecord(JSON.stringify({ start: anchor('a'), end: anchor('b') }))?.labelColor
+    ).toBe(DEFAULT_LABEL_COLOR)
+    expect(
+      parseConnectorRecord(
+        JSON.stringify({ start: anchor('a'), end: anchor('b'), labelColor: 'rebeccapurple' })
+      )?.labelColor
+    ).toBe(DEFAULT_LABEL_COLOR)
+  })
+
+  /** A look-and-feel choice, like the line's own colour, so the next connector starts from it. */
+  it('carries forward to the next connector', () => {
+    const prefs = { ...DEFAULT_CONNECTOR_STYLE_PREFS, labelColor: '#FECC00' }
+    expect(createConnectorRecord('a', 'b', prefs).labelColor).toBe('#FECC00')
+    expect(parseConnectorStylePrefs(serialiseConnectorStylePrefs(prefs)).labelColor).toBe('#FECC00')
   })
 })
 
@@ -100,7 +130,8 @@ describe('parseConnectorStylePrefs / serialiseConnectorStylePrefs', () => {
       startCap: 'DIAMOND_FILLED' as const,
       endCap: 'TRIANGLE_FILLED' as const,
       lineStyle: 'STRAIGHT' as const,
-      cornerRadius: 12
+      cornerRadius: 12,
+      labelColor: '#8C8C8C'
     }
     expect(parseConnectorStylePrefs(serialiseConnectorStylePrefs(prefs))).toEqual(prefs)
   })

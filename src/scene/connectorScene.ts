@@ -16,6 +16,7 @@ import {
   type ManualShape,
   type ManualVertex,
   type RouteObstacles,
+  DEFAULT_LABEL_COLOR,
   ROUTE_SEARCH_MARGIN,
   boxCouldAffectRoute,
   connectorAxisOf,
@@ -35,6 +36,7 @@ import {
   shiftManualShape,
   serialiseConnectorStylePrefs
 } from '../core/connector.js'
+import { contrastingTextColor } from '../core/category.js'
 import { ownerIdOf } from './annotationScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import { ensureOnPage, findEnclosingFrame, topLevelAncestorIdOf } from './frames.js'
@@ -583,6 +585,7 @@ async function ensureConnectorLabel(
   connectorId: string,
   existing: FrameNode | null,
   text: string,
+  color: string,
   midpoint: Point
 ): Promise<void> {
   const trimmed = text.trim()
@@ -620,8 +623,12 @@ async function ensureConnectorLabel(
   // printed every label twice — once in the pill, once in grey above it.
   // Same reasoning as the annotation card's name.
   pill.name = ' '
-  pill.fills = [figma.util.solidPaint('#FFFFFF')]
-  pill.strokes = [figma.util.solidPaint('#E1E1E6')]
+  pill.fills = [figma.util.solidPaint(color)]
+  // The hairline exists to keep a white pill from dissolving into a white
+  // canvas. A pill with a colour of its own has its own edge, and a grey
+  // outline around it just looks like a mistake, so it is drawn in the fill's
+  // own colour — present, and invisible.
+  pill.strokes = [figma.util.solidPaint(color === DEFAULT_LABEL_COLOR ? '#E1E1E6' : color)]
 
   let label = pill.children.find((child): child is TextNode => child.type === 'TEXT')
   if (typeof label === 'undefined') {
@@ -629,13 +636,16 @@ async function ensureConnectorLabel(
     await figma.loadFontAsync(LABEL_FONT)
     label.fontName = LABEL_FONT
     label.fontSize = 11
-    label.fills = [figma.util.solidPaint('#1E1E24')]
     pill.appendChild(label)
   }
   if (label.characters !== trimmed) {
     await figma.loadFontAsync(LABEL_FONT)
     label.characters = trimmed
   }
+  // Whichever of black or white reads against the pill, so one colour choice
+  // covers the text too — the same rule an annotation's category pill uses.
+  // Reasserted every sync, so a pill coloured before this existed catches up.
+  label.fills = [figma.util.solidPaint(contrastingTextColor(color))]
 
   ensureOnPage(pill)
   pill.x = midpoint.x - pill.width / 2
@@ -967,6 +977,7 @@ async function syncConnectorBody(
         node.id,
         findConnectorLabel(node.id, labels),
         record.label,
+        record.labelColor,
         midpoint
       )
       rememberDrawnShape(node)
@@ -1019,6 +1030,7 @@ async function syncConnectorBody(
       node.id,
       findConnectorLabel(node.id, labels),
       record.label,
+      record.labelColor,
       midpoint
     )
   })
@@ -1294,6 +1306,7 @@ export async function updateConnectorStyle(
       | 'cornerRadius'
       | 'detour'
       | 'label'
+      | 'labelColor'
       | 'manualGeometry'
       | 'manualShape'
     >
@@ -1316,7 +1329,8 @@ export async function updateConnectorStyle(
     startCap: next.startCap,
     endCap: next.endCap,
     lineStyle: next.lineStyle,
-    cornerRadius: next.cornerRadius
+    cornerRadius: next.cornerRadius,
+    labelColor: next.labelColor
   })
 }
 
