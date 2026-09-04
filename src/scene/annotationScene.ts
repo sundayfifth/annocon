@@ -419,13 +419,15 @@ async function ensureCategoryPill(
   // font is not loaded just because the pill exists. Same rule as the card's
   // text below — and skipped entirely when there is nothing to write, which
   // on a reopened file is every pill on the page.
-  const sizeChanged = label.fontSize !== metrics.categoryFontSize
-  const textChanged = label.characters !== category.name
-  if (sizeChanged || textChanged) {
-    await figma.loadFontAsync(PILL_FONT)
-    if (sizeChanged) label.fontSize = metrics.categoryFontSize
-    if (textChanged) label.characters = category.name
-  }
+  // Loaded before *any* write below, not only the obvious ones. `fontSize`
+  // and `characters` are not the whole list — `textAutoResize` and `resize`
+  // measure the text and so need its font too, and skipping the load when
+  // those were the only things left to write is what threw "Cannot write to
+  // node with unloaded font". The load itself is a cached promise; it was
+  // never the cost worth saving.
+  await figma.loadFontAsync(PILL_FONT)
+  if (label.fontSize !== metrics.categoryFontSize) label.fontSize = metrics.categoryFontSize
+  if (label.characters !== category.name) label.characters = category.name
   // Measured from its natural width every sync, never from whatever width it
   // was left at. Capping it once and leaving it capped meant a pill narrowed
   // to fit a squeezed card stayed narrow when the card grew again — the name
