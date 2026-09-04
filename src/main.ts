@@ -403,7 +403,82 @@ function handleNodeChange(event: NodeChangeEvent): void {
   ) {
     return
   }
-  fireAndForget(resyncTouched({ deletedIds, movedTargetIds, draggedCardOwnerIds, editedTextNodes }))
+  for (const id of deletedIds) waiting.deletedIds.add(id)
+  for (const id of movedTargetIds) waiting.movedTargetIds.add(id)
+  for (const id of draggedCardOwnerIds) waiting.draggedCardOwnerIds.add(id)
+  waiting.editedTextNodes.push(...editedTextNodes)
+  scheduleResync()
+}
+
+/**
+ * What has changed since the last pass, waiting to be dealt with.
+ *
+ * A drag delivers a change every frame, and a pass over one is not cheap: it
+ * scans the page for connectors, for their labels, and for the boxes a route
+ * has to avoid. Firing one off per event meant dozens running at once, each
+ * doing all of that, each interleaving with the others at every `await` —
+ * which is both most of the cost and most of the reason a drag looked like it
+ * was lagging behind rather than merely slow.
+ *
+ * So changes are collected here and dealt with by one pass at a time. Nothing
+ * is dropped: whatever arrives while a pass is running is picked up by the
+ * next one.
+ */
+const waiting = {
+  deletedIds: new Set<string>(),
+  movedTargetIds: new Set<string>(),
+  draggedCardOwnerIds: new Set<string>(),
+  editedTextNodes: [] as Array<TextNode>
+}
+
+/**
+ * How long changes are allowed to gather before a pass runs.
+ *
+ * Short enough that a line still tracks a screen being dragged — this is
+ * about twenty passes a second, and the drag itself only produces sixty —
+ * long enough that a burst becomes one pass instead of three.
+ */
+const RESYNC_COALESCE_MS = 40
+
+let resyncTimer: ReturnType<typeof setTimeout> | null = null
+let resyncRunning = false
+
+function scheduleResync(): void {
+  if (resyncTimer !== null || resyncRunning) return
+  resyncTimer = setTimeout(() => {
+    resyncTimer = null
+    fireAndForget(drainResyncQueue())
+  }, RESYNC_COALESCE_MS)
+}
+
+async function drainResyncQueue(): Promise<void> {
+  if (resyncRunning) return
+  resyncRunning = true
+  try {
+    while (
+      waiting.deletedIds.size > 0 ||
+      waiting.movedTargetIds.size > 0 ||
+      waiting.draggedCardOwnerIds.size > 0 ||
+      waiting.editedTextNodes.length > 0
+    ) {
+      // Taken before the pass, so anything arriving during it lands in a
+      // fresh set and is handled by the next turn of this loop rather than
+      // being lost or handled twice.
+      const batch: TouchedNodes = {
+        deletedIds: waiting.deletedIds,
+        movedTargetIds: waiting.movedTargetIds,
+        draggedCardOwnerIds: waiting.draggedCardOwnerIds,
+        editedTextNodes: waiting.editedTextNodes
+      }
+      waiting.deletedIds = new Set()
+      waiting.movedTargetIds = new Set()
+      waiting.draggedCardOwnerIds = new Set()
+      waiting.editedTextNodes = []
+      await resyncTouched(batch)
+    }
+  } finally {
+    resyncRunning = false
+  }
 }
 
 async function resyncTouched({

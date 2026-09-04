@@ -44,7 +44,7 @@ import {
 import { getCategories } from './categoryScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import {
-  absoluteOriginOf,
+  absolutePositionOf,
   findEnclosingFrame,
   placeAt,
   reparentInPlace,
@@ -1049,7 +1049,7 @@ export async function applyCardStacking(): Promise<void> {
           // — the card may have drifted into another frame since the last
           // sync. Where it belongs afterwards is wherever it already lived,
           // which is its target's section when it has one.
-          placeAt(item.card, { x: absoluteOriginOf(item.card).x, y: top })
+          placeAt(item.card, { x: absolutePositionOf(item.card).x, y: top })
           if (item.leader === null || item.leader.removed) return
 
           // Vertical centre of the card, same as the initial sync — not the

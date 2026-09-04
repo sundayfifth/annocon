@@ -39,6 +39,7 @@ import { ownerIdOf } from './annotationScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import {
   absoluteOriginOf,
+  absolutePositionOf,
   commonSectionOf,
   findEnclosingFrame,
   placeAt,
@@ -1235,9 +1236,9 @@ function alreadyDrawn(
   // Compared against where the node actually sits on the canvas, not against
   // `x`/`y` — those are measured against whatever it is parented to, which is
   // a section as often as it is the page.
-  const origin = absoluteOriginOf(node)
-  if (Math.round(origin.x) !== Math.round(originX)) return false
-  if (Math.round(origin.y) !== Math.round(originY)) return false
+  const at = absolutePositionOf(node)
+  if (Math.round(at.x) !== Math.round(originX)) return false
+  if (Math.round(at.y) !== Math.round(originY)) return false
   const current = node.vectorNetwork.vertices
   if (current.length !== vertices.length) return false
   const segments = node.vectorNetwork.segments

@@ -93,11 +93,9 @@ export function reparentInPlace(node: SceneNode, container: SectionNode | PageNo
   // layers panel continuously and costs far more than the move it is not
   // making.
   if (node.parent === container) return
-  const wasAt = absoluteOriginOf(node)
+  const wasAt = absolutePositionOf(node)
   container.appendChild(node)
-  const nowAt = absoluteOriginOf(node)
-  node.x += wasAt.x - nowAt.x
-  node.y += wasAt.y - nowAt.y
+  placeAt(node, wasAt)
 }
 
 /**
@@ -111,15 +109,31 @@ export function reparentInPlace(node: SceneNode, container: SectionNode | PageNo
  * the page, and correct when it is not.
  */
 export function placeAt(node: SceneNode, at: { x: number; y: number }): void {
-  node.x = at.x
-  node.y = at.y
-  const landed = absoluteOriginOf(node)
-  if (landed.x === at.x && landed.y === at.y) return
-  node.x += at.x - landed.x
-  node.y += at.y - landed.y
+  const now = absolutePositionOf(node)
+  node.x += at.x - now.x
+  node.y += at.y - now.y
 }
 
-/** Where a node's own origin sits on the canvas, whatever it is parented to. */
+/**
+ * Where a node's own box sits on the canvas: the absolute twin of its
+ * `x`/`y`, and the only measure the two can be compared against.
+ *
+ * Not `absoluteTransform`, which gives the origin of the node's *coordinate
+ * space* — the right answer for reading a vertex, and the wrong one here. On
+ * a vector the two differ by however far the geometry sits from the node's
+ * box, so mixing them up moves a line by that much every time it is
+ * positioned. Which is exactly what it did.
+ */
+export function absolutePositionOf(node: SceneNode): { x: number; y: number } {
+  const box = node.absoluteBoundingBox
+  return box === null ? { x: node.x, y: node.y } : { x: box.x, y: box.y }
+}
+
+/**
+ * The origin of a node's own coordinate space on the canvas — what a vertex
+ * inside it is measured from. For positioning, `absolutePositionOf` is the
+ * one to use.
+ */
 export function absoluteOriginOf(node: SceneNode): { x: number; y: number } {
   const transform = node.absoluteTransform
   return { x: transform[0]?.[2] ?? node.x, y: transform[1]?.[2] ?? node.y }
