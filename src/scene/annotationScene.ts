@@ -43,22 +43,12 @@ import {
 } from '../core/category.js'
 import { getCategories } from './categoryScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
-import {
-  absolutePositionOf,
-  findEnclosingFrame,
-  placeAt,
-  reparentInPlace,
-  sectionOf
-} from './frames.js'
-import {
-  ANNOTATION_OWNER_KEY,
-  CONNECTOR_LABEL_OWNER_KEY,
-  removeOrphansByOwnerKey
-} from './orphans.js'
+import { findEnclosingFrame } from './frames.js'
+import { removeOrphansByOwnerKey } from './orphans.js'
 import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
 
 const ANNOTATION_KEY = 'annotation'
-const OWNER_KEY = ANNOTATION_OWNER_KEY
+const OWNER_KEY = 'annotationOwner'
 const ROLE_KEY = 'annotationRole'
 
 type Role = 'badge' | 'card' | 'leader'
@@ -145,31 +135,9 @@ export function getAnnotationRecord(node: SceneNode): AnnotationRecord | null {
 export function findAnnotationTargetsUnder(
   ancestor: SceneNode & ChildrenMixin
 ): ReadonlyArray<SceneNode> {
-  const cached = recentlyAnswered(ancestor.id)
-  if (cached !== null) return cached
-  // Scoped to `ancestor`, but scoped still means every node beneath it: for a
-  // section holding a flow of screens that is tens of thousands, and a drag
-  // asks once per frame. Same reasoning and same short life as the cache in
-  // `findConnectorsWithEndpointUnder`.
-  const found = ancestor
+  return ancestor
     .findAllWithCriteria({ pluginData: { keys: [ANNOTATION_KEY] } })
     .filter((node) => getAnnotationRecord(node) !== null)
-  targetsUnder.set(ancestor.id, { at: Date.now(), found })
-  return found
-}
-
-/** See `findAnnotationTargetsUnder`. Long enough to cover a drag, too short to outlive one. */
-const TARGET_CACHE_MS = 400
-const targetsUnder = new Map<string, { at: number; found: ReadonlyArray<SceneNode> }>()
-
-function recentlyAnswered(ancestorId: string): ReadonlyArray<SceneNode> | null {
-  const entry = targetsUnder.get(ancestorId)
-  if (typeof entry === 'undefined') return null
-  if (Date.now() - entry.at > TARGET_CACHE_MS) {
-    targetsUnder.delete(ancestorId)
-    return null
-  }
-  return entry.found.some((node) => node.removed) ? null : entry.found
 }
 
 function writeAnnotationRecord(node: SceneNode, record: AnnotationRecord): void {
@@ -613,26 +581,10 @@ function leaderToCardBoundary(from: Point, card: FrameNode): ReadonlyArray<Point
   return elbowPoints(from, boundary)
 }
 
-/**
- * Makes sure `node` draws over `under`, without touching the layer order when
- * it already does.
- *
- * Re-appending is the usual way to raise a node, and it works — but it fires
- * on every sync whether or not the order was wrong, and reordering the layer
- * tree thirty times a second is both slow and visible as the layers panel
- * shuffling under the reader's cursor. Comparing indices first costs nothing.
- */
-function raiseAbove(node: SceneNode, under: SceneNode | null): void {
-  if (under === null || under.removed || node.removed) return
-  const parent = node.parent
-  if (parent === null || parent !== under.parent) return
-  if (parent.children.indexOf(node) > parent.children.indexOf(under)) return
-  parent.appendChild(node)
-}
-
 async function positionLeader(leader: VectorNode, points: ReadonlyArray<Point>): Promise<void> {
   const { x, y, vectorNetwork } = polylineNetwork(points)
-  placeAt(leader, { x, y })
+  leader.x = x
+  leader.y = y
   await leader.setVectorNetworkAsync(vectorNetwork)
 }
 
@@ -668,11 +620,6 @@ function nearestNeighborGap(ownFrame: Rect, side: 'LEFT' | 'RIGHT', ownFrameId: 
         continue
       }
       if (node.type !== 'FRAME' || node.id === ownFrameId) continue
-      // Our own cards and label pills are `FRAME`s too. Counting one as a
-      // neighbouring screen squeezes the next card's width to dodge it, which
-      // is nothing a person put there — the same exclusion
-      // `collectRouteObstacles` already makes.
-      if (ownerIdOf(node) !== null || node.getPluginData(CONNECTOR_LABEL_OWNER_KEY) !== '') continue
       const rect = node.absoluteBoundingBox
       if (rect === null || !verticallyOverlaps(ownFrame, rect)) continue
       const gap =
@@ -868,18 +815,17 @@ async function syncAnnotationBody(
   color: string
 ): Promise<void> {
   await withSuppressedNodeChangeAsync(async () => {
-    // Where this note belongs: the section its target lives in, so moving or
-    // duplicating the section takes the note with it. Settled before anything
-    // is positioned, and acted on only when it is wrong — the card is
-    // deliberately draggable, and Figma reparents any node dropped onto a
-    // frame into that frame, so it does drift. Re-appending a node to the
-    // parent it is already in would move it to the front of the layer order,
-    // which on every frame of a drag churns the layers panel for nothing.
-    // Every position written below goes through `placeAt` and so does not
-    // care which parent this turned out to be.
-    const container = sectionOf(target) ?? figma.currentPage
-    if (rendered.card !== null) reparentInPlace(rendered.card, container)
-    if (rendered.leader !== null) reparentInPlace(rendered.leader, container)
+    // Reparent to the page *before* touching anything else. Every x/y
+    // write below is a page-absolute coordinate — but the card is
+    // deliberately draggable, and Figma auto-reparents any node dropped
+    // onto a frame into that frame. If that happened since the last sync,
+    // the card's x/y would already mean "relative to that frame" the
+    // moment we write them, sending it flying off to the wrong spot (and
+    // an auto-layout frame it lands in can also force its size, hiding
+    // the text). Reparenting first makes every write below mean what it's
+    // supposed to, regardless of where the node drifted to on canvas.
+    if (rendered.card !== null) figma.currentPage.appendChild(rendered.card)
+    if (rendered.leader !== null) figma.currentPage.appendChild(rendered.leader)
     // The dot marker used to sit at the target's edge — dropped, since a
     // leader line already shows what's being annotated without one more
     // node cluttering the canvas. Sweeps away any left over from before
@@ -897,17 +843,13 @@ async function syncAnnotationBody(
       metricsForSize(record.size)
     )
     card.name = CARD_LAYER_NAME
-    reparentInPlace(card, container)
-    placeAt(card, layout.cardTopLeft)
+    card.x = layout.cardTopLeft.x
+    card.y = layout.cardTopLeft.y
     if (text.characters !== record.text) {
       await figma.loadFontAsync(text.fontName as FontName)
       text.characters = record.text
     }
 
-    // Held from wherever the leader is created below, so putting it into its
-    // section afterwards does not mean scanning the page for it again — this
-    // runs once per annotation on every reconcile.
-    let placedLeader: VectorNode | null = null
     if (layout.leader === null) {
       removeIfPresent(rendered.leader)
     } else {
@@ -935,16 +877,13 @@ async function syncAnnotationBody(
         const leader = ensureLeader(rendered.leader, target.id, color)
         leader.name = LEADER_LAYER_NAME
         await positionLeader(leader, points)
-        placedLeader = leader
       }
     }
 
-    if (placedLeader !== null) reparentInPlace(placedLeader, container)
-    // The card reads as covering the leader's endpoint rather than a dashed
-    // line cutting across its corner, which needs the card later in the
-    // parent's order than the leader — checked rather than re-asserted, so
-    // the layer order is only touched when it is actually wrong.
-    raiseAbove(card, placedLeader)
+    // Re-parenting to the same page moves a node to the front of the
+    // stacking order. Done last so the card's solid face reads as covering
+    // the leader's endpoint, not a dashed line cutting across its corner.
+    figma.currentPage.appendChild(card)
   })
 }
 
@@ -1046,11 +985,11 @@ export async function applyCardStacking(): Promise<void> {
         // also drop genuine unrelated edits for as long as this ran.
         await withSuppressedNodeChangeAsync(async () => {
           // Same reparent-before-position reasoning as `syncAnnotationExclusive`
-          // — the card may have drifted into another frame since the last
-          // sync. Where it belongs afterwards is wherever it already lived,
-          // which is its target's section when it has one.
-          placeAt(item.card, { x: absolutePositionOf(item.card).x, y: top })
+          // — the card may have drifted into another frame since the last sync.
+          figma.currentPage.appendChild(item.card)
+          item.card.y = top
           if (item.leader === null || item.leader.removed) return
+          figma.currentPage.appendChild(item.leader)
 
           // Vertical centre of the card, same as the initial sync — not the
           // fixed top-of-card inset `CARD_LEADER_INSET` still used as this
@@ -1065,7 +1004,6 @@ export async function applyCardStacking(): Promise<void> {
             item.leader,
             leaderIntoCard(item.edgeStart, to, CARD_APPROACH_STUB, laneOffset)
           )
-          raiseAbove(item.card, item.leader)
         })
       } catch (error) {
         failures += 1

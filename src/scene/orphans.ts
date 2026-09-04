@@ -4,16 +4,6 @@
  * `connectorLabelOwner` for a connector's label) and need to sweep up
  * whichever ones lost their owner without the plugin catching it live.
  */
-/**
- * The pluginData key each feature tags its rendered nodes with. Declared
- * here, where the sweep that reads them lives, so the two features can
- * recognise each other's nodes without importing each other — a card and a
- * label pill are both `FRAME`s on the canvas, and each side needs to know
- * that the other's are not the user's own content.
- */
-export const ANNOTATION_OWNER_KEY = 'annotationOwner'
-export const CONNECTOR_LABEL_OWNER_KEY = 'connectorLabelOwner'
-
 export function removeOrphansByOwnerKey(
   ownerKey: string,
   liveOwnerIds: ReadonlySet<string>
