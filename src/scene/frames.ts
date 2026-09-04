@@ -1,7 +1,43 @@
 /**
  * Shared by Annotate and Connect — both route around the enclosing frame a
- * node sits inside, not just the node's own box.
+ * node sits inside, and both put their rendered nodes back on the page.
  */
+
+/**
+ * Puts a rendered node back on the page, and does nothing when it is already
+ * there.
+ *
+ * Every sync brings its nodes back to the page, because a person can drag one
+ * onto a frame and Figma reparents it into that frame — after which the
+ * node's `x`/`y` mean something else and every position written would land
+ * somewhere wrong. Almost always, though, the node never left.
+ *
+ * Appending unconditionally is not free even then: appending a node to the
+ * parent it is already in moves it to the front of the layer order. On a
+ * reconcile that is three reorders per note and two per line, which shows up
+ * as the layers panel scrolling under the reader while the plugin opens, and
+ * costs Figma real work to apply.
+ */
+export function ensureOnPage(node: SceneNode): void {
+  if (node.parent === figma.currentPage) return
+  figma.currentPage.appendChild(node)
+}
+
+/**
+ * Makes sure `node` draws over `under`, without touching the layer order when
+ * it already does.
+ *
+ * Re-appending is the usual way to raise a node and it works, but it fires
+ * whether or not the order was wrong. Comparing first costs nothing and keeps
+ * the layer tree still.
+ */
+export function raiseAbove(node: SceneNode, under: SceneNode | null): void {
+  if (under === null || under.removed || node.removed) return
+  const parent = node.parent
+  if (parent === null || parent !== under.parent) return
+  if (parent.children.indexOf(node) > parent.children.indexOf(under)) return
+  parent.appendChild(node)
+}
 
 /**
  * The outermost frame `node` sits inside — the "screen" it belongs to, as

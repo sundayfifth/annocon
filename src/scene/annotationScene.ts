@@ -43,7 +43,7 @@ import {
 } from '../core/category.js'
 import { getCategories } from './categoryScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
-import { findEnclosingFrame } from './frames.js'
+import { ensureOnPage, findEnclosingFrame, raiseAbove } from './frames.js'
 import { removeOrphansByOwnerKey } from './orphans.js'
 import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
 
@@ -875,8 +875,8 @@ async function syncAnnotationBody(
     // an auto-layout frame it lands in can also force its size, hiding
     // the text). Reparenting first makes every write below mean what it's
     // supposed to, regardless of where the node drifted to on canvas.
-    if (rendered.card !== null) figma.currentPage.appendChild(rendered.card)
-    if (rendered.leader !== null) figma.currentPage.appendChild(rendered.leader)
+    if (rendered.card !== null) ensureOnPage(rendered.card)
+    if (rendered.leader !== null) ensureOnPage(rendered.leader)
     // The dot marker used to sit at the target's edge — dropped, since a
     // leader line already shows what's being annotated without one more
     // node cluttering the canvas. Sweeps away any left over from before
@@ -901,6 +901,9 @@ async function syncAnnotationBody(
       text.characters = record.text
     }
 
+    // Held from wherever the leader is placed below, so the order check at
+    // the end has something to compare against without looking it up again.
+    let placedLeader: VectorNode | null = null
     if (layout.leader === null) {
       removeIfPresent(rendered.leader)
     } else {
@@ -928,13 +931,15 @@ async function syncAnnotationBody(
         const leader = ensureLeader(rendered.leader, target.id, color)
         leader.name = LEADER_LAYER_NAME
         await positionLeader(leader, points)
+        placedLeader = leader
       }
     }
 
-    // Re-parenting to the same page moves a node to the front of the
-    // stacking order. Done last so the card's solid face reads as covering
-    // the leader's endpoint, not a dashed line cutting across its corner.
-    figma.currentPage.appendChild(card)
+    // The card's solid face should cover the leader's endpoint rather than a
+    // dashed line cutting across its corner, which needs the card later in
+    // the page's order than the leader — checked rather than re-asserted, so
+    // the layer tree is only touched when it is actually wrong.
+    raiseAbove(card, placedLeader)
   })
 }
 
@@ -1037,10 +1042,10 @@ export async function applyCardStacking(): Promise<void> {
         await withSuppressedNodeChangeAsync(async () => {
           // Same reparent-before-position reasoning as `syncAnnotationExclusive`
           // — the card may have drifted into another frame since the last sync.
-          figma.currentPage.appendChild(item.card)
+          ensureOnPage(item.card)
           item.card.y = top
           if (item.leader === null || item.leader.removed) return
-          figma.currentPage.appendChild(item.leader)
+          ensureOnPage(item.leader)
 
           // Vertical centre of the card, same as the initial sync — not the
           // fixed top-of-card inset `CARD_LEADER_INSET` still used as this

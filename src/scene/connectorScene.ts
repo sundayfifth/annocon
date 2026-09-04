@@ -37,7 +37,7 @@ import {
 } from '../core/connector.js'
 import { ownerIdOf } from './annotationScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
-import { findEnclosingFrame, topLevelAncestorIdOf } from './frames.js'
+import { ensureOnPage, findEnclosingFrame, topLevelAncestorIdOf } from './frames.js'
 import { removeOrphansByOwnerKey } from './orphans.js'
 import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
 
@@ -637,7 +637,7 @@ async function ensureConnectorLabel(
     label.characters = trimmed
   }
 
-  figma.currentPage.appendChild(pill)
+  ensureOnPage(pill)
   pill.x = midpoint.x - pill.width / 2
   pill.y = midpoint.y - pill.height / 2
 }
@@ -932,7 +932,7 @@ async function syncConnectorBody(
     const before = node.absoluteTransform
     const absoluteX = before[0]?.[2] ?? node.x
     const absoluteY = before[1]?.[2] ?? node.y
-    figma.currentPage.appendChild(node)
+    ensureOnPage(node)
     node.x = absoluteX
     node.y = absoluteY
     node.opacity = record.opacity
@@ -1010,7 +1010,7 @@ async function syncConnectorBody(
             detour: record.detour,
             obstacles
           })
-    figma.currentPage.appendChild(node)
+    ensureOnPage(node)
     // Fingerprinted after every draw, so the next change to this node can be
     // attributed: matching means we drew it, differing means somebody else did.
     rememberDrawnShape(node)
