@@ -37,13 +37,19 @@ import {
 } from '../core/connector.js'
 import { ownerIdOf } from './annotationScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
-import { commonSectionOf, findEnclosingFrame, topLevelAncestorIdOf } from './frames.js'
-import { removeOrphansByOwnerKey } from './orphans.js'
+import {
+  absoluteOriginOf,
+  commonSectionOf,
+  findEnclosingFrame,
+  reparentInPlace,
+  topLevelAncestorIdOf
+} from './frames.js'
+import { CONNECTOR_LABEL_OWNER_KEY, removeOrphansByOwnerKey } from './orphans.js'
 import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
 
 const CONNECTOR_KEY = 'connector'
 const BROKEN_COLOR = '#E5484D'
-const LABEL_OWNER_KEY = 'connectorLabelOwner'
+const LABEL_OWNER_KEY = CONNECTOR_LABEL_OWNER_KEY
 const LAST_STYLE_KEY = 'lastConnectorStyle'
 /**
  * The shape this plugin last drew, as `x,y,width,height,vertexCount`.
@@ -658,30 +664,6 @@ function containerFor(startBoxes: EndpointBoxes, endBoxes: EndpointBoxes): Secti
   const end = endBoxes.node
   if (start === null || end === null) return figma.currentPage
   return commonSectionOf(start, end) ?? figma.currentPage
-}
-
-/**
- * Moves `node` into `container` without moving it on screen.
- *
- * Reparenting keeps the node's `x`/`y` numbers while changing what they are
- * measured against, so the node jumps by the difference between the two
- * origins. Rather than assume what that difference is — which would mean
- * betting on how a section measures its children — this reads back where the
- * node actually landed and nudges it by however far it moved. Correct for a
- * page (where the difference is zero) and for a section either way round,
- * without depending on knowing which.
- */
-function reparentInPlace(node: SceneNode, container: SectionNode | PageNode): void {
-  const wasAt = absoluteOriginOf(node)
-  container.appendChild(node)
-  const nowAt = absoluteOriginOf(node)
-  node.x += wasAt.x - nowAt.x
-  node.y += wasAt.y - nowAt.y
-}
-
-function absoluteOriginOf(node: SceneNode): Point {
-  const transform = node.absoluteTransform
-  return { x: transform[0]?.[2] ?? node.x, y: transform[1]?.[2] ?? node.y }
 }
 
 const EMPTY_OBSTACLES: RouteObstacles = { foreign: [], own: [] }

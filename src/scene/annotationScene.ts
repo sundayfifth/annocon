@@ -43,12 +43,16 @@ import {
 } from '../core/category.js'
 import { getCategories } from './categoryScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
-import { findEnclosingFrame } from './frames.js'
-import { removeOrphansByOwnerKey } from './orphans.js'
+import { findEnclosingFrame, reparentInPlace, sectionOf } from './frames.js'
+import {
+  ANNOTATION_OWNER_KEY,
+  CONNECTOR_LABEL_OWNER_KEY,
+  removeOrphansByOwnerKey
+} from './orphans.js'
 import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
 
 const ANNOTATION_KEY = 'annotation'
-const OWNER_KEY = 'annotationOwner'
+const OWNER_KEY = ANNOTATION_OWNER_KEY
 const ROLE_KEY = 'annotationRole'
 
 type Role = 'badge' | 'card' | 'leader'
@@ -620,6 +624,11 @@ function nearestNeighborGap(ownFrame: Rect, side: 'LEFT' | 'RIGHT', ownFrameId: 
         continue
       }
       if (node.type !== 'FRAME' || node.id === ownFrameId) continue
+      // Our own cards and label pills are `FRAME`s too. Counting one as a
+      // neighbouring screen squeezes the next card's width to dodge it, which
+      // is nothing a person put there — the same exclusion
+      // `collectRouteObstacles` already makes.
+      if (ownerIdOf(node) !== null || node.getPluginData(CONNECTOR_LABEL_OWNER_KEY) !== '') continue
       const rect = node.absoluteBoundingBox
       if (rect === null || !verticallyOverlaps(ownFrame, rect)) continue
       const gap =
@@ -850,6 +859,10 @@ async function syncAnnotationBody(
       text.characters = record.text
     }
 
+    // Held from wherever the leader is created below, so putting it into its
+    // section afterwards does not mean scanning the page for it again — this
+    // runs once per annotation on every reconcile.
+    let placedLeader: VectorNode | null = null
     if (layout.leader === null) {
       removeIfPresent(rendered.leader)
     } else {
@@ -877,13 +890,21 @@ async function syncAnnotationBody(
         const leader = ensureLeader(rendered.leader, target.id, color)
         leader.name = LEADER_LAYER_NAME
         await positionLeader(leader, points)
+        placedLeader = leader
       }
     }
 
-    // Re-parenting to the same page moves a node to the front of the
-    // stacking order. Done last so the card's solid face reads as covering
-    // the leader's endpoint, not a dashed line cutting across its corner.
-    figma.currentPage.appendChild(card)
+    // A note belongs to the section its target lives in, so that moving or
+    // duplicating the section takes the note with it — the same reason a
+    // connector goes into the section holding its two ends. Left on the page,
+    // a card is stranded the moment the section moves, and a duplicate of the
+    // section arrives with no notes on it.
+    const container = sectionOf(target) ?? figma.currentPage
+    if (placedLeader !== null) reparentInPlace(placedLeader, container)
+    // The card goes in last: re-appending is what raises a node to the front
+    // of the stacking order, so its solid face reads as covering the leader's
+    // endpoint rather than a dashed line cutting across its corner.
+    reparentInPlace(card, container)
   })
 }
 
@@ -985,10 +1006,16 @@ export async function applyCardStacking(): Promise<void> {
         // also drop genuine unrelated edits for as long as this ran.
         await withSuppressedNodeChangeAsync(async () => {
           // Same reparent-before-position reasoning as `syncAnnotationExclusive`
-          // — the card may have drifted into another frame since the last sync.
+          // — the card may have drifted into another frame since the last
+          // sync. Where it belongs afterwards is wherever it already lived,
+          // which is its target's section when it has one.
+          const container = sectionOf(item.card) ?? figma.currentPage
           figma.currentPage.appendChild(item.card)
           item.card.y = top
-          if (item.leader === null || item.leader.removed) return
+          if (item.leader === null || item.leader.removed) {
+            reparentInPlace(item.card, container)
+            return
+          }
           figma.currentPage.appendChild(item.leader)
 
           // Vertical centre of the card, same as the initial sync — not the
@@ -1004,6 +1031,9 @@ export async function applyCardStacking(): Promise<void> {
             item.leader,
             leaderIntoCard(item.edgeStart, to, CARD_APPROACH_STUB, laneOffset)
           )
+          // Both back where they belong, card last so it stays in front.
+          reparentInPlace(item.leader, container)
+          reparentInPlace(item.card, container)
         })
       } catch (error) {
         failures += 1

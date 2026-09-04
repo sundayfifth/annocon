@@ -66,6 +66,40 @@ export function commonSectionOf(a: SceneNode, b: SceneNode): SectionNode | null 
   return null
 }
 
+/** The innermost `SECTION` `node` sits inside, or `null` when it is not in one. */
+export function sectionOf(node: SceneNode): SectionNode | null {
+  return sectionsAbove(node)[0] ?? null
+}
+
+/**
+ * Moves `node` into `container` without moving it on screen.
+ *
+ * Reparenting keeps the node's `x`/`y` numbers while changing what they are
+ * measured against, so the node jumps by the difference between the two
+ * origins. Rather than assume what that difference is — which would mean
+ * betting on how a section measures its children — this reads back where the
+ * node actually landed and nudges it by however far it moved. Correct for a
+ * page (where the difference is zero) and for a section either way round,
+ * without depending on knowing which.
+ *
+ * Appending is not skipped when the node is already there: re-appending to
+ * the same parent is what raises a node to the front of the stacking order,
+ * which several callers rely on.
+ */
+export function reparentInPlace(node: SceneNode, container: SectionNode | PageNode): void {
+  const wasAt = absoluteOriginOf(node)
+  container.appendChild(node)
+  const nowAt = absoluteOriginOf(node)
+  node.x += wasAt.x - nowAt.x
+  node.y += wasAt.y - nowAt.y
+}
+
+/** Where a node's own origin sits on the canvas, whatever it is parented to. */
+export function absoluteOriginOf(node: SceneNode): { x: number; y: number } {
+  const transform = node.absoluteTransform
+  return { x: transform[0]?.[2] ?? node.x, y: transform[1]?.[2] ?? node.y }
+}
+
 /** Every `SECTION` above `node`, innermost first. */
 function sectionsAbove(node: SceneNode): Array<SectionNode> {
   const sections: Array<SectionNode> = []

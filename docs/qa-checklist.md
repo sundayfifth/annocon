@@ -124,6 +124,19 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] Connect two whole frames (not nested layers): the exit sides are the ones
       facing each other, exactly as before.
 
+## Annotate — living inside a section
+
+- [ ] Annotate a layer inside a section, then **move the section**: the card
+      and its leader move with it, with the plugin closed as well as open
+- [ ] Layers panel: the card and leader sit inside the section
+- [ ] **Duplicate the section**: the copy brings its notes
+- [ ] Several cards stacking to avoid each other, all inside a section: they
+      still stack, and all of them stay in the section afterwards
+- [ ] Annotate a top-level frame that is *not* in a section: the card stays on
+      the page as before
+- [ ] Card widths are unchanged next to a screen with another **note card**
+      beside it — a card is not a screen, and must not squeeze its neighbour
+
 ## Connect — living inside a section
 
 - [ ] Draw a connector between two frames in the same section, then **move
