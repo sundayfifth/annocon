@@ -43,7 +43,13 @@ import {
 } from '../core/category.js'
 import { getCategories } from './categoryScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
-import { findEnclosingFrame, reparentInPlace, sectionOf } from './frames.js'
+import {
+  absoluteOriginOf,
+  findEnclosingFrame,
+  placeAt,
+  reparentInPlace,
+  sectionOf
+} from './frames.js'
 import {
   ANNOTATION_OWNER_KEY,
   CONNECTOR_LABEL_OWNER_KEY,
@@ -139,9 +145,31 @@ export function getAnnotationRecord(node: SceneNode): AnnotationRecord | null {
 export function findAnnotationTargetsUnder(
   ancestor: SceneNode & ChildrenMixin
 ): ReadonlyArray<SceneNode> {
-  return ancestor
+  const cached = recentlyAnswered(ancestor.id)
+  if (cached !== null) return cached
+  // Scoped to `ancestor`, but scoped still means every node beneath it: for a
+  // section holding a flow of screens that is tens of thousands, and a drag
+  // asks once per frame. Same reasoning and same short life as the cache in
+  // `findConnectorsWithEndpointUnder`.
+  const found = ancestor
     .findAllWithCriteria({ pluginData: { keys: [ANNOTATION_KEY] } })
     .filter((node) => getAnnotationRecord(node) !== null)
+  targetsUnder.set(ancestor.id, { at: Date.now(), found })
+  return found
+}
+
+/** See `findAnnotationTargetsUnder`. Long enough to cover a drag, too short to outlive one. */
+const TARGET_CACHE_MS = 400
+const targetsUnder = new Map<string, { at: number; found: ReadonlyArray<SceneNode> }>()
+
+function recentlyAnswered(ancestorId: string): ReadonlyArray<SceneNode> | null {
+  const entry = targetsUnder.get(ancestorId)
+  if (typeof entry === 'undefined') return null
+  if (Date.now() - entry.at > TARGET_CACHE_MS) {
+    targetsUnder.delete(ancestorId)
+    return null
+  }
+  return entry.found.some((node) => node.removed) ? null : entry.found
 }
 
 function writeAnnotationRecord(node: SceneNode, record: AnnotationRecord): void {
@@ -585,10 +613,26 @@ function leaderToCardBoundary(from: Point, card: FrameNode): ReadonlyArray<Point
   return elbowPoints(from, boundary)
 }
 
+/**
+ * Makes sure `node` draws over `under`, without touching the layer order when
+ * it already does.
+ *
+ * Re-appending is the usual way to raise a node, and it works — but it fires
+ * on every sync whether or not the order was wrong, and reordering the layer
+ * tree thirty times a second is both slow and visible as the layers panel
+ * shuffling under the reader's cursor. Comparing indices first costs nothing.
+ */
+function raiseAbove(node: SceneNode, under: SceneNode | null): void {
+  if (under === null || under.removed || node.removed) return
+  const parent = node.parent
+  if (parent === null || parent !== under.parent) return
+  if (parent.children.indexOf(node) > parent.children.indexOf(under)) return
+  parent.appendChild(node)
+}
+
 async function positionLeader(leader: VectorNode, points: ReadonlyArray<Point>): Promise<void> {
   const { x, y, vectorNetwork } = polylineNetwork(points)
-  leader.x = x
-  leader.y = y
+  placeAt(leader, { x, y })
   await leader.setVectorNetworkAsync(vectorNetwork)
 }
 
@@ -824,17 +868,18 @@ async function syncAnnotationBody(
   color: string
 ): Promise<void> {
   await withSuppressedNodeChangeAsync(async () => {
-    // Reparent to the page *before* touching anything else. Every x/y
-    // write below is a page-absolute coordinate — but the card is
-    // deliberately draggable, and Figma auto-reparents any node dropped
-    // onto a frame into that frame. If that happened since the last sync,
-    // the card's x/y would already mean "relative to that frame" the
-    // moment we write them, sending it flying off to the wrong spot (and
-    // an auto-layout frame it lands in can also force its size, hiding
-    // the text). Reparenting first makes every write below mean what it's
-    // supposed to, regardless of where the node drifted to on canvas.
-    if (rendered.card !== null) figma.currentPage.appendChild(rendered.card)
-    if (rendered.leader !== null) figma.currentPage.appendChild(rendered.leader)
+    // Where this note belongs: the section its target lives in, so moving or
+    // duplicating the section takes the note with it. Settled before anything
+    // is positioned, and acted on only when it is wrong — the card is
+    // deliberately draggable, and Figma reparents any node dropped onto a
+    // frame into that frame, so it does drift. Re-appending a node to the
+    // parent it is already in would move it to the front of the layer order,
+    // which on every frame of a drag churns the layers panel for nothing.
+    // Every position written below goes through `placeAt` and so does not
+    // care which parent this turned out to be.
+    const container = sectionOf(target) ?? figma.currentPage
+    if (rendered.card !== null) reparentInPlace(rendered.card, container)
+    if (rendered.leader !== null) reparentInPlace(rendered.leader, container)
     // The dot marker used to sit at the target's edge — dropped, since a
     // leader line already shows what's being annotated without one more
     // node cluttering the canvas. Sweeps away any left over from before
@@ -852,8 +897,8 @@ async function syncAnnotationBody(
       metricsForSize(record.size)
     )
     card.name = CARD_LAYER_NAME
-    card.x = layout.cardTopLeft.x
-    card.y = layout.cardTopLeft.y
+    reparentInPlace(card, container)
+    placeAt(card, layout.cardTopLeft)
     if (text.characters !== record.text) {
       await figma.loadFontAsync(text.fontName as FontName)
       text.characters = record.text
@@ -894,17 +939,12 @@ async function syncAnnotationBody(
       }
     }
 
-    // A note belongs to the section its target lives in, so that moving or
-    // duplicating the section takes the note with it — the same reason a
-    // connector goes into the section holding its two ends. Left on the page,
-    // a card is stranded the moment the section moves, and a duplicate of the
-    // section arrives with no notes on it.
-    const container = sectionOf(target) ?? figma.currentPage
     if (placedLeader !== null) reparentInPlace(placedLeader, container)
-    // The card goes in last: re-appending is what raises a node to the front
-    // of the stacking order, so its solid face reads as covering the leader's
-    // endpoint rather than a dashed line cutting across its corner.
-    reparentInPlace(card, container)
+    // The card reads as covering the leader's endpoint rather than a dashed
+    // line cutting across its corner, which needs the card later in the
+    // parent's order than the leader — checked rather than re-asserted, so
+    // the layer order is only touched when it is actually wrong.
+    raiseAbove(card, placedLeader)
   })
 }
 
@@ -1009,14 +1049,8 @@ export async function applyCardStacking(): Promise<void> {
           // — the card may have drifted into another frame since the last
           // sync. Where it belongs afterwards is wherever it already lived,
           // which is its target's section when it has one.
-          const container = sectionOf(item.card) ?? figma.currentPage
-          figma.currentPage.appendChild(item.card)
-          item.card.y = top
-          if (item.leader === null || item.leader.removed) {
-            reparentInPlace(item.card, container)
-            return
-          }
-          figma.currentPage.appendChild(item.leader)
+          placeAt(item.card, { x: absoluteOriginOf(item.card).x, y: top })
+          if (item.leader === null || item.leader.removed) return
 
           // Vertical centre of the card, same as the initial sync — not the
           // fixed top-of-card inset `CARD_LEADER_INSET` still used as this
@@ -1031,9 +1065,7 @@ export async function applyCardStacking(): Promise<void> {
             item.leader,
             leaderIntoCard(item.edgeStart, to, CARD_APPROACH_STUB, laneOffset)
           )
-          // Both back where they belong, card last so it stays in front.
-          reparentInPlace(item.leader, container)
-          reparentInPlace(item.card, container)
+          raiseAbove(item.card, item.leader)
         })
       } catch (error) {
         failures += 1

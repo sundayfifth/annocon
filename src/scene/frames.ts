@@ -87,11 +87,36 @@ export function sectionOf(node: SceneNode): SectionNode | null {
  * which several callers rely on.
  */
 export function reparentInPlace(node: SceneNode, container: SectionNode | PageNode): void {
+  // Nothing to do, and doing it anyway is expensive: re-appending a node to
+  // the parent it is already in moves it to the front of the stacking order,
+  // which reorders the layer tree. On every frame of a drag that churns the
+  // layers panel continuously and costs far more than the move it is not
+  // making.
+  if (node.parent === container) return
   const wasAt = absoluteOriginOf(node)
   container.appendChild(node)
   const nowAt = absoluteOriginOf(node)
   node.x += wasAt.x - nowAt.x
   node.y += wasAt.y - nowAt.y
+}
+
+/**
+ * Puts a node's own origin at an absolute point, whatever it is parented to.
+ *
+ * `x`/`y` are measured against the parent, so writing an absolute coordinate
+ * into them is only correct while the parent is the page. Rather than
+ * convert — which would mean knowing how each kind of parent measures its
+ * children — this writes, reads back where the node actually landed, and
+ * nudges it by the difference. A no-op's worth of work when the parent is
+ * the page, and correct when it is not.
+ */
+export function placeAt(node: SceneNode, at: { x: number; y: number }): void {
+  node.x = at.x
+  node.y = at.y
+  const landed = absoluteOriginOf(node)
+  if (landed.x === at.x && landed.y === at.y) return
+  node.x += at.x - landed.x
+  node.y += at.y - landed.y
 }
 
 /** Where a node's own origin sits on the canvas, whatever it is parented to. */

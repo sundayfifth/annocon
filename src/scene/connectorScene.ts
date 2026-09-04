@@ -41,6 +41,7 @@ import {
   absoluteOriginOf,
   commonSectionOf,
   findEnclosingFrame,
+  placeAt,
   reparentInPlace,
   topLevelAncestorIdOf
 } from './frames.js'
@@ -648,13 +649,11 @@ async function ensureConnectorLabel(
     label.characters = trimmed
   }
 
-  // Positioned in absolute coordinates first, then moved into the same
-  // container as its line — a label on the page while its connector sits in a
-  // section would be left behind the moment the section moved.
-  figma.currentPage.appendChild(pill)
-  pill.x = midpoint.x - pill.width / 2
-  pill.y = midpoint.y - pill.height / 2
+  // Into the same container as its line — a label on the page while its
+  // connector sits in a section would be left behind the moment the section
+  // moved — and only when it is not already there.
   reparentInPlace(pill, container)
+  placeAt(pill, { x: midpoint.x - pill.width / 2, y: midpoint.y - pill.height / 2 })
 }
 
 interface EndpointBoxes {
@@ -954,26 +953,15 @@ async function syncConnectorBody(
   labels?: LabelIndex
 ): Promise<void> {
   await withSuppressedNodeChangeAsync(async () => {
-    // Same reparent-before-position reasoning as annotation cards — the
-    // connector itself is never locked (it must stay selectable so its
-    // style panel works), so a person can drag it onto a frame and Figma
-    // will auto-reparent it there. Reparent back to the page before
-    // writing any x/y below, or those page-absolute coordinates get
-    // reinterpreted as relative to whatever frame it drifted into.
-    //
-    // Reparenting keeps the node's `x`/`y` *numbers*, which is the same as
-    // teleporting it by the old parent's origin. Every path that draws a
-    // route writes x/y afterwards and so never notices; the paths that
-    // return without drawing — a dangling line, and a hand-drawn one with no
-    // recorded shape to carry — would leave the line a whole frame origin
-    // from where it was. So the absolute position is put back straight away,
-    // and the drawing paths overwrite it as before.
-    const before = node.absoluteTransform
-    const absoluteX = before[0]?.[2] ?? node.x
-    const absoluteY = before[1]?.[2] ?? node.y
-    figma.currentPage.appendChild(node)
-    node.x = absoluteX
-    node.y = absoluteY
+    // Settled once, up front, and only acted on when it is actually wrong —
+    // the connector is never locked (it must stay selectable for its style
+    // panel), so a person can drag it onto a frame and Figma reparents it
+    // there. `reparentInPlace` keeps it where it looks and does nothing at
+    // all when it is already in the right place, which is every sync but the
+    // first. Every position written below goes through `placeAt`, so none of
+    // them care which parent that turned out to be.
+    const container = containerFor(startBoxes, endBoxes)
+    reparentInPlace(node, container)
     node.opacity = record.opacity
     if (!geometry.complete) {
       // Dangling — an endpoint's node is gone. Flag it visually and leave
@@ -1003,10 +991,8 @@ async function syncConnectorBody(
           ? midpointOfDrawnLine(node)
           : await drawManualShape(node, record.manualShape, { start, end }, record)
       rememberDrawnShape(node)
-      const manualContainer = containerFor(startBoxes, endBoxes)
-      reparentInPlace(node, manualContainer)
       await ensureConnectorLabel(
-        manualContainer,
+        container,
         node.id,
         findConnectorLabel(node.id, labels),
         record.label,
@@ -1052,8 +1038,6 @@ async function syncConnectorBody(
             detour: record.detour,
             obstacles
           })
-    const container = containerFor(startBoxes, endBoxes)
-    reparentInPlace(node, container)
     // Fingerprinted after every draw, so the next change to this node can be
     // attributed: matching means we drew it, differing means somebody else did.
     rememberDrawnShape(node)
@@ -1130,8 +1114,7 @@ async function drawManualShape(
   })
   const originX = Math.min(...bounds.map((point) => point.x))
   const originY = Math.min(...bounds.map((point) => point.y))
-  node.x = originX
-  node.y = originY
+  placeAt(node, { x: originX, y: originY })
 
   const lastIndex = carried.length - 1
   await node.setVectorNetworkAsync({
@@ -1217,8 +1200,7 @@ async function drawPoints(
   // of what we last drew, so the plugin still repairs a line somebody else
   // has altered — the canvas stays untrusted, which is the rule.
   if (!alreadyDrawn(node, vertices, originX, originY)) {
-    node.x = originX
-    node.y = originY
+    placeAt(node, { x: originX, y: originY })
     await node.setVectorNetworkAsync({
       vertices,
       segments: points.slice(1).map((_point, index) => ({ start: index, end: index + 1 })),
@@ -1250,8 +1232,12 @@ function alreadyDrawn(
   originX: number,
   originY: number
 ): boolean {
-  if (Math.round(node.x) !== Math.round(originX)) return false
-  if (Math.round(node.y) !== Math.round(originY)) return false
+  // Compared against where the node actually sits on the canvas, not against
+  // `x`/`y` — those are measured against whatever it is parented to, which is
+  // a section as often as it is the page.
+  const origin = absoluteOriginOf(node)
+  if (Math.round(origin.x) !== Math.round(originX)) return false
+  if (Math.round(origin.y) !== Math.round(originY)) return false
   const current = node.vectorNetwork.vertices
   if (current.length !== vertices.length) return false
   const segments = node.vectorNetwork.segments
@@ -1299,8 +1285,7 @@ async function positionCurve(
   const controlEnd = { x: end.x + tangentEnd.x, y: end.y + tangentEnd.y }
   const originX = Math.min(start.x, end.x, controlStart.x, controlEnd.x)
   const originY = Math.min(start.y, end.y, controlStart.y, controlEnd.y)
-  node.x = originX
-  node.y = originY
+  placeAt(node, { x: originX, y: originY })
   await node.setVectorNetworkAsync({
     vertices: [
       { x: start.x - originX, y: start.y - originY, strokeCap: record.startCap },
