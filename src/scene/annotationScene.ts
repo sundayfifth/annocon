@@ -417,11 +417,14 @@ async function ensureCategoryPill(
   // Loaded before the write, not only when creating the node: writing
   // `fontSize` touches the font the label already has, and an existing pill's
   // font is not loaded just because the pill exists. Same rule as the card's
-  // text below.
-  await figma.loadFontAsync(PILL_FONT)
-  label.fontSize = metrics.categoryFontSize
-  if (label.characters !== category.name) {
-    label.characters = category.name
+  // text below — and skipped entirely when there is nothing to write, which
+  // on a reopened file is every pill on the page.
+  const sizeChanged = label.fontSize !== metrics.categoryFontSize
+  const textChanged = label.characters !== category.name
+  if (sizeChanged || textChanged) {
+    await figma.loadFontAsync(PILL_FONT)
+    if (sizeChanged) label.fontSize = metrics.categoryFontSize
+    if (textChanged) label.characters = category.name
   }
   // Measured from its natural width every sync, never from whatever width it
   // was left at. Capping it once and leaving it capped meant a pill narrowed
@@ -497,21 +500,27 @@ async function ensureCard(
   // an existing one whose font is about to be replaced.
   text.fontSize = metrics.fontSize
   text.textAutoResize = 'HEIGHT'
-  // Sized explicitly first, and this order is the whole trick to making a
-  // card narrower: auto-layout will not shrink a frame past a fixed-width
-  // child, so resizing the card first left it propped open at the old width
-  // by text that had not moved yet — overflowing whatever it sat beside,
-  // including out past the edge of a section.
-  text.layoutSizingHorizontal = 'FIXED'
-  text.resize(width - metrics.paddingX * 2, text.height)
-  card.resize(width, card.height)
-  // Then handed to auto-layout to keep. An earlier attempt at `FILL` alone
-  // was abandoned because the text stayed at the sliver of a width it was
-  // created at — but that was `FILL` on a card whose own width had not been
-  // set yet, so there was nothing to fill. Set last, with both widths
-  // already right, it holds: and it is what makes the text follow *during* a
-  // drag, when no sync has run yet and nothing else is there to reflow it.
-  text.layoutSizingHorizontal = 'FILL'
+  // Resizing an auto-layout frame makes Figma lay it out again, and this
+  // whole dance runs for every note on the page every time the plugin opens.
+  // When both widths are already what they should be there is nothing to lay
+  // out, and the cheapest resize is the one not asked for.
+  const textWidth = width - metrics.paddingX * 2
+  if (Math.round(card.width) !== Math.round(width) || Math.round(text.width) !== Math.round(textWidth)) {
+    // Sized explicitly first, and this order is the whole trick to making a
+    // card narrower: auto-layout will not shrink a frame past a fixed-width
+    // child, so resizing the card first left it propped open at the old width
+    // by text that had not moved yet — overflowing whatever it sat beside.
+    text.layoutSizingHorizontal = 'FIXED'
+    text.resize(textWidth, text.height)
+    card.resize(width, card.height)
+    // Then handed to auto-layout to keep. An earlier attempt at `FILL` alone
+    // was abandoned because the text stayed at the sliver of a width it was
+    // created at — but that was `FILL` on a card whose own width had not been
+    // set yet, so there was nothing to fill. Set last, with both widths
+    // already right, it holds: and it is what makes the text follow *during*
+    // a drag, when no sync has run yet and nothing else is there to reflow it.
+    text.layoutSizingHorizontal = 'FILL'
+  }
   await ensureCategoryPill(card, category, metrics)
   return { card, text }
 }
@@ -583,9 +592,49 @@ function leaderToCardBoundary(from: Point, card: FrameNode): ReadonlyArray<Point
 
 async function positionLeader(leader: VectorNode, points: ReadonlyArray<Point>): Promise<void> {
   const { x, y, vectorNetwork } = polylineNetwork(points)
+  // Opening the plugin re-renders every note on the page, and most of the
+  // time nothing has moved since it was last closed — so most of the time
+  // this is being asked to draw the line that is already there.
+  // `setVectorNetworkAsync` is the most expensive thing an annotation asks
+  // Figma for, and the same skip the connector's own drawing already makes.
+  if (samePolyline(leader, x, y, vectorNetwork)) return
   leader.x = x
   leader.y = y
   await leader.setVectorNetworkAsync(vectorNetwork)
+}
+
+/**
+ * Whether the node already carries exactly this line, in this place.
+ *
+ * Strict on purpose: a wrong "yes" leaves a leader pointing at nothing, a
+ * wrong "no" costs one redundant redraw. Compared against the node rather
+ * than a note of what we last drew, so a line somebody else has altered is
+ * still repaired — the canvas stays untrusted.
+ */
+function samePolyline(
+  node: VectorNode,
+  x: number,
+  y: number,
+  network: VectorNetwork
+): boolean {
+  if (Math.round(node.x) !== Math.round(x) || Math.round(node.y) !== Math.round(y)) return false
+  const current = node.vectorNetwork
+  if (current.vertices.length !== network.vertices.length) return false
+  if (current.segments.length !== network.segments.length) return false
+  for (let i = 0; i < network.vertices.length; i += 1) {
+    const was = current.vertices[i]
+    const now = network.vertices[i]
+    if (typeof was === 'undefined' || typeof now === 'undefined') return false
+    if (Math.round(was.x) !== Math.round(now.x)) return false
+    if (Math.round(was.y) !== Math.round(now.y)) return false
+  }
+  for (let i = 0; i < network.segments.length; i += 1) {
+    const was = current.segments[i]
+    const now = network.segments[i]
+    if (typeof was === 'undefined' || typeof now === 'undefined') return false
+    if (was.start !== now.start || was.end !== now.end) return false
+  }
+  return true
 }
 
 function verticallyOverlaps(a: Rect, b: Rect): boolean {

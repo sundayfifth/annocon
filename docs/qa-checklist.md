@@ -181,6 +181,15 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] A connector made before this existed → not treated as hand-drawn the
       first time something moves (no fingerprint yet means "not an edit")
 
+## Speed — reopening a file nothing has changed in
+
+- [ ] Close the plugin and reopen it on a file with a good number of notes:
+      it should be quicker the second time than it used to be, because
+      nothing needs redrawing
+- [ ] Then change something a note depends on — move its layer, retype it,
+      change its size or category — and confirm the note *does* redraw. The
+      skip is the risk here: anything that should change must still change.
+
 ## Speed — dragging and opening
 
 - [ ] Open the plugin on the busiest real file: the panel appears without a
