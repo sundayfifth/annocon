@@ -269,6 +269,15 @@ function isSaneCardOffset(point: Point): boolean {
  * `AUTO` follows the card: the badge moves to whichever edge faces where the
  * card has been dragged, so the leader line never crosses back over the target.
  */
+/**
+ * Whether this card is still where it was put, rather than where somebody
+ * dragged it. Exact, because `updateCardFromDrag` only writes an offset once
+ * the card has actually moved.
+ */
+function isDefaultCardOffset(offset: Point): boolean {
+  return offset.x === DEFAULT_CARD_OFFSET.x && offset.y === DEFAULT_CARD_OFFSET.y
+}
+
 export function resolveSide(
   target: Rect,
   record: AnnotationRecord
@@ -276,6 +285,14 @@ export function resolveSide(
   if (record.side !== 'AUTO') {
     return record.side
   }
+  // Nobody has moved this card, so there is nothing to read a direction from.
+  // The default offset is only a few pixels — enough to clear the badge — and
+  // asking which edge a point that close to the middle faces is really asking
+  // about the target's shape: anything wider than it is tall answers "the
+  // top", and the card lands across the thing it is annotating rather than
+  // beside it. A side is the answer that stays readable whatever the shape,
+  // and matches where a card goes when its target is inside a frame.
+  if (isDefaultCardOffset(record.cardOffset)) return 'RIGHT'
   const center = centerOf(target)
   const towards = {
     x: center.x + record.cardOffset.x,

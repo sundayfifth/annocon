@@ -17,6 +17,12 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] Edit the note → canvas text updates, no duplicate nodes
 - [ ] Delete the note → every rendered node for it is gone, no orphans in the layer panel
 - [ ] Select a group or section (no native `annotations`) → still renders, no error
+- [ ] Annotate a **wide, short layer that is not inside a frame** — a
+      full-width button pulled out onto the canvas: the card sits to its
+      right, clear of it, rather than lying across it
+- [ ] Drag that card above the target and let go: it stays above, and the
+      leader still points at it — a card that has been moved keeps docking
+      where it was put
 - [ ] Switch a note between Small / Medium / Large → the card, its type, its
       padding and its category pill all resize together, in place
 - [ ] Do the same on a note written in **Thai**, and on one made before sizes

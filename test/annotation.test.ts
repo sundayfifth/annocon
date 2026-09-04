@@ -186,6 +186,44 @@ describe('annotationLayout — the near-target gap', () => {
   })
 })
 
+describe('resolveSide — a note nobody has moved', () => {
+  /** A wide, short target: a full-width button. */
+  const button = { x: 0, y: 0, width: 400, height: 60 }
+
+  /**
+   * The default offset is a few pixels — just enough to put the card clear of
+   * the badge — so asking which edge it points at is asking which edge a
+   * point almost exactly in the middle is nearest. On anything wider than it
+   * is tall that answer is the top, and the card lands across the target
+   * instead of beside it. Reported on a button pulled out of its frame.
+   *
+   * Nobody has said anything about where they want it, so the answer should
+   * be the one that is always readable rather than one derived from a nudge
+   * that means nothing.
+   */
+  it('sits to the side rather than across the target', () => {
+    expect(resolveSide(button, record({ cardOffset: DEFAULT_CARD_OFFSET }))).toBe('RIGHT')
+  })
+
+  it('leaves the card clear of the target it belongs to', () => {
+    const layout = annotationLayout(button, record({ cardOffset: DEFAULT_CARD_OFFSET }))
+    expect(layout.cardTopLeft.x).toBeGreaterThanOrEqual(button.x + button.width)
+  })
+
+  /** Once somebody has dragged it, where they put it is the answer. */
+  it('still docks wherever the card was dragged', () => {
+    expect(resolveSide(button, record({ cardOffset: { x: 4, y: -300 } }))).toBe('TOP')
+    expect(resolveSide(button, record({ cardOffset: { x: -600, y: 0 } }))).toBe('LEFT')
+    expect(resolveSide(button, record({ cardOffset: { x: 4, y: 300 } }))).toBe('BOTTOM')
+  })
+
+  it('still honours a side pinned on the record', () => {
+    expect(resolveSide(button, record({ side: 'BOTTOM', cardOffset: DEFAULT_CARD_OFFSET }))).toBe(
+      'BOTTOM'
+    )
+  })
+})
+
 describe('resolveSide', () => {
   it('respects an explicit side', () => {
     expect(resolveSide(target, record({ side: 'TOP' }))).toBe('TOP')
