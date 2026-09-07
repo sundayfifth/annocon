@@ -7,7 +7,7 @@ import tseslint from 'typescript-eslint'
  * every one of them at lint time instead of at runtime in a real file.
  */
 export default tseslint.config(
-  { ignores: ['build/**', 'manifest.json', 'node_modules/**'] },
+  { ignores: ['build/**', 'coverage/**', 'manifest.json', 'node_modules/**'] },
   ...tseslint.configs.recommendedTypeChecked,
   figmaPlugins.flatConfigs.recommended,
   {

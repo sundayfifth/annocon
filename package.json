@@ -13,7 +13,8 @@
     "watch": "build-figma-plugin --typecheck --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@create-figma-plugin/ui": "^4.0.3",
@@ -24,6 +25,7 @@
     "@create-figma-plugin/build": "^4.0.3",
     "@figma/eslint-plugin-figma-plugins": "^1.0.0",
     "@figma/plugin-typings": "^1.138.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^10.9.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.69.0",
