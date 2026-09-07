@@ -68,7 +68,7 @@ export const CONNECTOR_CAPS: ReadonlyArray<ConnectorCap> = [
  */
 export type ConnectorDetour = 'AUTO' | 'TOP' | 'BOTTOM' | 'LEFT' | 'RIGHT'
 
-export const CONNECTOR_DETOURS: ReadonlyArray<ConnectorDetour> = [
+const CONNECTOR_DETOURS: ReadonlyArray<ConnectorDetour> = [
   'AUTO',
   'TOP',
   'BOTTOM',

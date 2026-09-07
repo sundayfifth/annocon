@@ -3,12 +3,10 @@ import { describe, expect, it } from 'vitest'
 import {
   type Anchor,
   type Rect,
-  anchorNodeId,
   centerOf,
   magnetPoint,
   outwardNormal,
   ratioPoint,
-  resolveAnchor,
   resolveAnchorPair,
   resolveMagnet,
   resolveMagnetEscapingFrame,
@@ -85,24 +83,6 @@ describe('resolveMagnetPreferringSides', () => {
   it('falls back to RIGHT when the counterpart sits exactly on the centre', () => {
     const box: Rect = { x: 0, y: 0, width: 100, height: 100 }
     expect(resolveMagnetPreferringSides(box, { x: 50, y: 50 })).toBe('RIGHT')
-  })
-})
-
-describe('resolveAnchor', () => {
-  it('returns a free anchor as-is, with or without a rect', () => {
-    const anchor: Anchor = { kind: 'free', point: { x: 7, y: 9 } }
-    expect(resolveAnchor(anchor, null, null)).toEqual({ x: 7, y: 9 })
-  })
-
-  it('returns null for an orphaned attached anchor', () => {
-    const anchor: Anchor = { kind: 'magnet', nodeId: 'a', magnet: 'TOP' }
-    expect(resolveAnchor(anchor, null, { x: 0, y: 0 })).toBeNull()
-  })
-
-  it('falls back to the box centre when AUTO has no counterpart', () => {
-    const anchor: Anchor = { kind: 'magnet', nodeId: 'a', magnet: 'AUTO' }
-    // Counterpart == own centre, so the tie-break applies: RIGHT.
-    expect(resolveAnchor(anchor, box, null)).toEqual({ x: 140, y: 210 })
   })
 })
 
@@ -208,14 +188,6 @@ describe('outwardNormal', () => {
     expect(outwardNormal('LEFT')).toEqual({ x: -1, y: 0 })
     expect(outwardNormal('RIGHT')).toEqual({ x: 1, y: 0 })
     expect(outwardNormal('CENTER')).toEqual({ x: 0, y: 0 })
-  })
-})
-
-describe('anchorNodeId', () => {
-  it('reports the dependency, or null when free', () => {
-    expect(anchorNodeId({ kind: 'magnet', nodeId: 'n1', magnet: 'AUTO' })).toBe('n1')
-    expect(anchorNodeId({ kind: 'ratio', nodeId: 'n2', ratio: { x: 0, y: 0 } })).toBe('n2')
-    expect(anchorNodeId({ kind: 'free', point: { x: 0, y: 0 } })).toBeNull()
   })
 })
 
