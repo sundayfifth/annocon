@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Rect } from '../src/core/anchor.js'
+import type { Point, Rect } from '../src/core/anchor.js'
 import {
   CONNECTOR_VERSION,
   type ConnectorRecord,
@@ -611,6 +611,38 @@ describe('connectorRoutePoints — obstacle avoidance', () => {
     // Both clear the box; they differ only in which side they pass it on.
     expect(Math.max(...auto.map((point) => point.y))).toBeGreaterThan(0)
     expect(Math.min(...pinned.map((point) => point.y))).toBeLessThan(-400)
+  })
+
+  it('takes a pinned direction over an equally clean route that passes the other side', () => {
+    // The y a route is at where it passes over `x` — which side of the box
+    // it actually went, which is the only thing the pin is about.
+    const passesAt = (points: ReadonlyArray<Point>, x: number): number => {
+      for (let i = 0; i < points.length - 1; i += 1) {
+        const from = points[i]
+        const to = points[i + 1]
+        if (typeof from === 'undefined' || typeof to === 'undefined') continue
+        if (from.y !== to.y) continue
+        if (Math.min(from.x, to.x) <= x && x <= Math.max(from.x, to.x)) return from.y
+      }
+      throw new Error('route never passes over x')
+    }
+    // Both ends sit clear of the box's rows, so a bend moved aside gets
+    // through without going round at all — same length as the detour, fewer
+    // bends, so scoring alone always picks it and the pin means nothing.
+    // Dropping it, rather than ranking it below the pinned route, is what
+    // makes the control do what it says.
+    const obstacles = [{ x: 150, y: 100, width: 100, height: 200 }]
+    const args = [{ x: 0, y: 0 }, { x: 400, y: 400 }, 'ELBOW', 'RIGHT', 'LEFT'] as const
+    const auto = connectorRoutePoints(...args, { ...facing, obstacles: foreign(obstacles) })
+    const pinned = connectorRoutePoints(...args, {
+      ...facing,
+      obstacles: foreign(obstacles),
+      detour: 'TOP'
+    })
+    expect(routeCrossings(auto, obstacles)).toBe(0)
+    expect(routeCrossings(pinned, obstacles)).toBe(0)
+    expect(passesAt(auto, 200)).toBeGreaterThan(300)
+    expect(passesAt(pinned, 200)).toBeLessThan(100)
   })
 
   it('ignores a pinned direction that belongs to the other axis', () => {

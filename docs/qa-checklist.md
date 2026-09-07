@@ -123,6 +123,11 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       without the editor stalling.
 - [ ] **Go around** set to `Below` on a line that auto-routed above: it flips
       under, and stays under after the frames move.
+- [ ] **Go around** set to `Below` on a line that already got past the screen
+      *sideways* rather than round it — the two ends offset enough that the
+      route bends aside and threads through: it still moves under. This is the
+      case the control used to silently ignore, because the route it would
+      replace was already clean.
 - [ ] **Go around** set to a direction that doesn't apply (`Left` on a
       left-to-right line): behaves as `Auto`, no error.
 - [ ] **Go around** set on a line with nothing in its way: the route does not

@@ -1079,7 +1079,8 @@ function routeLength(points: ReadonlyArray<Point>): number {
  */
 function bestRoute(
   candidates: ReadonlyArray<ReadonlyArray<Point>>,
-  obstacles: RouteObstacles
+  obstacles: RouteObstacles,
+  trustFirst = true
 ): ReadonlyArray<Point> {
   let best = candidates[0] ?? []
   let bestCrossings = Number.POSITIVE_INFINITY
@@ -1103,8 +1104,12 @@ function bestRoute(
     }
     // Callers hand the route they would have drawn anyway in first, and
     // already checked it — but a caller that hasn't should not pay to score
-    // alternatives to a route that is provably fine.
-    if (bestCrossings === 0 && points === candidates[0]) break
+    // alternatives to a route that is provably fine. `trustFirst` is off
+    // when the caller's list is a set of equals rather than a preference
+    // with alternatives behind it, as a pinned `detour`'s is: stopping at
+    // the first clean one would pick whichever obstacle happened to sort
+    // first instead of the shortest way round.
+    if (trustFirst && bestCrossings === 0 && points === candidates[0]) break
   }
   return best
 }
@@ -1156,18 +1161,24 @@ function sameAxisCandidates(
   detour: ConnectorDetour,
   obstacles: RouteObstacles
 ): ReadonlyArray<ReadonlyArray<Point>> {
-  const candidates: Array<ReadonlyArray<Point>> = [direct]
   const across = crossAxisOf(axis)
-  for (const [low, high] of edgesOn(obstacles, axis)) {
-    candidates.push(
-      zRoute(start, end, axis, clamp(low, lo, hi)),
-      zRoute(start, end, axis, clamp(high, lo, hi))
-    )
-  }
-  // A pinned direction drops the other way round entirely rather than merely
-  // ranking it lower: the whole point of pinning is to override the
-  // shorter-wins scoring that chose the way you didn't want.
+  // A pinned direction drops every route that doesn't go that way round —
+  // not merely ranks them lower — because the scoring below is shortest-wins
+  // and the way round a person didn't want is, nearly always, the shorter
+  // one. That includes the direct route and the Z-routes: neither passes
+  // *around* anything, so neither can express "below", and leaving them in
+  // the running is what made the control look dead on any line that was
+  // already clear.
   const edge = detourEdgeFor(detour, across)
+  const candidates: Array<ReadonlyArray<Point>> = edge === null ? [direct] : []
+  if (edge === null) {
+    for (const [low, high] of edgesOn(obstacles, axis)) {
+      candidates.push(
+        zRoute(start, end, axis, clamp(low, lo, hi)),
+        zRoute(start, end, axis, clamp(high, lo, hi))
+      )
+    }
+  }
   for (const [low, high] of edgesOn(obstacles, across)) {
     // `high` first, so `AUTO` goes below (or right) when the two ways round
     // are exactly as long as each other — which they are whenever the box in
@@ -1183,6 +1194,10 @@ function sameAxisCandidates(
       )
     }
   }
+  // A pin with nothing on the cross axis to go around has nothing to ask
+  // for. Rather than return an empty list, hand back the route that would
+  // have been drawn anyway.
+  if (candidates.length === 0) candidates.push(direct)
   return candidates
 }
 
@@ -1324,26 +1339,39 @@ function sidedElbow(
       // are scored. Enumerating candidates allocates a route per obstacle
       // edge, and this runs for every connector on every frame of a drag —
       // on a clear page that is the entire cost of the feature, paid for
-      // nothing.
+      // nothing. A pin does not reopen this: "go around" has nothing to ask
+      // for when the line is not going around anything, and honouring it
+      // here would drag a clear line down to whatever distant box happened
+      // to be on the page.
       if (!hasObstacles(obstacles) || routeCost(direct, obstacles) === 0) return direct
-      return orSearched(
-        bestRoute(
-          sameAxisCandidates(
-            direct,
-            start,
-            end,
-            axis,
-            startSign,
-            endSign,
-            startClearance,
-            endClearance,
-            lo,
-            hi,
-            detour,
-            obstacles
-          ),
+      const pinned = detourEdgeFor(detour, crossAxisOf(axis)) !== null
+      const chosen = bestRoute(
+        sameAxisCandidates(
+          direct,
+          start,
+          end,
+          axis,
+          startSign,
+          endSign,
+          startClearance,
+          endClearance,
+          lo,
+          hi,
+          detour,
           obstacles
         ),
+        obstacles,
+        !pinned
+      )
+      // The search walks a grid looking for anything that gets through; it
+      // has no notion of which way round it went. Letting it run on a pinned
+      // route would quietly undo the pin on precisely the crowded boards
+      // where someone bothered to set one — so a person who names a
+      // direction gets that direction, even where the search would have
+      // found something tidier.
+      if (pinned) return chosen
+      return orSearched(
+        chosen,
         start,
         end,
         startSide,
