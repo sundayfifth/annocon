@@ -482,6 +482,26 @@ async function drainResyncQueue(): Promise<void> {
   }
 }
 
+/**
+ * Throws away anything gathered but not yet dealt with.
+ *
+ * Only for a page change: a pass drains the queue against
+ * `figma.currentPage`, so once that is a different page the queued ids
+ * belong to nodes the pass would route past the wrong page's frames.
+ * A pass already running cannot be cancelled, but emptying the queue stops
+ * it after the batch it is on.
+ */
+function discardPendingResync(): void {
+  if (resyncTimer !== null) {
+    clearTimeout(resyncTimer)
+    resyncTimer = null
+  }
+  waiting.deletedIds = new Set()
+  waiting.movedTargetIds = new Set()
+  waiting.draggedCardOwnerIds = new Set()
+  waiting.editedTextNodes = []
+}
+
 async function resyncTouched({
   deletedIds,
   movedTargetIds,
@@ -739,7 +759,19 @@ export default function main(): void {
     emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
   })
 
-  figma.currentPage.on('nodechange', handleNodeChange)
+  listenForNodeChanges(figma.currentPage)
+
+  // Every scan in `src/scene/**` reads `figma.currentPage`, so a page switch
+  // otherwise leaves the plugin listening to the page nobody is looking at
+  // and reconciling nothing on the one they are — live re-routing stops, with
+  // nothing to say it has. Categories are not re-seeded: they live on
+  // `figma.root`, so they are already there.
+  figma.on('currentpagechange', () => {
+    listenForNodeChanges(figma.currentPage)
+    discardPendingResync()
+    fireAndForget(reconcileEverything())
+    emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
+  })
 
   // Must run before `reconcileEverything` starts — calling an async
   // function runs its body synchronously up to its first real `await`, and
@@ -757,6 +789,22 @@ export default function main(): void {
     { height: 400, width: 320 },
     { selection: summariseSelection(), categories: getCategories() }
   )
+}
+
+/**
+ * The page `handleNodeChange` is registered on. `nodechange` is a page-level
+ * event — a listener registered on one page never fires for another — and
+ * there is no way to ask Figma which page a listener sits on, so it is
+ * tracked here.
+ */
+let listeningTo: PageNode | null = null
+
+/** Moves `handleNodeChange` onto `page`, dropping the previous registration
+ * rather than accumulating one per page visited. */
+function listenForNodeChanges(page: PageNode): void {
+  if (listeningTo !== null) listeningTo.off('nodechange', handleNodeChange)
+  page.on('nodechange', handleNodeChange)
+  listeningTo = page
 }
 
 /**
