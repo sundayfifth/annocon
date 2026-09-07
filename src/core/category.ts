@@ -9,8 +9,6 @@
  * add anything a team actually needs here.
  */
 
-export const CATEGORY_VERSION = 1
-
 export interface Category {
   readonly id: string
   readonly name: string
@@ -34,8 +32,6 @@ export const CATEGORY_PALETTE: ReadonlyArray<string> = [
   '#46A758', // green
   '#0091FF' // blue — the default "Dev" category's colour
 ]
-
-export const DEFAULT_CATEGORY_COLOR: string = CATEGORY_PALETTE[0] as string
 
 /**
  * Seeded once, the first time a file has no categories at all — see

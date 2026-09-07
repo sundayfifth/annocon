@@ -298,27 +298,6 @@ function resolveAnchorDetailed(
   return { point: magnetPoint(rect, magnet), side: magnet }
 }
 
-/**
- * Resolves an anchor to a point in canvas space.
- *
- * `rect` is the anchored node's box, or `null` when that node is gone — an
- * orphaned anchor, which callers surface rather than silently drop.
- * `towards` is the counterpart point, needed only to resolve `AUTO`.
- */
-export function resolveAnchor(
-  anchor: Anchor,
-  rect: Rect | null,
-  towards: Point | null,
-  frame: Rect | null = null
-): Point | null {
-  return resolveAnchorDetailed(anchor, rect, towards, frame).point
-}
-
-/** The node id an anchor depends on, or `null` for a free anchor. */
-export function anchorNodeId(anchor: Anchor): string | null {
-  return anchor.kind === 'free' ? null : anchor.nodeId
-}
-
 /** A pair of resolved endpoints; `null` on a side whose node is missing. */
 export interface ResolvedPair {
   readonly start: Point | null
