@@ -812,6 +812,12 @@ function listenForNodeChanges(page: PageNode): void {
  * so it is safe to fire from the properties panel on a stale connector.
  */
 export function resyncPage(): void {
+  // Same ordering `main()` explains at length: the first synchronous stretch
+  // of `reconcileEverything` already reaches `getCategories()`, so on a file
+  // with an unseeded list the defaults have to be in place before it starts.
+  // Running without a UI does not exempt this path — it is the one people
+  // reach for on exactly those files.
+  ensureDefaultCategories()
   reconcileEverything()
     .then((result) => {
       figma.closePlugin(
