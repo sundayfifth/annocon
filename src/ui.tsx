@@ -613,6 +613,14 @@ const SIZE_OPTIONS = ANNOTATION_SIZES.map((size) => ({
   children: SIZE_LABELS[size]
 }))
 
+/**
+ * The thinnest stroke worth drawing — below this a line stops reading as one
+ * at ordinary zoom. Declared to `TextboxNumeric` *and* enforced on blur:
+ * `minimum` only governs the field's own stepper, so a typed value has to be
+ * clamped against the same number or the two disagree.
+ */
+const MIN_STROKE_WEIGHT = 0.5
+
 function SectionLabel({ children }: { children: string }) {
   return (
     <Text>
@@ -694,10 +702,16 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
         </div>
         <div style={{ flex: '1 1 0' }}>
           <TextboxNumeric
-            minimum={0.5}
+            minimum={MIN_STROKE_WEIGHT}
             onBlur={() => {
               const parsed = Number.parseFloat(weightText)
-              if (Number.isFinite(parsed) && parsed > 0) update({ strokeWeight: parsed })
+              if (!Number.isFinite(parsed)) return
+              // Written back, the same way the opacity field does it: a
+              // clamped value the box still shows the rejected number for
+              // reads as the edit having been ignored.
+              const clamped = Math.max(MIN_STROKE_WEIGHT, parsed)
+              setWeightText(`${clamped}px`)
+              update({ strokeWeight: clamped })
             }}
             onValueInput={setWeightText}
             suffix="px"
