@@ -884,6 +884,10 @@ interface StackItem {
   readonly edgeStart: Point
   readonly nearEdgeX: number
   readonly naturalTop: number
+  /** Where the card belongs horizontally. Carried so the write below can
+   * restate the whole position, not just the part stacking changes — see
+   * `ensureOnPage`. */
+  readonly left: number
 }
 
 /**
@@ -929,7 +933,15 @@ export async function applyCardStacking(): Promise<void> {
         : resolved.layout.cardTopLeft.x + resolved.cardWidth
 
     const list = groups.get(resolved.side) ?? []
-    list.push({ ownerId, card, leader: leadersByOwner.get(ownerId) ?? null, edgeStart, nearEdgeX, naturalTop: resolved.layout.cardTopLeft.y })
+    list.push({
+      ownerId,
+      card,
+      leader: leadersByOwner.get(ownerId) ?? null,
+      edgeStart,
+      nearEdgeX,
+      naturalTop: resolved.layout.cardTopLeft.y,
+      left: resolved.layout.cardTopLeft.x
+    })
     groups.set(resolved.side, list)
   }
 
@@ -967,6 +979,11 @@ export async function applyCardStacking(): Promise<void> {
           // Same reparent-before-position reasoning as `syncAnnotationExclusive`
           // — the card may have drifted into another frame since the last sync.
           ensureOnPage(item.card)
+          // Both coordinates, because `ensureOnPage` may just have moved the
+          // card out of a frame — after which its `x` still holds a
+          // frame-relative number that now reads as a page one, and writing
+          // only `y` leaves the card sitting a frame's width off to the side.
+          item.card.x = item.left
           item.card.y = top
           if (item.leader === null || item.leader.removed) return
           ensureOnPage(item.leader)
