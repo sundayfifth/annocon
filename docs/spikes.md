@@ -21,10 +21,12 @@ if dragging one felt like direct manipulation rather than a line trailing the
 cursor in steps.
 
 The question never had to be answered. Automatic obstacle avoidance
-(`docs/adr/0002-obstacle-aware-elbow-routing.md`) turned out to be good enough on
-real files, so nobody has to drag anything: the route goes around on its own, and
-the **Go around** preference covers the cases where a person wants to overrule
-the direction it picked.
+(`docs/adr/0002-obstacle-aware-elbow-routing.md`, plus the search added in
+`docs/adr/0004-search-for-a-route-when-the-rules-run-out.md` for the dense boards
+the rules alone could not clear) turned out to be good enough on real files, so
+nobody has to drag anything: the route goes around on its own, and the **Go
+around** preference covers the cases where a person wants to overrule the
+direction it picked.
 
 - **Result:** no drag handle, so no measurement needed. The probe that would have
   taken it has been removed; it is recoverable from git if the question reopens.

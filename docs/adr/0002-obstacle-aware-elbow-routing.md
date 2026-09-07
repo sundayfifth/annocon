@@ -1,6 +1,6 @@
 # ADR 0002 — Choose an elbow's shape by scoring candidate routes against the page's top-level boxes
 
-- Status: accepted
+- Status: accepted; amended in part by [ADR 0004](0004-search-for-a-route-when-the-rules-run-out.md)
 - Date: 2026-08-28
 
 ## Context
@@ -117,16 +117,29 @@ they cannot handle is that many of them at once. Reaching for real
 pathfinding is the fix, and `manualGeometry` (ADR 0003) is what makes it
 survivable in the meantime.
 
+That fix shipped: ADR 0004 adds an A* search over a grid built from the
+obstacles' own edges, running only on the routes these rules leave crossing
+something. The rules below are unchanged and still decide every ordinary
+page — read the rest of this section as the reason 0004 exists, not as
+current behaviour on a dense board.
+
 Avoidance is also coarse. It only sees top-level boxes, so a connector
 routes around a whole screen rather than through an empty region of it, and
 ignores anything nested. `FRAME_EXIT_PENALTY` and `ROUTE_SEARCH_MARGIN` are both
 tuned by eye rather than measured. It considers one obstacle boundary at a time, so a
-dense page can leave it with no clear candidate; it then picks the least-bad
-route rather than searching harder. And routes now shift when unrelated frames
-move, which is correct but is a change in behaviour on existing files.
+dense page can leave it with no clear candidate, which is what ADR 0004's
+search picks up — except on a route with a pinned `detour`, where the search
+stands down and the least-bad candidate is still what you get. And routes now
+shift when unrelated frames move, which is correct but is a change in
+behaviour on existing files.
 
 **Deferred.** Real pathfinding (a visibility graph, or A* over a grid) would
 handle the dense cases, at a cost we have no evidence is affordable on the
 editor's main thread. A manual handle remains the obvious override for whatever
 the automatic version gets wrong, and would reopen the question S6 asked.
 Neither is worth building until this one has been used on real files.
+
+> **Resolved 2026-09-02.** Using it on real files is what produced the dense-board
+> report above, and A* over an edge-compressed grid turned out to be affordable
+> because a real board's screens share edges. See ADR 0004. The manual handle is
+> still deferred, and 0004 restates why.

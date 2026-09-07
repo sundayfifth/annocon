@@ -79,3 +79,7 @@ that returns to the rule.
 **Deferred.** Real pathfinding is still the fix for dense boards, at a cost we
 still have no evidence is affordable on the editor's main thread. This makes
 that decision less urgent rather than unnecessary.
+
+> **Resolved 2026-09-02.** It shipped — see ADR 0004. Hand-drawn geometry keeps
+> its point: the search covers the dense case, but it optimises for a clear
+> orthogonal route, not for the one a person had in mind.
