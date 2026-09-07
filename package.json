@@ -23,10 +23,10 @@
   "devDependencies": {
     "@create-figma-plugin/build": "^4.0.3",
     "@figma/eslint-plugin-figma-plugins": "^1.0.0",
-    "@figma/plugin-typings": "^1.135.0",
+    "@figma/plugin-typings": "^1.138.0",
     "eslint": "^10.9.1",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.68.0",
+    "typescript-eslint": "^8.69.0",
     "vitest": "^4.1.11"
   },
   "figma-plugin": {
