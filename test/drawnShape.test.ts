@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  type DrawnNetwork,
   type DrawnShape,
   type DrawnVertex,
   alreadyDrawn,
+  samePolyline,
   shapeFingerprint
 } from '../src/core/drawnShape.js'
 
@@ -174,5 +176,86 @@ describe('shapeFingerprint', () => {
 
   it('handles an empty network', () => {
     expect(shapeFingerprint(net([]))).toBe('|')
+  })
+})
+
+describe('samePolyline', () => {
+  const leader: DrawnNetwork = {
+    vertices: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 30 }],
+    segments: chain(3)
+  }
+  const drawnAs = (network: DrawnNetwork, x = 100, y = 50): DrawnShape => ({
+    x,
+    y,
+    vertices: network.vertices,
+    segments: network.segments
+  })
+
+  it('says yes to the line that is already there', () => {
+    expect(samePolyline(drawnAs(leader), 100, 50, leader)).toBe(true)
+  })
+
+  it('says no when the leader would move', () => {
+    expect(samePolyline(drawnAs(leader), 130, 50, leader)).toBe(false)
+    expect(samePolyline(drawnAs(leader), 100, 90, leader)).toBe(false)
+  })
+
+  it('ignores sub-pixel drift in both the position and the points', () => {
+    const drifted: DrawnNetwork = {
+      vertices: leader.vertices.map((vertex) => ({ ...vertex, y: vertex.y + 0.4 })),
+      segments: leader.segments
+    }
+    expect(samePolyline(drawnAs(drifted, 100.3, 49.8), 100, 50, leader)).toBe(true)
+  })
+
+  // A leader that reports "already right" while pointing somewhere else is
+  // the failure that matters: the card ends up connected to nothing, and
+  // nothing ever redraws it.
+  it('says no when a point has moved', () => {
+    const moved: DrawnNetwork = {
+      vertices: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 90 }],
+      segments: leader.segments
+    }
+    expect(samePolyline(drawnAs(moved), 100, 50, leader)).toBe(false)
+  })
+
+  it('says no when the line gained or lost a bend', () => {
+    const straight: DrawnNetwork = {
+      vertices: leader.vertices.slice(0, 2),
+      segments: chain(2)
+    }
+    expect(samePolyline(drawnAs(straight), 100, 50, leader)).toBe(false)
+    expect(samePolyline(drawnAs(leader), 100, 50, straight)).toBe(false)
+  })
+
+  it('says no when the points are joined differently', () => {
+    const rewired: DrawnNetwork = {
+      vertices: leader.vertices,
+      segments: [
+        { start: 0, end: 2 },
+        { start: 2, end: 1 }
+      ]
+    }
+    expect(samePolyline(drawnAs(rewired), 100, 50, leader)).toBe(false)
+  })
+
+  // Unlike `alreadyDrawn`, a leader has no caps or rounding to compare, and
+  // its segments are taken as given rather than required to be a chain.
+  it('does not care about caps or corner rounding', () => {
+    const styled: DrawnNetwork = {
+      vertices: leader.vertices.map((vertex) => ({
+        ...vertex,
+        strokeCap: 'ARROW_LINES',
+        cornerRadius: 12
+      })),
+      segments: leader.segments
+    }
+    expect(samePolyline(drawnAs(styled), 100, 50, leader)).toBe(true)
+  })
+
+  it('handles an empty line', () => {
+    const nothing: DrawnNetwork = { vertices: [], segments: [] }
+    expect(samePolyline(drawnAs(nothing, 0, 0), 0, 0, nothing)).toBe(true)
+    expect(samePolyline(drawnAs(nothing, 0, 0), 0, 0, leader)).toBe(false)
   })
 })

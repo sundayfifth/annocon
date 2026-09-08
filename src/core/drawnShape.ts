@@ -99,3 +99,48 @@ export function shapeFingerprint(network: {
   // nothing, which is not what "somebody reshaped this" should mean.
   return `${vertices}|${segments}`
 }
+
+/** A polyline as it would be written: points, and the links between them. */
+export interface DrawnNetwork {
+  readonly vertices: ReadonlyArray<DrawnVertex>
+  readonly segments: ReadonlyArray<DrawnSegment>
+}
+
+/**
+ * Whether `drawn` already carries exactly this line, in this place.
+ *
+ * The leader's counterpart to `alreadyDrawn`, and looser in one way on
+ * purpose: a leader has no caps or corner rounding to compare, and its
+ * segments are compared as given rather than required to be a simple chain,
+ * because a leader is written from a network the caller has already built.
+ *
+ * Strict everywhere it matters, though: a wrong "yes" leaves a leader
+ * pointing at nothing, a wrong "no" costs one redundant redraw. Compared
+ * against what is on the node rather than a note of what we last drew, so a
+ * line somebody else has altered is still repaired — the canvas stays
+ * untrusted.
+ */
+export function samePolyline(
+  drawn: DrawnShape,
+  x: number,
+  y: number,
+  network: DrawnNetwork
+): boolean {
+  if (Math.round(drawn.x) !== Math.round(x) || Math.round(drawn.y) !== Math.round(y)) return false
+  if (drawn.vertices.length !== network.vertices.length) return false
+  if (drawn.segments.length !== network.segments.length) return false
+  for (let i = 0; i < network.vertices.length; i += 1) {
+    const was = drawn.vertices[i]
+    const now = network.vertices[i]
+    if (typeof was === 'undefined' || typeof now === 'undefined') return false
+    if (Math.round(was.x) !== Math.round(now.x)) return false
+    if (Math.round(was.y) !== Math.round(now.y)) return false
+  }
+  for (let i = 0; i < network.segments.length; i += 1) {
+    const was = drawn.segments[i]
+    const now = network.segments[i]
+    if (typeof was === 'undefined' || typeof now === 'undefined') return false
+    if (was.start !== now.start || was.end !== now.end) return false
+  }
+  return true
+}

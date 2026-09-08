@@ -38,6 +38,7 @@ import {
   contrastingTextColor,
   findCategory
 } from '../core/category.js'
+import { samePolyline } from '../core/drawnShape.js'
 import { getCategories } from './categoryScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import { ensureOnPage, findEnclosingFrame, raiseAbove } from './frames.js'
@@ -596,46 +597,17 @@ async function positionLeader(leader: VectorNode, points: ReadonlyArray<Point>):
   // this is being asked to draw the line that is already there.
   // `setVectorNetworkAsync` is the most expensive thing an annotation asks
   // Figma for, and the same skip the connector's own drawing already makes.
-  if (samePolyline(leader, x, y, vectorNetwork)) return
+  const onCanvas = {
+    x: leader.x,
+    y: leader.y,
+    vertices: leader.vectorNetwork.vertices,
+    segments: leader.vectorNetwork.segments
+  }
+  if (samePolyline(onCanvas, x, y, vectorNetwork)) return
   leader.x = x
   leader.y = y
   await leader.setVectorNetworkAsync(vectorNetwork)
 }
-
-/**
- * Whether the node already carries exactly this line, in this place.
- *
- * Strict on purpose: a wrong "yes" leaves a leader pointing at nothing, a
- * wrong "no" costs one redundant redraw. Compared against the node rather
- * than a note of what we last drew, so a line somebody else has altered is
- * still repaired — the canvas stays untrusted.
- */
-function samePolyline(
-  node: VectorNode,
-  x: number,
-  y: number,
-  network: VectorNetwork
-): boolean {
-  if (Math.round(node.x) !== Math.round(x) || Math.round(node.y) !== Math.round(y)) return false
-  const current = node.vectorNetwork
-  if (current.vertices.length !== network.vertices.length) return false
-  if (current.segments.length !== network.segments.length) return false
-  for (let i = 0; i < network.vertices.length; i += 1) {
-    const was = current.vertices[i]
-    const now = network.vertices[i]
-    if (typeof was === 'undefined' || typeof now === 'undefined') return false
-    if (Math.round(was.x) !== Math.round(now.x)) return false
-    if (Math.round(was.y) !== Math.round(now.y)) return false
-  }
-  for (let i = 0; i < network.segments.length; i += 1) {
-    const was = current.segments[i]
-    const now = network.segments[i]
-    if (typeof was === 'undefined' || typeof now === 'undefined') return false
-    if (was.start !== now.start || was.end !== now.end) return false
-  }
-  return true
-}
-
 
 /**
  * The frames on the page that could crowd `ownFrame` on either side, handed
