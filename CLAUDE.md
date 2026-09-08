@@ -68,6 +68,11 @@ Manual verification steps are in `docs/qa-checklist.md`.
 - Commit in small steps that actually work.
 - Run `npm run typecheck && npm test` after every change, before reporting it
   done. Not on request — every time.
+- Node 22 (`.nvmrc`), and let npm regenerate `package-lock.json` — never hand-fix
+  it. npm 11 resolves this tree differently from npm 10 and drops the nested
+  `esbuild` that `vitest`'s `vite` peer-depends on; the lock it writes installs
+  fine locally and then fails `npm ci` in CI. `npm install` warns
+  (`EBADENGINE`) if the version is wrong — read it.
 
 ## Notes
 

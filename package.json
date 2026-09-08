@@ -21,6 +21,10 @@
     "@create-figma-plugin/utilities": "^4.0.3",
     "preact": "^10.29.8"
   },
+  "engines": {
+    "node": "22.x",
+    "npm": "10.x"
+  },
   "devDependencies": {
     "@create-figma-plugin/build": "^4.0.3",
     "@figma/eslint-plugin-figma-plugins": "^1.0.0",
