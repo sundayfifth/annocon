@@ -12,7 +12,12 @@ export default defineConfig({
       // and `src/ui.tsx` would just print zeroes and bury the number that
       // means something.
       include: ['src/core/**'],
-      reporter: ['text', 'html']
+      // `json-summary` alongside the readable ones because the text table
+      // cannot be trusted on its own: on vitest 4.1.11 it silently omits a
+      // file that is at 100% (`obstacleScan.ts`, 31/31 statements), and
+      // neither `skipFull` setting brings the row back. The JSON carries
+      // every file, so it is the one to read a number off.
+      reporter: ['text', 'html', 'json-summary']
     }
   }
 })
