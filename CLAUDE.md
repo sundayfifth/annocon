@@ -68,11 +68,14 @@ Manual verification steps are in `docs/qa-checklist.md`.
 - Commit in small steps that actually work.
 - Run `npm run typecheck && npm test` after every change, before reporting it
   done. Not on request — every time.
-- Node 22 (`.nvmrc`), and let npm regenerate `package-lock.json` — never hand-fix
-  it. npm 11 resolves this tree differently from npm 10 and drops the nested
-  `esbuild` that `vitest`'s `vite` peer-depends on; the lock it writes installs
-  fine locally and then fails `npm ci` in CI. `npm install` warns
-  (`EBADENGINE`) if the version is wrong — read it.
+- Let npm regenerate `package-lock.json` — never hand-fix it — and check the npm
+  version first. `vitest`'s bundled `vite` peer-depends on `esbuild ^0.27 ||
+  ^0.28` while `@create-figma-plugin/build` pins `0.25.1`, so the lock has to
+  carry a second `esbuild` nested under `vitest`. **npm 11.12.1 drops it**;
+  10.9.9 and 11.3.0 keep it. A lock written by 11.12.1 still installs on 11.12.1
+  and then fails `npm ci` on every earlier npm, including CI's. `engines` covers
+  the versions known to write a usable lock, so `npm install` says `EBADENGINE`
+  on one that does not — read it. `.nvmrc` is 22 to match CI.
 
 ## Notes
 
