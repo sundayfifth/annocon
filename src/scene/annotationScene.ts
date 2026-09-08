@@ -22,8 +22,7 @@ import {
   type AnnotationSize,
   type CardMetrics,
   metricsForSize,
-  MIN_OUTSIDE_CARD_WIDTH,
-  OUTSIDE_MARGIN,
+  shrinkToFit,
   annotationLayout,
   annotationLayoutOutsideFrame,
   createAnnotationRecord,
@@ -643,11 +642,6 @@ function verticallyOverlaps(a: Rect, b: Rect): boolean {
   return a.y < b.y + b.height && b.y < a.y + a.height
 }
 
-// Symmetric with OUTSIDE_MARGIN (core): 20px clear of the frame being
-// annotated, 20px clear of whatever frame is next door — so a 160px gap
-// between two frames lands the card at exactly its 120px floor width with
-// no bleed on either side.
-const NEIGHBOR_SAFETY_GAP = 20
 
 /**
  * How far it is from `ownFrame`'s edge on `side` to the nearest other frame
@@ -721,51 +715,16 @@ function computeLayout(target: SceneNode, rect: Rect, record: AnnotationRecord):
   // and has decided; pulling the card back from under them means the drag
   // simply does not work wherever a neighbour happens to be close, which is
   // most of a real file.
-  const cardWidth = record.cardWidth !== null ? record.cardWidth : shrinkToFit(metrics, frameRect, side, frame.id)
+  const cardWidth =
+    record.cardWidth !== null
+      ? record.cardWidth
+      : shrinkToFit(metrics, nearestNeighborGap(frameRect, side, frame.id))
 
   const layout = annotationLayoutOutsideFrame(rect, frameRect, record, {
     ...metrics,
     cardWidth
   })
   return { layout, cardWidth, side }
-}
-
-/**
- * The plugin's own choice of width, narrowed so the card never bleeds into
- * the screen next door — down to `MIN_OUTSIDE_CARD_WIDTH`, or to the card's
- * own width when that is already narrower (a Small card must not be widened
- * back out by the floor).
- */
-function shrinkToFit(
-  metrics: CardMetrics,
-  frameRect: Rect,
-  side: 'LEFT' | 'RIGHT',
-  ownFrameId: string
-): number {
-  const gap = nearestNeighborGap(frameRect, side, ownFrameId)
-  if (!Number.isFinite(gap)) return metrics.cardWidth
-  return Math.max(
-    floorFor(metrics),
-    Math.min(metrics.cardWidth, gap - OUTSIDE_MARGIN - NEIGHBOR_SAFETY_GAP)
-  )
-}
-
-/**
- * How narrow this size is allowed to be squeezed.
- *
- * `MIN_OUTSIDE_CARD_WIDTH` was tuned when every card was one width, and it
- * squeezes a Large card down to a Medium one — at which point its type and
- * its category pill, still sized for Large, no longer fit and the pill runs
- * out past the edge. Reported exactly that way.
- *
- * So the floor is proportional as well as absolute: never below the tuned
- * minimum, never below three quarters of what this size asks for, and never
- * above the size's own width (a Small card is already narrower than the
- * minimum and must not be widened by it). Medium and Small come out exactly
- * where they always did; only Large stops short of where it used to go.
- */
-function floorFor(metrics: CardMetrics): number {
-  return Math.min(metrics.cardWidth, Math.max(MIN_OUTSIDE_CARD_WIDTH, metrics.cardWidth * 0.75))
 }
 
 // `ensureBadge`/`ensureCard` each have an `await` (font loading) between

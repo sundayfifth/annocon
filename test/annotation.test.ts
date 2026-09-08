@@ -14,11 +14,16 @@ import {
   createAnnotationRecord,
   elbowPoints,
   leaderIntoCard,
+  floorFor,
   metricsForSize,
+  MIN_OUTSIDE_CARD_WIDTH,
+  NEIGHBOR_SAFETY_GAP,
+  OUTSIDE_MARGIN,
   nearestPointOnRect,
   parseAnnotationRecord,
   resolveCardStacking,
   resolveOutsideSide,
+  shrinkToFit,
   resolveSide,
   serialiseAnnotationRecord
 } from '../src/core/annotation.js'
@@ -524,3 +529,81 @@ describe('resolveCardStacking', () => {
   })
 })
 
+
+describe('shrinkToFit', () => {
+  const small = metricsForSize('S')
+  const medium = metricsForSize('M')
+  const large = metricsForSize('L')
+  /** The gap that leaves a card of `width` exactly its asked-for width. */
+  const gapFor = (width: number) => width + OUTSIDE_MARGIN + NEIGHBOR_SAFETY_GAP
+
+  it('keeps the size\'s own width when nothing is next door', () => {
+    for (const metrics of [small, medium, large]) {
+      expect(shrinkToFit(metrics, Number.POSITIVE_INFINITY)).toBe(metrics.cardWidth)
+    }
+  })
+
+  it('never widens a card past what its size asks for, however much room there is', () => {
+    for (const metrics of [small, medium, large]) {
+      expect(shrinkToFit(metrics, 5000)).toBe(metrics.cardWidth)
+    }
+  })
+
+  it('narrows to the room actually available', () => {
+    // 200px to the neighbour, 20px clear of each frame, so 160px of card.
+    expect(shrinkToFit(large, 200)).toBe(160)
+  })
+
+  // The reported bug: MIN_OUTSIDE_CARD_WIDTH was tuned when every card was
+  // one width, and squeezing a Large card down to it left the type and the
+  // category pill — still sized for Large — running out past the edge.
+  it('stops a Large card at three quarters of its width, not at the flat minimum', () => {
+    const squeezed = shrinkToFit(large, 100)
+    expect(squeezed).toBe(large.cardWidth * 0.75)
+    expect(squeezed).toBeGreaterThan(MIN_OUTSIDE_CARD_WIDTH)
+  })
+
+  it('leaves Medium exactly where it always was', () => {
+    // The tuned case: a 160px gap between two frames, 20px clear of each.
+    expect(shrinkToFit(medium, gapFor(MIN_OUTSIDE_CARD_WIDTH))).toBe(MIN_OUTSIDE_CARD_WIDTH)
+    // And a tighter gap than that does not push it below the minimum.
+    expect(shrinkToFit(medium, 60)).toBe(MIN_OUTSIDE_CARD_WIDTH)
+  })
+
+  it('never widens a Small card up to the minimum', () => {
+    // Small is already narrower than MIN_OUTSIDE_CARD_WIDTH; the floor must
+    // not be read as "make it at least this wide".
+    expect(small.cardWidth).toBeLessThan(MIN_OUTSIDE_CARD_WIDTH)
+    expect(shrinkToFit(small, 40)).toBe(small.cardWidth)
+  })
+
+  it('never returns a width below the size\'s own floor, however tight the gap', () => {
+    for (const metrics of [small, medium, large]) {
+      for (const gap of [0, 1, 20, 40, 80, 160]) {
+        expect(shrinkToFit(metrics, gap)).toBeGreaterThanOrEqual(floorFor(metrics))
+        expect(shrinkToFit(metrics, gap)).toBeLessThanOrEqual(metrics.cardWidth)
+      }
+    }
+  })
+})
+
+describe('floorFor', () => {
+  it('never floors a card above its own width', () => {
+    for (const size of ANNOTATION_SIZES) {
+      const metrics = metricsForSize(size)
+      expect(floorFor(metrics)).toBeLessThanOrEqual(metrics.cardWidth)
+    }
+  })
+
+  it('never floors a card below the tuned minimum unless the card is already narrower', () => {
+    for (const size of ANNOTATION_SIZES) {
+      const metrics = metricsForSize(size)
+      const floor = floorFor(metrics)
+      if (metrics.cardWidth >= MIN_OUTSIDE_CARD_WIDTH) {
+        expect(floor).toBeGreaterThanOrEqual(MIN_OUTSIDE_CARD_WIDTH)
+      } else {
+        expect(floor).toBe(metrics.cardWidth)
+      }
+    }
+  })
+})
