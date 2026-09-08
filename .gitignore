@@ -9,3 +9,4 @@ npm-debug.log*
 coverage/
 *.tsbuildinfo
 src/**/*.css.d.ts
+.impeccable/
