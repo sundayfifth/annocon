@@ -862,7 +862,22 @@ async function syncConnectorBody(
             detour: record.detour,
             obstacles
           })
+    // The second reparent, and it needs the same repair as the first.
+    //
+    // It is not a dead call: every `await` above hands the main thread back
+    // to Figma, and a person can drop the line onto a frame in one of those
+    // gaps — the line is deliberately unlocked so its style panel works.
+    // Nothing in this function reparents it, so this is the only place that
+    // catches it, and reparenting keeps the `x`/`y` numbers while changing
+    // what they mean. Without putting the absolute position back, a line
+    // that drifted mid-draw is teleported by the frame's origin the instant
+    // it finishes being drawn.
+    const drawnAt = node.absoluteTransform
+    const drawnX = drawnAt[0]?.[2] ?? node.x
+    const drawnY = drawnAt[1]?.[2] ?? node.y
     ensureOnPage(node)
+    node.x = drawnX
+    node.y = drawnY
     // Fingerprinted after every draw, so the next change to this node can be
     // attributed: matching means we drew it, differing means somebody else did.
     rememberDrawnShape(node)

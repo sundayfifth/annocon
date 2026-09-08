@@ -189,6 +189,11 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] Drag a connector so it lands **on top of a frame** (Figma reparents it),
       then reshape it → the stored shape is still where the line is, not one
       frame origin away
+- [ ] Drop a connector onto a frame *while a re-route is running* — drag a
+      screen it is attached to and let go of the line over a frame in the same
+      motion → the line stays where it was drawn. Reparenting keeps the x/y
+      numbers and changes what they mean, so a line caught mid-draw is
+      teleported by the frame's origin unless the position is put back.
 - [ ] Pull a bend **inwards** so the line's bounding box does not change →
       still noticed as a hand edit, and not redrawn over on the next sync
 - [ ] Select a screen and its connector together and drag both while the
