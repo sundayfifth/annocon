@@ -26,6 +26,7 @@ import {
   elbowPoints,
   leaderIntoCard,
   metricsForSize,
+  nearestGapBeside,
   nearestPointOnRect,
   parseAnnotationRecord,
   resolveCardStacking,
@@ -635,16 +636,10 @@ function samePolyline(
   return true
 }
 
-function verticallyOverlaps(a: Rect, b: Rect): boolean {
-  return a.y < b.y + b.height && b.y < a.y + a.height
-}
-
 
 /**
- * How far it is from `ownFrame`'s edge on `side` to the nearest other frame
- * that a card routed that way could run into — screens placed close together
- * in a flow, say. `Infinity` when nothing is in the way, so the card is free
- * to use its ideal width.
+ * The frames on the page that could crowd `ownFrame` on either side, handed
+ * to `nearestGapBeside` to do the measuring.
  *
  * Looks inside groups and sections for the same reason `collectRouteObstacles`
  * does: putting a flow in a section is how people tidy up, and it must not
@@ -653,7 +648,7 @@ function verticallyOverlaps(a: Rect, b: Rect): boolean {
  * whole canvas to itself.
  */
 function nearestNeighborGap(ownFrame: Rect, side: 'LEFT' | 'RIGHT', ownFrameId: string): number {
-  let nearest = Number.POSITIVE_INFINITY
+  const neighbours: Array<Rect> = []
   const visit = (nodes: ReadonlyArray<SceneNode>): void => {
     for (const node of nodes) {
       if (!node.visible) continue
@@ -663,14 +658,12 @@ function nearestNeighborGap(ownFrame: Rect, side: 'LEFT' | 'RIGHT', ownFrameId: 
       }
       if (node.type !== 'FRAME' || node.id === ownFrameId) continue
       const rect = node.absoluteBoundingBox
-      if (rect === null || !verticallyOverlaps(ownFrame, rect)) continue
-      const gap =
-        side === 'RIGHT' ? rect.x - (ownFrame.x + ownFrame.width) : ownFrame.x - (rect.x + rect.width)
-      if (gap >= 0 && gap < nearest) nearest = gap
+      if (rect === null) continue
+      neighbours.push(rect)
     }
   }
   visit(figma.currentPage.children)
-  return nearest
+  return nearestGapBeside(ownFrame, side, neighbours)
 }
 
 /** Containers holding screens rather than being one — mirrors `OBSTACLE_CONTAINERS` in `connectorScene`. */

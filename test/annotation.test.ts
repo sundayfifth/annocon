@@ -20,6 +20,7 @@ import {
   MIN_OUTSIDE_CARD_WIDTH,
   NEIGHBOR_SAFETY_GAP,
   OUTSIDE_MARGIN,
+  nearestGapBeside,
   nearestPointOnRect,
   parseAnnotationRecord,
   resolveCardStacking,
@@ -683,5 +684,69 @@ describe('computeLayout', () => {
         expect(resolved.cardWidth).toBe(shrinkToFit(metricsForSize(size), gap))
       }
     }
+  })
+})
+
+describe('nearestGapBeside', () => {
+  const own: Rect = { x: 500, y: 0, width: 400, height: 800 }
+  const rightOf = { x: 1000, y: 0, width: 400, height: 800 }
+  const leftOf = { x: 0, y: 0, width: 400, height: 800 }
+
+  it('reports Infinity when nothing is beside it', () => {
+    expect(nearestGapBeside(own, 'RIGHT', [])).toBe(Number.POSITIVE_INFINITY)
+    expect(nearestGapBeside(own, 'LEFT', [])).toBe(Number.POSITIVE_INFINITY)
+  })
+
+  it('measures the space between the two frames, not their positions', () => {
+    // own ends at 900, the neighbour starts at 1000.
+    expect(nearestGapBeside(own, 'RIGHT', [rightOf])).toBe(100)
+    // the neighbour ends at 400, own starts at 500.
+    expect(nearestGapBeside(own, 'LEFT', [leftOf])).toBe(100)
+  })
+
+  it('takes the closest of several on that side', () => {
+    const nearer = { x: 940, y: 0, width: 100, height: 800 }
+    expect(nearestGapBeside(own, 'RIGHT', [rightOf, nearer])).toBe(40)
+  })
+
+  it('ignores whatever is on the other side', () => {
+    expect(nearestGapBeside(own, 'RIGHT', [leftOf])).toBe(Number.POSITIVE_INFINITY)
+    expect(nearestGapBeside(own, 'LEFT', [rightOf])).toBe(Number.POSITIVE_INFINITY)
+  })
+
+  // A screen in the row above is not beside this one, however its `x`
+  // compares. Counting it would shrink a card for a frame it can never reach.
+  it('ignores a frame in another row', () => {
+    const rowBelow = { ...rightOf, y: 900 }
+    expect(nearestGapBeside(own, 'RIGHT', [rowBelow])).toBe(Number.POSITIVE_INFINITY)
+  })
+
+  it('counts a frame whose rows only just overlap', () => {
+    const barely = { ...rightOf, y: 799 }
+    expect(nearestGapBeside(own, 'RIGHT', [barely])).toBe(100)
+    const justMisses = { ...rightOf, y: 800 }
+    expect(nearestGapBeside(own, 'RIGHT', [justMisses])).toBe(Number.POSITIVE_INFINITY)
+  })
+
+  // A negative gap is not a gap. Something sitting on top of the frame is not
+  // beside it, and treating the overlap as a measurement would squeeze the
+  // card to nothing.
+  it('ignores a frame that overlaps rather than sits beside', () => {
+    const onTop = { x: 700, y: 0, width: 400, height: 800 }
+    expect(nearestGapBeside(own, 'RIGHT', [onTop])).toBe(Number.POSITIVE_INFINITY)
+  })
+
+  it('counts two frames touching exactly as no room at all', () => {
+    const flush = { x: 900, y: 0, width: 400, height: 800 }
+    expect(nearestGapBeside(own, 'RIGHT', [flush])).toBe(0)
+  })
+
+  // The tuned case the whole shrink-to-fit chain was built around: a 160px
+  // gap leaves a Medium card at exactly its own width, 20px clear of each.
+  it('feeds shrinkToFit the number it was tuned against', () => {
+    const gapped = { x: 1060, y: 0, width: 400, height: 800 }
+    const gap = nearestGapBeside(own, 'RIGHT', [gapped])
+    expect(gap).toBe(160)
+    expect(shrinkToFit(metricsForSize('M'), gap)).toBe(MIN_OUTSIDE_CARD_WIDTH)
   })
 })

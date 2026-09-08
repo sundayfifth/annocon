@@ -377,6 +377,37 @@ export function shrinkToFit(metrics: CardMetrics, gap: number): number {
   )
 }
 
+function verticallyOverlaps(a: Rect, b: Rect): boolean {
+  return a.y < b.y + b.height && b.y < a.y + a.height
+}
+
+/**
+ * How far it is from `ownFrame`'s edge on `side` to the nearest of
+ * `neighbours` that a card routed that way could run into — screens placed
+ * close together in a flow, say. `Infinity` when nothing is in the way, so
+ * the card is free to use its ideal width.
+ *
+ * Only a neighbour whose rows overlap `ownFrame`'s can be in the way: a
+ * screen in the row above is not beside this one however its `x` compares.
+ * A neighbour already overlapping on this axis is skipped too — a negative
+ * gap is not a gap, and treating it as one would squeeze the card to nothing
+ * because something is sitting on top of the frame rather than beside it.
+ */
+export function nearestGapBeside(
+  ownFrame: Rect,
+  side: 'LEFT' | 'RIGHT',
+  neighbours: ReadonlyArray<Rect>
+): number {
+  let nearest = Number.POSITIVE_INFINITY
+  for (const rect of neighbours) {
+    if (!verticallyOverlaps(ownFrame, rect)) continue
+    const gap =
+      side === 'RIGHT' ? rect.x - (ownFrame.x + ownFrame.width) : ownFrame.x - (rect.x + rect.width)
+    if (gap >= 0 && gap < nearest) nearest = gap
+  }
+  return nearest
+}
+
 export interface ResolvedLayout {
   readonly layout: AnnotationLayout
   readonly cardWidth: number
