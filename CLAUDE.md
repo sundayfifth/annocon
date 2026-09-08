@@ -66,6 +66,8 @@ Manual verification steps are in `docs/qa-checklist.md`.
   hangs the tab and the user cannot even click Cancel.
 - Test behaviour others depend on, not implementation.
 - Commit in small steps that actually work.
+- Run `npm run typecheck && npm test` after every change, before reporting it
+  done. Not on request — every time.
 
 ## Notes
 
