@@ -8,6 +8,9 @@
  * frame, and every wrong "no" is a redundant write to the document.
  */
 
+import type { Point } from './anchor.js'
+import type { ManualVertex } from './connector.js'
+
 /** One point of a drawn polyline, in the node's own coordinates. */
 export interface DrawnVertex {
   readonly x: number
@@ -143,4 +146,104 @@ export function samePolyline(
     if (was.start !== now.start || was.end !== now.end) return false
   }
   return true
+}
+
+/** A drawn segment that may carry bezier handles, as a vector network's do. */
+export interface TangentSegment extends DrawnSegment {
+  readonly tangentStart?: Point
+  readonly tangentEnd?: Point
+}
+
+export interface TangentNetwork {
+  readonly vertices: ReadonlyArray<DrawnVertex>
+  readonly segments: ReadonlyArray<TangentSegment>
+}
+
+/** A shape walked into path order: every vertex, and the order the line visits them. */
+export interface DrawnRun {
+  readonly vertices: ReadonlyArray<ManualVertex>
+  readonly order: ReadonlyArray<number>
+}
+
+/**
+ * The shape a vector network describes: its vertices with their curve
+ * handles, and the order the line actually visits them.
+ *
+ * The vertex list is not the path. Adding a point mid-line with the pen tool
+ * appends it to the end of the list, so redrawing in list order would jump
+ * the line out to the far end and back. The segments say what joins what, so
+ * the path is walked from them.
+ *
+ * `originX`/`originY` place the vertices on the canvas. The caller has to
+ * take them from the node's `absoluteTransform`, not its bounding box and
+ * not its `x`/`y`: the box is grown by the stroke width, so it shifts every
+ * point by half a stroke, and `x`/`y` mean "relative to the parent", which
+ * stops being the page the moment somebody drops the connector onto a frame.
+ *
+ * `null` when the shape is not a single open run — a person who has cut a
+ * connector into two pieces, or closed it into a loop, is holding something
+ * this cannot carry, and guessing at it would be worse than leaving it be.
+ */
+export function walkDrawnShape(
+  network: TangentNetwork,
+  originX: number,
+  originY: number
+): DrawnRun | null {
+  if (network.vertices.length < 2) return null
+
+  const vertices: Array<ManualVertex> = network.vertices.map((vertex) => ({
+    at: { x: vertex.x + originX, y: vertex.y + originY },
+    tangentIn: null,
+    tangentOut: null
+  }))
+
+  // Who is joined to whom, and with what curvature.
+  const neighbours = new Map<number, Array<number>>()
+  const tangents = new Map<string, Point>()
+  for (const segment of network.segments) {
+    for (const [from, to] of [
+      [segment.start, segment.end],
+      [segment.end, segment.start]
+    ]) {
+      const list = neighbours.get(from as number) ?? []
+      list.push(to as number)
+      neighbours.set(from as number, list)
+    }
+    if (typeof segment.tangentStart !== 'undefined') {
+      tangents.set(`${segment.start}>${segment.end}`, segment.tangentStart)
+    }
+    if (typeof segment.tangentEnd !== 'undefined') {
+      tangents.set(`${segment.end}>${segment.start}`, segment.tangentEnd)
+    }
+  }
+
+  // An open run has exactly two ends — vertices joined to one other vertex.
+  const ends = [...neighbours].filter(([, list]) => list.length === 1).map(([index]) => index)
+  if (ends.length !== 2) return null
+
+  const order: Array<number> = []
+  const seen = new Set<number>()
+  let current = ends[0] as number
+  while (!seen.has(current)) {
+    order.push(current)
+    seen.add(current)
+    const next = (neighbours.get(current) ?? []).find((candidate) => !seen.has(candidate))
+    if (typeof next === 'undefined') break
+    current = next
+  }
+  if (order.length !== network.vertices.length) return null
+
+  for (let i = 0; i < order.length; i += 1) {
+    const index = order[i] as number
+    const previous = i > 0 ? (order[i - 1] as number) : null
+    const next = i < order.length - 1 ? (order[i + 1] as number) : null
+    const vertex = vertices[index]
+    if (typeof vertex === 'undefined') continue
+    vertices[index] = {
+      at: vertex.at,
+      tangentIn: previous === null ? null : tangents.get(`${index}>${previous}`) ?? null,
+      tangentOut: next === null ? null : tangents.get(`${index}>${next}`) ?? null
+    }
+  }
+  return { vertices, order }
 }

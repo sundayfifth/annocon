@@ -36,7 +36,12 @@ import {
   serialiseConnectorStylePrefs
 } from '../core/connector.js'
 import { contrastingTextColor } from '../core/category.js'
-import { alreadyDrawn, shapeFingerprint } from '../core/drawnShape.js'
+import {
+  type DrawnRun,
+  alreadyDrawn,
+  shapeFingerprint,
+  walkDrawnShape
+} from '../core/drawnShape.js'
 import {
   type RouteObstacle,
   EMPTY_OBSTACLES,
@@ -415,92 +420,17 @@ export async function captureManualReshape(node: SceneNode): Promise<boolean> {
 }
 
 /**
- * The shape on the node: its vertices with their curve handles, and the
- * order the line actually visits them.
- *
- * The vertex list is not the path. Adding a point mid-line with the pen tool
- * appends it to the end of the list, so redrawing in list order would jump
- * the line out to the far end and back. The segments say what joins what, so
- * the path is walked from them.
- *
- * Coordinates are made absolute against the node's *bounding box* rather
- * than its `x`/`y`: dropping a connector onto a frame reparents it, after
- * which `x`/`y` mean "relative to that frame" and would put the stored shape
- * a whole frame origin away from where it is.
- *
- * `null` when the shape is not a single open run — a person who has cut a
- * connector into two pieces, or closed it into a loop, is holding something
- * this cannot carry, and guessing at it would be worse than leaving it be.
+ * `walkDrawnShape` for a node: reads its network, and places the vertices on
+ * the canvas using `absoluteTransform` — the one thing that answers "where
+ * is this" whatever the node's parent happens to be.
  */
-function drawnShapeOf(node: VectorNode): { vertices: ReadonlyArray<ManualVertex>; order: ReadonlyArray<number> } | null {
-  const network = node.vectorNetwork
-  if (network.vertices.length < 2) return null
-
-  // `absoluteTransform`, not the bounding box and not `x`/`y`. A vertex is
-  // stored relative to the node's own origin; the bounding box is a
-  // different rectangle again — it is grown by the stroke width, so using it
-  // shifts every point by half a stroke — and `x`/`y` mean "relative to the
-  // parent", which stops being the page the moment somebody drops the
-  // connector onto a frame. The transform is the one thing that answers
-  // "where is this on the canvas" whatever the node's parent is.
+function drawnShapeOf(node: VectorNode): DrawnRun | null {
   const transform = node.absoluteTransform
-  const absoluteX = transform[0]?.[2] ?? node.x
-  const absoluteY = transform[1]?.[2] ?? node.y
-  const vertices: Array<ManualVertex> = network.vertices.map((vertex) => ({
-    at: { x: vertex.x + absoluteX, y: vertex.y + absoluteY },
-    tangentIn: null,
-    tangentOut: null
-  }))
-
-  // Who is joined to whom, and with what curvature.
-  const neighbours = new Map<number, Array<number>>()
-  const tangents = new Map<string, Point>()
-  for (const segment of network.segments) {
-    for (const [from, to] of [
-      [segment.start, segment.end],
-      [segment.end, segment.start]
-    ]) {
-      const list = neighbours.get(from as number) ?? []
-      list.push(to as number)
-      neighbours.set(from as number, list)
-    }
-    if (typeof segment.tangentStart !== 'undefined') {
-      tangents.set(`${segment.start}>${segment.end}`, segment.tangentStart)
-    }
-    if (typeof segment.tangentEnd !== 'undefined') {
-      tangents.set(`${segment.end}>${segment.start}`, segment.tangentEnd)
-    }
-  }
-
-  // An open run has exactly two ends — vertices joined to one other vertex.
-  const ends = [...neighbours].filter(([, list]) => list.length === 1).map(([index]) => index)
-  if (ends.length !== 2) return null
-
-  const order: Array<number> = []
-  const seen = new Set<number>()
-  let current = ends[0] as number
-  while (!seen.has(current)) {
-    order.push(current)
-    seen.add(current)
-    const next = (neighbours.get(current) ?? []).find((candidate) => !seen.has(candidate))
-    if (typeof next === 'undefined') break
-    current = next
-  }
-  if (order.length !== network.vertices.length) return null
-
-  for (let i = 0; i < order.length; i += 1) {
-    const index = order[i] as number
-    const previous = i > 0 ? (order[i - 1] as number) : null
-    const next = i < order.length - 1 ? (order[i + 1] as number) : null
-    const vertex = vertices[index]
-    if (typeof vertex === 'undefined') continue
-    vertices[index] = {
-      at: vertex.at,
-      tangentIn: previous === null ? null : tangents.get(`${index}>${previous}`) ?? null,
-      tangentOut: next === null ? null : tangents.get(`${index}>${next}`) ?? null
-    }
-  }
-  return { vertices, order }
+  return walkDrawnShape(
+    node.vectorNetwork,
+    transform[0]?.[2] ?? node.x,
+    transform[1]?.[2] ?? node.y
+  )
 }
 
 /** Puts a hand-drawn connector back under the plugin's own routing. */

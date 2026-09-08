@@ -6,7 +6,8 @@ import {
   type DrawnVertex,
   alreadyDrawn,
   samePolyline,
-  shapeFingerprint
+  shapeFingerprint,
+  walkDrawnShape
 } from '../src/core/drawnShape.js'
 
 /** A three-point elbow, chained the way the drawing code chains one. */
@@ -257,5 +258,134 @@ describe('samePolyline', () => {
     const nothing: DrawnNetwork = { vertices: [], segments: [] }
     expect(samePolyline(drawnAs(nothing, 0, 0), 0, 0, nothing)).toBe(true)
     expect(samePolyline(drawnAs(nothing, 0, 0), 0, 0, leader)).toBe(false)
+  })
+})
+
+describe('walkDrawnShape', () => {
+  /** Three points in a row, but listed out of order — as a pen-tool edit leaves them. */
+  const points = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 50, y: 0 }
+  ]
+
+  it('returns null for a shape with fewer than two points', () => {
+    expect(walkDrawnShape({ vertices: [], segments: [] }, 0, 0)).toBeNull()
+    expect(walkDrawnShape({ vertices: [{ x: 0, y: 0 }], segments: [] }, 0, 0)).toBeNull()
+  })
+
+  // The trap the whole function exists for. Adding a point mid-line with the
+  // pen tool appends it to the *end* of the vertex list, so anything that
+  // reads the list in order jumps out to the far end and back — and a label
+  // placed "halfway along" lands somewhere the line never goes.
+  it('walks the path the segments describe, not the order the points are listed in', () => {
+    const run = walkDrawnShape(
+      { vertices: points, segments: [{ start: 0, end: 2 }, { start: 2, end: 1 }] },
+      0,
+      0
+    )
+    expect(run?.order).toEqual([0, 2, 1])
+  })
+
+  it('places the points on the canvas using the origin it is given', () => {
+    const run = walkDrawnShape(
+      { vertices: points, segments: [{ start: 0, end: 2 }, { start: 2, end: 1 }] },
+      1000,
+      -40
+    )
+    expect(run?.vertices[0]?.at).toEqual({ x: 1000, y: -40 })
+    expect(run?.vertices[1]?.at).toEqual({ x: 1100, y: -40 })
+  })
+
+  it('can start from either end of the run', () => {
+    const run = walkDrawnShape(
+      { vertices: points, segments: [{ start: 1, end: 2 }, { start: 2, end: 0 }] },
+      0,
+      0
+    )
+    // Whichever end it starts at, the sequence has to be a real walk.
+    expect(run?.order).toHaveLength(3)
+    expect(new Set(run?.order)).toEqual(new Set([0, 1, 2]))
+    expect(run?.order[1]).toBe(2)
+  })
+
+  // Someone who has cut a connector in two, or closed it into a loop, is
+  // holding something a single run cannot carry. Guessing would be worse
+  // than leaving it be.
+  it('returns null for a closed loop', () => {
+    const loop = walkDrawnShape(
+      {
+        vertices: points,
+        segments: [
+          { start: 0, end: 1 },
+          { start: 1, end: 2 },
+          { start: 2, end: 0 }
+        ]
+      },
+      0,
+      0
+    )
+    expect(loop).toBeNull()
+  })
+
+  it('returns null for a line cut into two pieces', () => {
+    const cut = walkDrawnShape(
+      {
+        vertices: [...points, { x: 200, y: 0 }],
+        segments: [{ start: 0, end: 1 }, { start: 2, end: 3 }]
+      },
+      0,
+      0
+    )
+    expect(cut).toBeNull()
+  })
+
+  it('returns null when a branch leaves a point with three neighbours', () => {
+    const branched = walkDrawnShape(
+      {
+        vertices: [...points, { x: 50, y: 90 }],
+        segments: [
+          { start: 0, end: 2 },
+          { start: 2, end: 1 },
+          { start: 2, end: 3 }
+        ]
+      },
+      0,
+      0
+    )
+    expect(branched).toBeNull()
+  })
+
+  it('carries each point\'s curve handles, facing the way the walk goes', () => {
+    const run = walkDrawnShape(
+      {
+        vertices: points,
+        segments: [
+          { start: 0, end: 2, tangentStart: { x: 10, y: 5 }, tangentEnd: { x: -10, y: 5 } },
+          { start: 2, end: 1 }
+        ]
+      },
+      0,
+      0
+    )
+    // The first point has nothing behind it and a handle ahead of it.
+    expect(run?.vertices[0]?.tangentIn).toBeNull()
+    expect(run?.vertices[0]?.tangentOut).toEqual({ x: 10, y: 5 })
+    // The middle point of the walk is vertex 2, whose handle faces back.
+    expect(run?.vertices[2]?.tangentIn).toEqual({ x: -10, y: 5 })
+    // The last point has nothing ahead of it.
+    expect(run?.vertices[1]?.tangentOut).toBeNull()
+  })
+
+  it('leaves handles null on a shape drawn without any', () => {
+    const run = walkDrawnShape(
+      { vertices: points, segments: [{ start: 0, end: 2 }, { start: 2, end: 1 }] },
+      0,
+      0
+    )
+    for (const vertex of run?.vertices ?? []) {
+      expect(vertex.tangentIn).toBeNull()
+      expect(vertex.tangentOut).toBeNull()
+    }
   })
 })
