@@ -654,6 +654,7 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
     `${Math.round((style?.opacity ?? 1) * 100)}%`
   )
   const [labelText, setLabelText] = useState<string>(style?.label ?? '')
+  useAdoptedFromOutside(style?.label ?? '', setLabelText)
   // Only one flyout open at a time across the whole panel — colour and both cap pickers share this.
   const [openFlyout, setOpenFlyout] = useState<'color' | 'startCap' | 'endCap' | null>(null)
   if (style === null) return null
@@ -883,6 +884,31 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
   )
 }
 
+/**
+ * Adopts a value that changed *outside* this component, without disturbing
+ * what someone is in the middle of typing here.
+ *
+ * Both editors used to get this by putting the record's own text in their
+ * React `key`: a canvas edit changed the record, the key changed, the whole
+ * subtree remounted, and the box picked up the new words. It worked, and it
+ * also threw away every other field's unsaved state — type a stroke weight,
+ * then blur the label, and the weight you typed was gone with nothing to say
+ * so.
+ *
+ * Comparing against the last value seen from outside is what separates the
+ * two directions: typing here moves local state only, so nothing fires; a
+ * change arriving from elsewhere differs from what was last seen, and is
+ * taken.
+ */
+function useAdoptedFromOutside(incoming: string, adopt: (value: string) => void): void {
+  const lastSeen = useRef(incoming)
+  useEffect(() => {
+    if (lastSeen.current === incoming) return
+    lastSeen.current = incoming
+    adopt(incoming)
+  }, [incoming, adopt])
+}
+
 function AnnotateEditor({
   node,
   categories
@@ -891,6 +917,7 @@ function AnnotateEditor({
   categories: ReadonlyArray<Category>
 }) {
   const [text, setText] = useState<string>(node.annotationText ?? '')
+  useAdoptedFromOutside(node.annotationText ?? '', setText)
 
   return (
     <>
@@ -1248,12 +1275,11 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
               selection.length === 1 ? (
                 <AnnotateEditor
                   categories={categories}
-                  // Keyed on the note as well as the layer, so text typed
-                  // straight into the card on the canvas replaces what is in
-                  // the box here. Typing in the box does not remount it: the
-                  // record only changes on blur, which is when the two are
-                  // meant to agree again.
-                  key={`${(selection[0] as SelectionSummary).id}:${(selection[0] as SelectionSummary).annotationText ?? ''}`}
+                  // Keyed on the layer alone. Selecting a different one is
+                  // the only thing that should reset every field at once;
+                  // text typed into the card on the canvas is picked up by
+                  // `useAdoptedFromOutside` without a remount.
+                  key={(selection[0] as SelectionSummary).id}
                   node={selection[0] as SelectionSummary}
                 />
               ) : (
@@ -1281,10 +1307,11 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
             children:
               selection.length === 1 && (selection[0] as SelectionSummary).connectorStyle !== null ? (
                 <ConnectorStyleEditor
-                  // Keyed on the label too, for the same reason as the
-                  // annotation editor above: text typed into the pill on the
-                  // canvas has to replace what is in the box here.
-                  key={`${(selection[0] as SelectionSummary).id}:${(selection[0] as SelectionSummary).connectorStyle?.label ?? ''}`}
+                  // Keyed on the connector alone — see the annotation editor
+                  // above. Keying on the label as well remounted this whole
+                  // panel every time the label changed, resetting the weight,
+                  // opacity and radius boxes with it.
+                  key={(selection[0] as SelectionSummary).id}
                   node={selection[0] as SelectionSummary}
                 />
               ) : (

@@ -100,6 +100,14 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       on screen to say so.
 - [ ] Same for a note: type into the note field, then click a category chip in
       one motion → the words and the category both stick
+- [ ] Type a weight, an opacity and a radius **without clicking away**, then
+      edit the connector's label and blur → all three keep what you typed. The
+      panel used to be rebuilt whenever the label changed, which reset them.
+- [ ] With the panel open on a connector, edit its label pill **on the canvas**
+      → the Label field here follows. Same for a note card and the note field.
+      This is what the rebuild used to buy, and it has to keep working.
+- [ ] Select a different connector → every field shows the new line's values,
+      not the previous one's
 - [ ] Type `0.8` into the weight field: every character goes in. A `minimum` on
       the field rejects the leading `0`, which made the whole 0.5–0.9 range
       untypeable — the values the field exists to accept.
