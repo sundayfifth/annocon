@@ -615,9 +615,18 @@ const SIZE_OPTIONS = ANNOTATION_SIZES.map((size) => ({
 
 /**
  * The thinnest stroke worth drawing — below this a line stops reading as one
- * at ordinary zoom. Declared to `TextboxNumeric` *and* enforced on blur:
- * `minimum` only governs the field's own stepper, so a typed value has to be
- * clamped against the same number or the two disagree.
+ * at ordinary zoom. Enforced on blur only, deliberately **not** handed to
+ * `TextboxNumeric` as `minimum`.
+ *
+ * `minimum` reads as a bound on the finished value; it is really a bound on
+ * every keystroke. `RawTextboxNumeric` evaluates what the field would say
+ * after each key and calls `preventDefault()` when that is out of range — so
+ * a minimum of 0.5 rejects the leading `0` of `0.8`, and every value from
+ * 0.5 to 0.9 becomes untypeable. The field refuses the values it exists to
+ * accept, and says nothing about why.
+ *
+ * Clamping on blur costs one wrong-looking number for as long as the cursor
+ * is in the field, and gets the whole range back.
  */
 const MIN_STROKE_WEIGHT = 0.5
 
@@ -702,7 +711,6 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
         </div>
         <div style={{ flex: '1 1 0' }}>
           <TextboxNumeric
-            minimum={MIN_STROKE_WEIGHT}
             onBlur={() => {
               const parsed = Number.parseFloat(weightText)
               if (!Number.isFinite(parsed)) return

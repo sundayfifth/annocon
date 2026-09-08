@@ -93,6 +93,11 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] Close the plugin, move a frame, reopen → the line snaps back into place
 - [ ] Delete one endpoint frame → the line shows as broken, listed in Broken links, no crash
 - [ ] Change weight / colour / head / tail → applies immediately and survives a re-sync
+- [ ] Type `0.8` into the weight field: every character goes in. A `minimum` on
+      the field rejects the leading `0`, which made the whole 0.5–0.9 range
+      untypeable — the values the field exists to accept.
+- [ ] Type `0.1` into the weight field and click away → it becomes `0.5`, and
+      the line is drawn at 0.5
 - [ ] Switch line type straight / elbowed / curved → routes sensibly in all four quadrants
 - [ ] Select a stale connector → the properties panel shows the Re-sync relaunch button
 
