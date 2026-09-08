@@ -567,7 +567,7 @@ function hasObstacles(obstacles: RouteObstacles): boolean {
  * is leaving a frame and turning back into it, and every segment in between
  * is still counted, which is exactly what catches that.
  */
-export function routeCost(points: ReadonlyArray<Point>, obstacles: RouteObstacles): number {
+function routeCost(points: ReadonlyArray<Point>, obstacles: RouteObstacles): number {
   return (
     routeCrossings(points, obstacles.foreign) +
     routeCrossings(points, obstacles.own, 1, points.length - 3)
@@ -575,7 +575,7 @@ export function routeCost(points: ReadonlyArray<Point>, obstacles: RouteObstacle
 }
 
 /** Every edge of every box, as a candidate coordinate on `axis`. Used to seed the search. */
-export function edgesOn(obstacles: RouteObstacles, axis: 'x' | 'y'): ReadonlyArray<[number, number]> {
+function edgesOn(obstacles: RouteObstacles, axis: 'x' | 'y'): ReadonlyArray<[number, number]> {
   const size = axis === 'x' ? 'width' : 'height'
   const across = axis === 'x' ? 'y' : 'x'
   const acrossSize = axis === 'x' ? 'height' : 'width'
@@ -982,7 +982,7 @@ const OBSTACLE_CLEARANCE = 20
 /** Past this many boxes, standoffs go back to the flat minimum — see `edgesOn`. */
 const MAX_MEASURED_NEIGHBOURS = 60
 
-export function clearanceBeside(gap: number): number {
+function clearanceBeside(gap: number): number {
   if (!Number.isFinite(gap)) return ELBOW_STUB
   return Math.max(OBSTACLE_CLEARANCE, Math.min(ELBOW_STUB, gap / 2))
 }
