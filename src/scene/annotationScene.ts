@@ -16,22 +16,19 @@
 
 import type { Point, Rect } from '../core/anchor.js'
 import {
-  type AnnotationLayout,
   type AnnotationRecord,
   CARD_APPROACH_STUB,
   type AnnotationSize,
   type CardMetrics,
-  metricsForSize,
-  shrinkToFit,
-  annotationLayout,
-  annotationLayoutOutsideFrame,
+  type ResolvedLayout,
+  computeLayout,
   createAnnotationRecord,
   elbowPoints,
   leaderIntoCard,
+  metricsForSize,
   nearestPointOnRect,
   parseAnnotationRecord,
   resolveCardStacking,
-  resolveOutsideSide,
   serialiseAnnotationRecord
 } from '../core/annotation.js'
 import {
@@ -679,52 +676,20 @@ function nearestNeighborGap(ownFrame: Rect, side: 'LEFT' | 'RIGHT', ownFrameId: 
 /** Containers holding screens rather than being one — mirrors `OBSTACLE_CONTAINERS` in `connectorScene`. */
 const NEIGHBOR_CONTAINERS: ReadonlySet<string> = new Set(['GROUP', 'SECTION'])
 
-interface ResolvedLayout {
-  readonly layout: AnnotationLayout
-  readonly cardWidth: number
-  /** `null` when the target isn't inside a frame, so the card sits next to it instead of routed outside. */
-  readonly side: 'LEFT' | 'RIGHT' | null
-}
-
 /**
- * Card placement outside the enclosing frame keeps it from covering the UI
- * it's annotating (see conversation: the near-target placement was landing
- * on top of real content). Falls back to the near-target placement when the
- * target isn't inside a frame at all.
- *
- * The card's width shrinks — down to `MIN_OUTSIDE_CARD_WIDTH` — when a
- * neighbouring frame doesn't leave enough room for the default width, so it
- * never bleeds into whatever is sitting next door.
+ * `computeLayout` with the two things it needs a document for supplied: the
+ * enclosing frame's box, and how much room the neighbouring frames leave on
+ * whichever side it settles on.
  */
-function computeLayout(target: SceneNode, rect: Rect, record: AnnotationRecord): ResolvedLayout {
-  // A width dragged by hand wins over the size preset's, but only over that
-  // — the type, padding and radius still come from the size. Dragging widens
-  // the column the words flow in; it does not scale the card.
-  const preset = metricsForSize(record.size)
-  const metrics: CardMetrics =
-    record.cardWidth === null ? preset : { ...preset, cardWidth: record.cardWidth }
+function layoutFor(target: SceneNode, rect: Rect, record: AnnotationRecord): ResolvedLayout {
   const frame = findEnclosingFrame(target)
   const frameRect = frame?.absoluteBoundingBox ?? null
   if (frame === null || frameRect === null) {
-    return { layout: annotationLayout(rect, record, metrics), cardWidth: metrics.cardWidth, side: null }
+    return computeLayout(rect, record, null, () => Number.POSITIVE_INFINITY)
   }
-
-  const side = resolveOutsideSide(rect, frameRect)
-  // Shrink-to-fit applies to a width this plugin chose, not to one a person
-  // dragged. Someone dragging an edge can see the gap they are dragging into
-  // and has decided; pulling the card back from under them means the drag
-  // simply does not work wherever a neighbour happens to be close, which is
-  // most of a real file.
-  const cardWidth =
-    record.cardWidth !== null
-      ? record.cardWidth
-      : shrinkToFit(metrics, nearestNeighborGap(frameRect, side, frame.id))
-
-  const layout = annotationLayoutOutsideFrame(rect, frameRect, record, {
-    ...metrics,
-    cardWidth
-  })
-  return { layout, cardWidth, side }
+  return computeLayout(rect, record, frameRect, (side) =>
+    nearestNeighborGap(frameRect, side, frame.id)
+  )
 }
 
 // `ensureBadge`/`ensureCard` each have an `await` (font loading) between
@@ -842,7 +807,7 @@ async function syncAnnotationBody(
     // this changed, rather than stranding them.
     removeIfPresent(rendered.badge)
 
-    const resolved = computeLayout(target, rect, record)
+    const resolved = layoutFor(target, rect, record)
     const { layout } = resolved
 
     const { card, text } = await ensureCard(
@@ -954,7 +919,7 @@ export async function applyCardStacking(): Promise<void> {
     const record = getAnnotationRecord(target)
     if (record === null) continue
 
-    const resolved = computeLayout(target, rect, record)
+    const resolved = layoutFor(target, rect, record)
     if (resolved.side === null) continue
 
     const edgeStart = resolved.layout.leader?.[0] ?? resolved.layout.badgeCenter
@@ -1170,7 +1135,7 @@ export async function updateCardFromDrag(target: SceneNode): Promise<void> {
   const cardBox = rendered.card.absoluteBoundingBox
   if (cardBox === null) return
 
-  const before = computeLayout(target, rect, record)
+  const before = layoutFor(target, rect, record)
   const newOffset: Point = {
     x: cardBox.x - before.layout.badgeCenter.x,
     y: cardBox.y - before.layout.badgeCenter.y

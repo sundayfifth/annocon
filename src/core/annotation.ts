@@ -376,6 +376,65 @@ export function shrinkToFit(metrics: CardMetrics, gap: number): number {
     Math.min(metrics.cardWidth, gap - OUTSIDE_MARGIN - NEIGHBOR_SAFETY_GAP)
   )
 }
+
+export interface ResolvedLayout {
+  readonly layout: AnnotationLayout
+  readonly cardWidth: number
+  /** `null` when the target isn't inside a frame, so the card sits next to it instead of routed outside. */
+  readonly side: 'LEFT' | 'RIGHT' | null
+}
+
+/**
+ * Card placement outside the enclosing frame keeps it from covering the UI
+ * it's annotating (see conversation: the near-target placement was landing
+ * on top of real content). Falls back to the near-target placement when the
+ * target isn't inside a frame at all — `frameRect` is `null`.
+ *
+ * The card's width shrinks — down to `floorFor` — when a neighbouring frame
+ * doesn't leave enough room for the default width, so it never bleeds into
+ * whatever is sitting next door.
+ *
+ * `gapBeside` answers how far the nearest neighbouring frame is on a given
+ * side, which only the scene layer can measure. It is a function rather than
+ * a number for two reasons: the side isn't known until this decides it, and
+ * a card whose width was dragged never asks — measuring the page is the
+ * expensive part, and it runs per annotation per frame of a drag.
+ */
+export function computeLayout(
+  rect: Rect,
+  record: AnnotationRecord,
+  frameRect: Rect | null,
+  gapBeside: (side: 'LEFT' | 'RIGHT') => number
+): ResolvedLayout {
+  // A width dragged by hand wins over the size preset's, but only over that
+  // — the type, padding and radius still come from the size. Dragging widens
+  // the column the words flow in; it does not scale the card.
+  const preset = metricsForSize(record.size)
+  const metrics: CardMetrics =
+    record.cardWidth === null ? preset : { ...preset, cardWidth: record.cardWidth }
+  if (frameRect === null) {
+    return {
+      layout: annotationLayout(rect, record, metrics),
+      cardWidth: metrics.cardWidth,
+      side: null
+    }
+  }
+
+  const side = resolveOutsideSide(rect, frameRect)
+  // Shrink-to-fit applies to a width this plugin chose, not to one a person
+  // dragged. Someone dragging an edge can see the gap they are dragging into
+  // and has decided; pulling the card back from under them means the drag
+  // simply does not work wherever a neighbour happens to be close, which is
+  // most of a real file.
+  const cardWidth =
+    record.cardWidth !== null ? record.cardWidth : shrinkToFit(metrics, gapBeside(side))
+
+  const layout = annotationLayoutOutsideFrame(rect, frameRect, record, {
+    ...metrics,
+    cardWidth
+  })
+  return { layout, cardWidth, side }
+}
 /** How far into the card's top edge the leader points, so it reads as "pointing at this card" rather than at a bare corner. */
 export const CARD_LEADER_INSET = 10
 

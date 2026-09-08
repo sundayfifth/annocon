@@ -11,6 +11,7 @@ import {
   DEFAULT_METRICS,
   annotationLayout,
   annotationLayoutOutsideFrame,
+  computeLayout,
   createAnnotationRecord,
   elbowPoints,
   leaderIntoCard,
@@ -603,6 +604,83 @@ describe('floorFor', () => {
         expect(floor).toBeGreaterThanOrEqual(MIN_OUTSIDE_CARD_WIDTH)
       } else {
         expect(floor).toBe(metrics.cardWidth)
+      }
+    }
+  })
+})
+
+describe('computeLayout', () => {
+  const target: Rect = { x: 200, y: 300, width: 120, height: 40 }
+  const frame: Rect = { x: 0, y: 0, width: 400, height: 800 }
+  const roomy = () => Number.POSITIVE_INFINITY
+
+  it('falls back to the near-target layout when the target is in no frame', () => {
+    const resolved = computeLayout(target, record(), null, roomy)
+    expect(resolved.side).toBeNull()
+    expect(resolved.cardWidth).toBe(DEFAULT_METRICS.cardWidth)
+    expect(resolved.layout).toEqual(annotationLayout(target, record(), DEFAULT_METRICS))
+  })
+
+  it('places the card outside the frame, and names the side it chose', () => {
+    const resolved = computeLayout(target, record(), frame, roomy)
+    expect(resolved.side).toBe(resolveOutsideSide(target, frame))
+    // Outside means outside: the card's own box clears the frame it belongs to.
+    const card = resolved.layout.cardTopLeft
+    expect(card.x >= frame.x + frame.width || card.x + resolved.cardWidth <= frame.x).toBe(true)
+  })
+
+  it('narrows the card when a neighbouring frame is close', () => {
+    const resolved = computeLayout(target, record({ size: 'L' }), frame, () => 200)
+    expect(resolved.cardWidth).toBeLessThan(metricsForSize('L').cardWidth)
+    expect(resolved.cardWidth).toBe(shrinkToFit(metricsForSize('L'), 200))
+  })
+
+  // The pill-overflow report, end to end: a Large card squeezed by a close
+  // neighbour stops at its proportional floor rather than the flat minimum,
+  // so the type and category pill still fit inside it.
+  it('never squeezes a Large card down to the flat minimum', () => {
+    const resolved = computeLayout(target, record({ size: 'L' }), frame, () => 60)
+    expect(resolved.cardWidth).toBe(floorFor(metricsForSize('L')))
+    expect(resolved.cardWidth).toBeGreaterThan(MIN_OUTSIDE_CARD_WIDTH)
+  })
+
+  // Someone dragging an edge can see the gap they are dragging into and has
+  // decided. Pulling the card back from under them meant the drag simply did
+  // not work wherever a neighbour happened to be close — which is most of a
+  // real file.
+  it('keeps a dragged width exactly, however tight the neighbour', () => {
+    const resolved = computeLayout(target, record({ cardWidth: 300 }), frame, () => 60)
+    expect(resolved.cardWidth).toBe(300)
+  })
+
+  it('does not even measure the neighbours for a dragged width', () => {
+    let asked = 0
+    computeLayout(target, record({ cardWidth: 300 }), frame, () => {
+      asked += 1
+      return 60
+    })
+    // Measuring the page is the expensive part, and this runs per annotation
+    // per frame of a drag.
+    expect(asked).toBe(0)
+  })
+
+  it('takes only the width from a drag, never the type or padding', () => {
+    const resolved = computeLayout(target, record({ size: 'S', cardWidth: 300 }), frame, roomy)
+    const small = metricsForSize('S')
+    expect(resolved.cardWidth).toBe(300)
+    expect(resolved.layout).toEqual(
+      annotationLayoutOutsideFrame(target, frame, record({ size: 'S', cardWidth: 300 }), {
+        ...small,
+        cardWidth: 300
+      })
+    )
+  })
+
+  it('reports the width it actually laid the card out at', () => {
+    for (const size of ANNOTATION_SIZES) {
+      for (const gap of [40, 160, 300, Number.POSITIVE_INFINITY]) {
+        const resolved = computeLayout(target, record({ size }), frame, () => gap)
+        expect(resolved.cardWidth).toBe(shrinkToFit(metricsForSize(size), gap))
       }
     }
   })
