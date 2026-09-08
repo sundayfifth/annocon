@@ -158,14 +158,19 @@ origin ของ parent เดิม
 
 เรียงตาม **ความเสี่ยงที่จะชนกับ commit ที่ทำอยู่** จากน้อยไปมาก ไม่ใช่ตามหมายเลข candidate เดิม
 
-### B1 ✅ หด interface ที่ export เกิน (candidate 3 — ขยายขอบเขต)
+### B1 ✔️ ปิดแล้ว — หด interface ที่ export เกิน (candidate 3 — ขยายขอบเขต)
+
+> **ลงแล้วบน `sundayfifth/feat-connector-drag-handles`:** `fbc9fa9` (constant 13 ตัว) ·
+> `db52b95` (router internal 3 ตัว) · `bf52f99` (`FRAME_CLEARANCE_MARGIN`)
+> `src/core/connector.ts` จาก **50 → 33 export** · test 272 → 262 ·
+> coverage `src/core/**` **90.76 / 86.58 / 93.97 เท่าเดิมทุกตัว**
 
 ตรวจแล้วว่าเป็นปัญหาทั้ง repo ไม่ใช่แค่ `connector.ts` และ **ไม่มี export ตัวไหนตายสนิท** —
 ทุกตัวที่ prod ไม่เรียกถูกใช้ในไฟล์ตัวเอง มันคือ over-export
 
 | ไฟล์ | export | prod ไม่เรียก แต่ test เรียก | prod+test ไม่เรียก (ใช้แต่ในไฟล์ตัวเอง) |
 |:--|--:|--:|--:|
-| `src/core/connector.ts` | 50 | 18 | 2 (`FRAME_CLEARANCE_MARGIN:1205`, `ConnectorCurve:1558`) |
+| `src/core/connector.ts` | 50 → **33** | 18 | 2 (`FRAME_CLEARANCE_MARGIN:1205`, `ConnectorCurve:1558`) |
 | `src/core/annotation.ts` | 33 | 11 | 3 (`LayoutMetrics:48`, `AnnotationLayout:164`, `StackableCard:629`) |
 | `src/core/anchor.ts` | 17 | 2 (`ratioPoint:90`, `resolveMagnetPreferringSides:155`) | 1 (`ResolvedPair:302`) |
 | `src/core/drawnShape.ts` | 11 | 3 | 3 (`DrawnSegment:23`, `TangentSegment:152`, `TangentNetwork:157`) |
@@ -174,7 +179,7 @@ origin ของ parent เดิม
 
 **⚠️ ข้อที่รีวิวเดิมไม่ได้แยก** ของ 18 ตัวใน `connector.ts` มีสองกลุ่มที่ต้นทุนต่างกันคนละเรื่อง
 
-**กลุ่มที่ 1 — constant (13 ตัว) ถูกมาก และทำให้ test ดีขึ้นด้วย**
+**กลุ่มที่ 1 — constant (13 ตัว) ✔️ ทำแล้ว (`fbc9fa9`)**
 `CONNECTOR_VERSION:23` · `DEFAULT_CONNECTOR_WEIGHT:143` … `DEFAULT_LABEL:151` ·
 `DEFAULT_CONNECTOR_STYLE_PREFS:181` · `ELBOW_STUB:456` · `OBSTACLE_CLEARANCE:969`
 
@@ -182,25 +187,51 @@ test import ค่าพวกนี้มาเป็นค่าที่ค�
 `expect(record.strokeWeight).toBe(DEFAULT_CONNECTOR_WEIGHT)` ผ่านเสมอไม่ว่าค่านั้นจะถูกหรือผิด
 เอา `export` ออกแล้วให้ test เขียนเลขจริงลงไป ได้ทั้งการหด interface และ test ที่จับของได้จริง
 
-**กลุ่มที่ 2 — function (5 ตัว) เป็นงานที่ต้องคิด**
+พิสูจน์แล้วว่าได้ผล: หลังแก้ เปลี่ยน `DEFAULT_CONNECTOR_WEIGHT` จาก 1.5 เป็น 2 ทำให้ **4 test แดง**
+ก่อนแก้ไม่แดงเลยแม้แต่ตัวเดียว
+
+**กลุ่มที่ 2 — function (5 ตัว) ✔️ ตัดสินแล้ว: ตัด 3 คง 2**
+
 `routeCrossings:512` · `routeCost:570` · `edgesOn:578` · `findRouteAround:792` · `clearanceBeside:985`
 (+ `obstaclesInPlay:910` ที่ prod เรียกด้วย จึงต้องคง export)
 
-พวกนี้มี test ยิงตรงเข้า implementation รวม `findRouteAround` ที่มี test ~100 บรรทัดยิงเข้า A* ตรงๆ
-มีหลักฐานว่าขับผ่าน interface ได้: `test/connector.test.ts` ทดสอบ obstacle avoidance ทั้งหมด
-ผ่าน `connectorRoutePoints` (44 refs) โดยไม่ import ตัวใน implementation เลย — พฤติกรรมเดียวกัน
-ถูกทดสอบซ้ำสองรอบอยู่ตอนนี้
+**❌ ข้อที่เอกสารฉบับก่อนบอกผิด** เอกสารเขียนว่าทั้ง 5 ตัวถูกทดสอบซ้ำผ่าน `connectorRoutePoints`
+อยู่แล้ว วัดจริงแล้ว **ซ้ำแค่ 3 ตัว** อีก 2 ตัวไม่ซ้ำ และห้ามตัด
 
-**ข้อเสียที่ต้องยอมรับ** ถ้า router พังในอนาคต การ debug จะยากขึ้น เพราะไม่มี test ที่ชี้ว่า
-"`routeCost` คำนวณผิด" ได้อีก จะเห็นแค่ "route ที่ออกมาไม่ใช่ที่คาด" — เป็น trade-off ที่ควร
-ตัดสินใจโดยรู้ตัว ไม่ใช่ทำเพราะตัวเลข export สวยขึ้น
+| function | ตัด test ตรงแล้วเกิดอะไร | ผล |
+|:--|:--|:--|
+| `routeCost` `edgesOn` `clearanceBeside` | coverage `src/core/**` = **90.76 / 86.58 / 93.97 เท่าเดิมทุกทศนิยม** | ✔️ un-export แล้ว (`db52b95`) |
+| `routeCrossings` | **9 test พังทันที** — มันคือเครื่องวัดของ `connectorRoutePoints — obstacle avoidance` 19 assertion (`routeCrossings(before) === 1`, `after === 0`) ตัดแล้วต้องเขียนใหม่เป็นพิกัดตายตัว ซึ่งเปราะกว่า | คง export |
+| `findRouteAround` | `connector.ts` 87.78 → **83.71** stmts · branch 81.6 → **77.46** — เสีย 18 statement ในตัว A* เอง (search loop, cost cap, ทางยอมแพ้) ซึ่ง public interface ไม่แตะเลย และทำให้ทั้ง core ต่ำกว่าเกณฑ์ 90.76 | คง export |
+
+บทเรียน: "test เรียกตัวเดียว → over-export" เป็นสัญญาณ ไม่ใช่ข้อสรุป ต้องวัด coverage ก่อนตัดทุกครั้ง
+วิธีวัด: ลบ describe ที่ยิงตรงออก แล้ว `npx vitest run --coverage --coverage.reporter=json-summary`
+เทียบ `coverage/coverage-summary.json` (อย่าอ่าน text table — ดู T3)
+
+**🆕 `annotation.ts` — ตรวจแล้ว ไม่ควรทำ**
+
+5 function ที่มีแต่ test เรียก (`annotationLayout:304` · `resolveOutsideSide:579` ·
+`annotationLayoutOutsideFrame:597` · `shrinkToFit:372` · `floorFor:358`) วัดแล้วตัดไม่ได้:
+
+- ลบ describe ที่ยิงตรงทั้ง 5 (24 test) → statement เท่าเดิม (99.13) แต่ **branch 96.96 → 91.91**
+  แปลว่า test ตรงพวกนี้ถือ edge case ที่ `computeLayout` ไปไม่ถึง
+- test ของ `computeLayout` ใช้ทั้ง 5 ตัวเป็น oracle อยู่ 10 จุด (เช่น `:622`
+  `expect(resolved.layout).toEqual(annotationLayout(target, record(), DEFAULT_METRICS))`)
+  ตัดแล้วต้องเขียน expectation เป็นพิกัดตรงๆ
+
+`ratioPoint` กับ `resolveMagnetPreferringSides` ใน `anchor.ts` ไม่ได้ตัดในรอบนี้ เพราะ `ratioPoint`
+มีอยู่เพื่อ anchor `kind: 'ratio'` ที่ไม่มีใครสร้าง → ผูกกับการตัดสินใจใน **A2/V2** ไม่ใช่ B1
 
 **ข้อควรระวังเรื่อง type** un-export type ได้เฉพาะตัวที่ไม่ปรากฏใน signature ของ function ที่ยัง public
 `StackableCard` เป็น parameter type ของ function ที่ export อยู่ (`annotation.ts:647`) —
 caller สร้าง object แบบ structural ได้โดยไม่ต้อง import ชื่อ แต่จะเขียน annotation ไม่ได้
+ตรวจตามกฎนี้แล้วทั้ง 9 ตัวในคอลัมน์ขวาสุดของตารางข้างบน มีแค่ `FRAME_CLEARANCE_MARGIN` ที่ผ่าน
+(มันเป็น default value ของ parameter ตัวท้ายของ `connectorStubClearance` ซึ่ง caller ไม่ส่ง) —
+ที่เหลืออยู่ใน signature หรือเป็น field ของ interface ที่ public จึงคงไว้ทั้งหมด
 
-**ตรวจว่าสำเร็จ** `npm run typecheck && npm run lint && npm test` ผ่าน จำนวน test ไม่ลด และ
-coverage `src/core/**` ไม่ต่ำกว่า 90.76% stmts
+**ตรวจว่าสำเร็จ** `npm run typecheck && npm run lint && npm test` ผ่าน และ
+coverage `src/core/**` ไม่ต่ำกว่า 90.76% stmts — ✔️ ผ่านทั้งหมด (จำนวน test ลด 10 ตัวโดยตั้งใจ
+เพราะเป็น test ที่ไม่ถือ coverage ของตัวเอง)
 
 **ความเสี่ยง/ชนกับใคร** อยู่ใน `src/core/**` + `test/**` เกือบทั้งหมด — **ต่ำ** เป็นข้อที่เริ่มได้ปลอดภัยสุด
 
@@ -497,9 +528,9 @@ return {
 
 | ลำดับ | ทำ | เพราะ |
 |:--|:--|:--|
-| 1 | T1 T2 T3 T4 T5 T7 + A1 A3 | เล็ก อิสระต่อกัน ไม่แตะไฟล์ร้อน รวมเป็น branch เดียวได้ และ T5 เป็นตาข่ายให้ B5 |
-| 2 | B1 | อยู่ใน `core/**` + `test/**` เกือบทั้งหมด ความเสี่ยงต่ำสุดในบรรดางาน architecture |
-| 3 | A4 + A2 + V1 + V2 | ตัดสินใจเรื่อง anchor union กับ version field พร้อมกัน เพราะเกี่ยวกัน แล้วปิด A4 ไปด้วยเลยเพราะอยู่ไฟล์เดียวกัน |
+| 1 | ~~T1 T2 T3 T5 T7 + A1 A3~~ ✔️ | เล็ก อิสระต่อกัน ไม่แตะไฟล์ร้อน รวมเป็น branch เดียวได้ และ T5 เป็นตาข่ายให้ B5 · **T4 ยังค้าง** — คอมเมนต์หัว `vitest.config.ts` แก้พร้อม B4 |
+| 2 | ~~B1~~ ✔️ | อยู่ใน `core/**` + `test/**` เกือบทั้งหมด ความเสี่ยงต่ำสุดในบรรดางาน architecture · ทำแค่ `connector.ts`; `annotation.ts` วัดแล้วไม่ควรทำ ดู B1 |
+| **3 ← ถัดไป** | A4 + A2 + V1 + V2 | ตัดสินใจเรื่อง anchor union กับ version field พร้อมกัน เพราะเกี่ยวกัน แล้วปิด A4 ไปด้วยเลยเพราะอยู่ไฟล์เดียวกัน |
 | 4 | B4 | เอา `test/frames.test.ts` กลับมา — เป็นตาข่ายให้ B2 กับ B3 **เช็คก่อนว่าไม่มีใครถืออยู่** |
 | 5 | B2 | branch สั้น merge เร็ว |
 | 6 | B3 | หลัง B2 เท่านั้น ทั้งสองข้อเขียน write path ใหม่ทั้งคู่ |
