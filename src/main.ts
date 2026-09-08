@@ -339,6 +339,44 @@ function fireAndForget(promise: Promise<unknown>): void {
   })
 }
 
+/**
+ * Commands that read a record and write it back, one at a time per record.
+ *
+ * Every one of these handlers is `await getNodeByIdAsync` → read the record →
+ * write `{ ...record, ...changes }`. Two arriving in the same tick — clicking
+ * a colour swatch closes the flyout and blurs the number field beside it, so
+ * this is one gesture, not a stress test — both `await`, both read the record
+ * *before* either change, and the second write throws the first away. The
+ * colour is simply lost, with nothing to say so.
+ *
+ * Chaining per record rather than one global queue: two different connectors
+ * have nothing to serialise against each other, and a queue that made them
+ * wait would turn a multi-select edit into a slow one for no reason.
+ *
+ * A failed edit must not wedge the queue behind it, so the chain continues
+ * from whether the previous one *settled*, not whether it succeeded.
+ */
+const editsInFlight = new Map<string, Promise<unknown>>()
+
+/** Category commands all rewrite the one list on `figma.root`, so they share a lane. */
+const CATEGORY_LIST_KEY = 'categories'
+
+function queueEdit(recordKey: string, work: () => Promise<void>): void {
+  const settled = (editsInFlight.get(recordKey) ?? Promise.resolve()).then(
+    () => undefined,
+    () => undefined
+  )
+  const next = settled.then(work)
+  editsInFlight.set(recordKey, next)
+  fireAndForget(
+    next.finally(() => {
+      // Only if nothing has queued behind it — otherwise this would drop the
+      // tail of a chain that is still running.
+      if (editsInFlight.get(recordKey) === next) editsInFlight.delete(recordKey)
+    })
+  )
+}
+
 interface TouchedNodes {
   readonly deletedIds: ReadonlySet<string>
   readonly movedTargetIds: ReadonlySet<string>
@@ -717,26 +755,26 @@ async function resyncTouched({
 
 export default function main(): void {
   on<SetAnnotationTextHandler>('SET_ANNOTATION_TEXT', (payload) => {
-    fireAndForget(handleSetAnnotationText(payload))
+    queueEdit(payload.targetId, () => handleSetAnnotationText(payload))
   })
 
   on<SetAnnotationCategoryHandler>('SET_ANNOTATION_CATEGORY', (payload) => {
-    fireAndForget(handleSetAnnotationCategory(payload))
+    queueEdit(payload.targetId, () => handleSetAnnotationCategory(payload))
   })
 
   on<SetAnnotationSizeHandler>('SET_ANNOTATION_SIZE', (payload) => {
-    fireAndForget(handleSetAnnotationSize(payload))
+    queueEdit(payload.targetId, () => handleSetAnnotationSize(payload))
   })
 
   on<AddCategoryHandler>('ADD_CATEGORY', handleAddCategory)
   on<RenameCategoryHandler>('RENAME_CATEGORY', (payload) => {
-    fireAndForget(handleRenameCategory(payload))
+    queueEdit(CATEGORY_LIST_KEY, () => handleRenameCategory(payload))
   })
   on<RecolorCategoryHandler>('RECOLOR_CATEGORY', (payload) => {
-    fireAndForget(handleRecolorCategory(payload))
+    queueEdit(CATEGORY_LIST_KEY, () => handleRecolorCategory(payload))
   })
   on<DeleteCategoryHandler>('DELETE_CATEGORY', (payload) => {
-    fireAndForget(handleDeleteCategory(payload))
+    queueEdit(CATEGORY_LIST_KEY, () => handleDeleteCategory(payload))
   })
 
   on<CreateConnectorHandler>('CREATE_CONNECTOR', (payload) => {
@@ -744,15 +782,15 @@ export default function main(): void {
   })
 
   on<UpdateConnectorStyleHandler>('UPDATE_CONNECTOR_STYLE', (payload) => {
-    fireAndForget(handleUpdateConnectorStyle(payload))
+    queueEdit(payload.targetId, () => handleUpdateConnectorStyle(payload))
   })
 
   on<RestoreAutoRouteHandler>('RESTORE_AUTO_ROUTE', ({ connectorId }) => {
-    fireAndForget(handleRestoreAutoRoute(connectorId))
+    queueEdit(connectorId, () => handleRestoreAutoRoute(connectorId))
   })
 
   on<UpdateConnectorAnchorHandler>('UPDATE_CONNECTOR_ANCHOR', (payload) => {
-    fireAndForget(handleUpdateConnectorAnchor(payload))
+    queueEdit(payload.targetId, () => handleUpdateConnectorAnchor(payload))
   })
 
   figma.on('selectionchange', () => {

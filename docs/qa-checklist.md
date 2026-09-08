@@ -93,6 +93,13 @@ Run against a scratch file in the **desktop app** after `npm run build`.
 - [ ] Close the plugin, move a frame, reopen → the line snaps back into place
 - [ ] Delete one endpoint frame → the line shows as broken, listed in Broken links, no crash
 - [ ] Change weight / colour / head / tail → applies immediately and survives a re-sync
+- [ ] Type a new weight, then click a colour swatch **without clicking away
+      first** — one gesture: the click closes the flyout and blurs the field
+      together, so both commands arrive in the same tick. Both the weight and
+      the colour have to stick. Whichever one lost used to vanish with nothing
+      on screen to say so.
+- [ ] Same for a note: type into the note field, then click a category chip in
+      one motion → the words and the category both stick
 - [ ] Type `0.8` into the weight field: every character goes in. A `minimum` on
       the field rejects the leading `0`, which made the whole 0.5–0.9 range
       untypeable — the values the field exists to accept.
