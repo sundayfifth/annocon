@@ -1205,7 +1205,12 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
       offSelection()
       offCategories()
     }
-  }, [])
+    // `initialSelection` is the snapshot `showUI` was called with, passed once
+    // at mount and never replaced — so naming it here is honest about what the
+    // effect reads without ever re-running it and tearing the subscriptions
+    // down. Leaving it out is what the rule is for: the day these props do
+    // start changing, this effect would keep acting on the first one.
+  }, [initialSelection])
 
   return (
     <Container space="medium">
