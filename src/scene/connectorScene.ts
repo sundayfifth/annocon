@@ -36,6 +36,7 @@ import {
   serialiseConnectorStylePrefs
 } from '../core/connector.js'
 import { contrastingTextColor } from '../core/category.js'
+import { alreadyDrawn } from '../core/drawnShape.js'
 import {
   type RouteObstacle,
   EMPTY_OBSTACLES,
@@ -1123,7 +1124,13 @@ async function drawPoints(
   // Compared against what is actually on the node rather than against a note
   // of what we last drew, so the plugin still repairs a line somebody else
   // has altered — the canvas stays untrusted, which is the rule.
-  if (!alreadyDrawn(node, vertices, originX, originY)) {
+  const onCanvas = {
+    x: node.x,
+    y: node.y,
+    vertices: node.vectorNetwork.vertices,
+    segments: node.vectorNetwork.segments
+  }
+  if (!alreadyDrawn(onCanvas, vertices, originX, originY)) {
     node.x = originX
     node.y = originY
     await node.setVectorNetworkAsync({
@@ -1133,53 +1140,6 @@ async function drawPoints(
     })
   }
   return pointAlongPolyline(points, 0.5)
-}
-
-interface DrawnVertex {
-  readonly x: number
-  readonly y: number
-  readonly strokeCap?: string
-  readonly cornerRadius?: number
-}
-
-/**
- * Whether the node already carries exactly this shape, in this place.
- *
- * Deliberately strict: every way of answering "yes" wrongly leaves a line
- * looking like something it is not, while answering "no" wrongly costs one
- * redundant redraw. Rounded to whole units because the numbers make a
- * round trip through Figma and come back with the drift a float round trip
- * leaves.
- */
-function alreadyDrawn(
-  node: VectorNode,
-  vertices: ReadonlyArray<DrawnVertex>,
-  originX: number,
-  originY: number
-): boolean {
-  if (Math.round(node.x) !== Math.round(originX)) return false
-  if (Math.round(node.y) !== Math.round(originY)) return false
-  const current = node.vectorNetwork.vertices
-  if (current.length !== vertices.length) return false
-  const segments = node.vectorNetwork.segments
-  if (segments.length !== Math.max(0, vertices.length - 1)) return false
-  for (let i = 0; i < vertices.length; i += 1) {
-    const was = current[i]
-    const now = vertices[i]
-    if (typeof was === 'undefined' || typeof now === 'undefined') return false
-    if (Math.round(was.x) !== Math.round(now.x)) return false
-    if (Math.round(was.y) !== Math.round(now.y)) return false
-    if ((was.strokeCap ?? 'NONE') !== (now.strokeCap ?? 'NONE')) return false
-    if (Math.round(was.cornerRadius ?? 0) !== Math.round(now.cornerRadius ?? 0)) return false
-  }
-  // The chain has to be the one this function builds, or the vertices being
-  // right says nothing about the line joining them in that order.
-  for (let i = 0; i < segments.length; i += 1) {
-    const segment = segments[i]
-    if (typeof segment === 'undefined') return false
-    if (segment.start !== i || segment.end !== i + 1) return false
-  }
-  return true
 }
 
 /**
