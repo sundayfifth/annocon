@@ -36,7 +36,7 @@ import {
   serialiseConnectorStylePrefs
 } from '../core/connector.js'
 import { contrastingTextColor } from '../core/category.js'
-import { alreadyDrawn } from '../core/drawnShape.js'
+import { alreadyDrawn, shapeFingerprint } from '../core/drawnShape.js'
 import {
   type RouteObstacle,
   EMPTY_OBSTACLES,
@@ -359,38 +359,9 @@ export async function captureLabelTextEdit(text: TextNode): Promise<boolean> {
   return true
 }
 
-/**
- * A fingerprint of the shape on the node, for spotting an edit that was not
- * ours.
- *
- * Every vertex and every join, not the bounding box: pulling a bend inwards
- * leaves the box exactly as it was — it is defined by the two ends — and the
- * vertex count with it, so a box-and-count fingerprint reports no change and
- * the edit is redrawn over in silence. A connector carries a handful of
- * vertices, so hashing all of them costs nothing worth measuring.
- *
- * Rounded to whole units, because the plugin's own writes come back with the
- * sub-pixel drift of a float round-trip, and a fingerprint that changes on
- * its own would claim every line in the file as hand-drawn.
- */
-function shapeFingerprint(node: VectorNode): string {
-  const network = node.vectorNetwork
-  const vertices = network.vertices
-    .map((vertex) => `${Math.round(vertex.x)},${Math.round(vertex.y)}`)
-    .join(';')
-  const segments = network.segments.map((segment) => `${segment.start}>${segment.end}`).join(';')
-  // Vertices and joins only, never the node's position. Vertices are stored
-  // relative to the node, so nudging a whole connector with an arrow key —
-  // or dropping it onto a frame, which reparents it and rewrites x/y —
-  // changes the position and not one thing about the shape. Including
-  // position would hand routing over for good on a keystroke that reshaped
-  // nothing, which is not what "somebody reshaped this" should mean.
-  return `${vertices}|${segments}`
-}
-
 /** Records the shape just drawn, so the next change to it can be attributed. */
 function rememberDrawnShape(node: VectorNode): void {
-  node.setPluginData(DRAWN_AS_KEY, shapeFingerprint(node))
+  node.setPluginData(DRAWN_AS_KEY, shapeFingerprint(node.vectorNetwork))
 }
 
 /**
@@ -409,7 +380,7 @@ export async function captureManualReshape(node: SceneNode): Promise<boolean> {
   // that as an edit would hand over every old connector in the file the
   // first time anything moved, so it is left alone and fingerprinted on its
   // next sync.
-  if (remembered === '' || remembered === shapeFingerprint(node)) return false
+  if (remembered === '' || remembered === shapeFingerprint(node.vectorNetwork)) return false
 
   // Read once, here, and kept on the record — after this, drawing goes back
   // to flowing one way like everything else. Reading the node on every sync

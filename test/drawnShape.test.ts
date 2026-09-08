@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { type DrawnShape, type DrawnVertex, alreadyDrawn } from '../src/core/drawnShape.js'
+import {
+  type DrawnShape,
+  type DrawnVertex,
+  alreadyDrawn,
+  shapeFingerprint
+} from '../src/core/drawnShape.js'
 
 /** A three-point elbow, chained the way the drawing code chains one. */
 const elbow: ReadonlyArray<DrawnVertex> = [
@@ -106,5 +111,68 @@ describe('alreadyDrawn', () => {
   it('handles an empty shape without claiming a chain it does not have', () => {
     expect(alreadyDrawn(on([], 0, 0, []), [], 0, 0)).toBe(true)
     expect(alreadyDrawn(on([], 0, 0, []), elbow, 0, 0)).toBe(false)
+  })
+})
+
+describe('shapeFingerprint', () => {
+  const net = (
+    vertices: ReadonlyArray<DrawnVertex>,
+    segments = chain(vertices.length)
+  ) => ({ vertices, segments })
+
+  it('gives the same answer for the same shape', () => {
+    expect(shapeFingerprint(net(elbow))).toBe(shapeFingerprint(net(elbow)))
+  })
+
+  // The bug the whole vertex-by-vertex hash exists for: pulling a bend
+  // inwards leaves the bounding box exactly as it was — it is defined by the
+  // two ends — and the vertex count with it. A box-and-count fingerprint
+  // reports no change, and the person's edit is silently redrawn over.
+  it('changes when a bend moves but the two ends do not', () => {
+    const pulledIn = elbow.map((vertex, i) => (i === 1 ? { ...vertex, x: 60 } : vertex))
+    expect(shapeFingerprint(net(pulledIn))).not.toBe(shapeFingerprint(net(elbow)))
+  })
+
+  // Vertices are stored relative to the node, so nudging a whole connector
+  // with an arrow key — or dropping it on a frame, which reparents it and
+  // rewrites x/y — changes the position and nothing about the shape.
+  // Including position would hand routing over for good on a keystroke that
+  // reshaped nothing.
+  it('says nothing about where the node sits', () => {
+    // Passed a whole `DrawnShape`, position and all, it still answers only
+    // about the network — so a connector nudged with an arrow key, or
+    // dropped on a frame (which reparents it and rewrites x/y), does not
+    // read as reshaped.
+    const here = on(elbow, 0, 0)
+    const moved = on(elbow, 4000, -900)
+    expect(shapeFingerprint(moved)).toBe(shapeFingerprint(here))
+    expect(shapeFingerprint(here)).toBe(shapeFingerprint(net(elbow)))
+  })
+
+  it('survives the sub-pixel drift of a round trip through Figma', () => {
+    const drifted = elbow.map((vertex) => ({ ...vertex, x: vertex.x + 0.3, y: vertex.y - 0.2 }))
+    expect(shapeFingerprint(net(drifted))).toBe(shapeFingerprint(net(elbow)))
+  })
+
+  it('changes when a point is added', () => {
+    const longer = [...elbow, { x: 160, y: 80 }]
+    expect(shapeFingerprint(net(longer))).not.toBe(shapeFingerprint(net(elbow)))
+  })
+
+  it('changes when the points are rewired without moving', () => {
+    const rewired = [
+      { start: 0, end: 2 },
+      { start: 2, end: 1 }
+    ]
+    expect(shapeFingerprint(net(elbow, rewired))).not.toBe(shapeFingerprint(net(elbow)))
+  })
+
+  it('ignores caps and corner rounding, which are style rather than shape', () => {
+    const restyled = elbow.map((vertex) => ({ ...vertex, strokeCap: 'NONE', cornerRadius: 0 }))
+    expect(shapeFingerprint(net(restyled))).toBe(shapeFingerprint(net(elbow)))
+  })
+
+  it('handles an empty network', () => {
+    expect(shapeFingerprint(net([]))).toBe('|')
   })
 })
