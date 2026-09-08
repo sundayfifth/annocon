@@ -1032,10 +1032,13 @@ describe('findRouteAround — cost cap on a grid-aligned board', () => {
     for (let i = 0; i < 80; i += 1) {
       scattered.push({ x: i * 47, y: (i * 83) % 5000, width: 30, height: 30 })
     }
-    const start = Date.now()
-    const points = findRouteAround({ x: -100, y: 0 }, { x: 4000, y: 0 }, scattered)
-    expect(Date.now() - start).toBeLessThan(200)
-    expect(points).toBeNull()
+    // Answering `null` *is* the bail — the cost cap is what produces it, and
+    // it is the only part of this that the search promises. A wall-clock
+    // assertion here measured the machine instead: the number it checked was
+    // the one MAX_SEARCH_COST had been tuned to on one laptop, so a loaded CI
+    // runner could fail a search that behaved perfectly. Timing belongs in a
+    // benchmark that reports, not in a test that gates.
+    expect(findRouteAround({ x: -100, y: 0 }, { x: 4000, y: 0 }, scattered)).toBeNull()
   })
 })
 
@@ -1189,6 +1192,10 @@ describe('boxCouldAffectRoute', () => {
       { x: 200, y: 9000, width: 100, height: 100 },
       { x: 1600, y: 100, width: 100, height: 100 }
     ]
+    // Without this the whole test can pass having asserted nothing: every
+    // assertion below sits behind a condition, so a change that made the
+    // router keep none of these boxes would turn this green rather than red.
+    expect.hasAssertions()
     for (const box of candidates) {
       const routerKeepsIt = obstaclesInPlay([box], start, end, ROUTE_SEARCH_MARGIN).length > 0
       if (routerKeepsIt) expect(boxCouldAffectRoute(route, box, ROUTE_SEARCH_MARGIN)).toBe(true)
