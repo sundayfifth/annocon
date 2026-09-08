@@ -1202,7 +1202,7 @@ function sameAxisCandidates(
 }
 
 /** How far past a frame's own edge a connector clears it by, on top of `ELBOW_STUB`. */
-export const FRAME_CLEARANCE_MARGIN = 20
+const FRAME_CLEARANCE_MARGIN = 20
 
 /**
  * How far an endpoint needs to poke out in `side`'s direction to actually
