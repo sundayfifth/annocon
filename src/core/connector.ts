@@ -20,7 +20,7 @@ import {
   resolveAnchorPair
 } from './anchor.js'
 
-export const CONNECTOR_VERSION = 1
+const CONNECTOR_VERSION = 1
 
 /**
  * A curated mirror of Figma's `StrokeCap` — the whole set is line-end
@@ -140,15 +140,15 @@ export interface ConnectorRecord {
   readonly manualShape: ManualShape | null
 }
 
-export const DEFAULT_CONNECTOR_WEIGHT = 1.5
-export const DEFAULT_CONNECTOR_COLOR = '#000000'
-export const DEFAULT_CONNECTOR_OPACITY = 1
-export const DEFAULT_START_CAP: ConnectorCap = 'CIRCLE_FILLED'
-export const DEFAULT_END_CAP: ConnectorCap = 'ARROW_EQUILATERAL'
-export const DEFAULT_LINE_STYLE: ConnectorLineStyle = 'ELBOW'
-export const DEFAULT_CORNER_RADIUS = 20
-export const DEFAULT_DETOUR: ConnectorDetour = 'AUTO'
-export const DEFAULT_LABEL = ''
+const DEFAULT_CONNECTOR_WEIGHT = 1.5
+const DEFAULT_CONNECTOR_COLOR = '#000000'
+const DEFAULT_CONNECTOR_OPACITY = 1
+const DEFAULT_START_CAP: ConnectorCap = 'CIRCLE_FILLED'
+const DEFAULT_END_CAP: ConnectorCap = 'ARROW_EQUILATERAL'
+const DEFAULT_LINE_STYLE: ConnectorLineStyle = 'ELBOW'
+const DEFAULT_CORNER_RADIUS = 20
+const DEFAULT_DETOUR: ConnectorDetour = 'AUTO'
+const DEFAULT_LABEL = ''
 /** White: what every label pill was before the colour could be chosen. */
 export const DEFAULT_LABEL_COLOR = '#FFFFFF'
 
@@ -178,7 +178,7 @@ export interface ConnectorStylePrefs {
   readonly labelColor: string
 }
 
-export const DEFAULT_CONNECTOR_STYLE_PREFS: ConnectorStylePrefs = {
+const DEFAULT_CONNECTOR_STYLE_PREFS: ConnectorStylePrefs = {
   strokeWeight: DEFAULT_CONNECTOR_WEIGHT,
   color: DEFAULT_CONNECTOR_COLOR,
   opacity: DEFAULT_CONNECTOR_OPACITY,
@@ -453,7 +453,7 @@ function dominantAxisElbow(start: Point, end: Point): ReadonlyArray<Point> {
  * its mind immediately. An annotation's leader runs a short distance to a
  * card parked right beside its target and wants the opposite.
  */
-export const ELBOW_STUB = 80
+const ELBOW_STUB = 80
 
 /**
  * Collapses runs of collinear points and drops repeats, so a stub glued to
@@ -966,7 +966,7 @@ export function boxCouldAffectRoute(routeBounds: Rect, box: Rect, margin: number
  *
  * A floor rather than the answer — see `clearanceBeside`.
  */
-export const OBSTACLE_CLEARANCE = 20
+const OBSTACLE_CLEARANCE = 20
 
 /**
  * How far outside a box a route should run: half the gap to whatever is next
