@@ -2,21 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import type { Point, Rect } from '../src/core/anchor.js'
 import {
-  CONNECTOR_VERSION,
   type ConnectorRecord,
-  DEFAULT_CONNECTOR_COLOR,
-  DEFAULT_CONNECTOR_OPACITY,
-  DEFAULT_CONNECTOR_STYLE_PREFS,
-  DEFAULT_CONNECTOR_WEIGHT,
-  DEFAULT_CORNER_RADIUS,
-  DEFAULT_DETOUR,
-  DEFAULT_END_CAP,
-  DEFAULT_LABEL,
-  DEFAULT_LABEL_COLOR,
-  DEFAULT_LINE_STYLE,
-  DEFAULT_START_CAP,
-  ELBOW_STUB,
-  OBSTACLE_CLEARANCE,
+  type ConnectorStylePrefs,
   clearanceBeside,
   edgesOn,
   ROUTE_SEARCH_MARGIN,
@@ -44,6 +31,23 @@ import {
 
 const anchor = (nodeId: string) => ({ kind: 'magnet', nodeId, magnet: 'AUTO' })
 
+/**
+ * The shipped defaults, written out rather than imported. Asserting against
+ * the module's own constant passes whatever the value is — including a wrong
+ * one — so the numbers a connector is born with live here instead.
+ */
+const defaultPrefs: ConnectorStylePrefs = {
+  strokeWeight: 1.5,
+  color: '#000000',
+  opacity: 1,
+  startCap: 'CIRCLE_FILLED',
+  endCap: 'ARROW_EQUILATERAL',
+  lineStyle: 'ELBOW',
+  cornerRadius: 20,
+  labelColor: '#FFFFFF'
+}
+
+
 const startRect: Rect = { x: 0, y: 0, width: 100, height: 100 }
 const endRect: Rect = { x: 400, y: 0, width: 100, height: 100 }
 
@@ -51,19 +55,19 @@ describe('createConnectorRecord', () => {
   it('anchors both ends to the given nodes with AUTO magnets', () => {
     const record = createConnectorRecord('a', 'b')
     expect(record).toEqual({
-      v: CONNECTOR_VERSION,
+      v: 1,
       start: { kind: 'magnet', nodeId: 'a', magnet: 'AUTO' },
       end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' },
-      strokeWeight: DEFAULT_CONNECTOR_WEIGHT,
-      color: DEFAULT_CONNECTOR_COLOR,
-      opacity: DEFAULT_CONNECTOR_OPACITY,
-      startCap: DEFAULT_START_CAP,
-      endCap: DEFAULT_END_CAP,
-      lineStyle: DEFAULT_LINE_STYLE,
-      cornerRadius: DEFAULT_CORNER_RADIUS,
-      detour: DEFAULT_DETOUR,
-      label: DEFAULT_LABEL,
-      labelColor: DEFAULT_LABEL_COLOR,
+      strokeWeight: 1.5,
+      color: '#000000',
+      opacity: 1,
+      startCap: 'CIRCLE_FILLED',
+      endCap: 'ARROW_EQUILATERAL',
+      lineStyle: 'ELBOW',
+      cornerRadius: 20,
+      detour: 'AUTO',
+      label: '',
+      labelColor: '#FFFFFF',
       manualGeometry: false,
       manualShape: null
     })
@@ -78,17 +82,17 @@ describe('createConnectorRecord', () => {
       endCap: 'DIAMOND_FILLED' as const,
       lineStyle: 'CURVE' as const,
       cornerRadius: 8,
-      labelColor: DEFAULT_LABEL_COLOR
+      labelColor: '#FFFFFF'
     }
     const record = createConnectorRecord('a', 'b', stylePrefs)
     expect(record).toEqual({
-      v: CONNECTOR_VERSION,
+      v: 1,
       start: { kind: 'magnet', nodeId: 'a', magnet: 'AUTO' },
       end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' },
       ...stylePrefs,
-      detour: DEFAULT_DETOUR,
-      label: DEFAULT_LABEL,
-      labelColor: DEFAULT_LABEL_COLOR,
+      detour: 'AUTO',
+      label: '',
+      labelColor: '#FFFFFF',
       manualGeometry: false,
       manualShape: null
     })
@@ -97,7 +101,7 @@ describe('createConnectorRecord', () => {
 
 describe('a connector label\'s colour', () => {
   it('starts white, the colour every label has been until now', () => {
-    expect(createConnectorRecord('a', 'b').labelColor).toBe(DEFAULT_LABEL_COLOR)
+    expect(createConnectorRecord('a', 'b').labelColor).toBe('#FFFFFF')
   })
 
   it('round-trips, and falls back to the default for anything untrustworthy', () => {
@@ -105,17 +109,17 @@ describe('a connector label\'s colour', () => {
     expect(parseConnectorRecord(serialiseConnectorRecord(coloured))?.labelColor).toBe('#FECC00')
     expect(
       parseConnectorRecord(JSON.stringify({ start: anchor('a'), end: anchor('b') }))?.labelColor
-    ).toBe(DEFAULT_LABEL_COLOR)
+    ).toBe('#FFFFFF')
     expect(
       parseConnectorRecord(
         JSON.stringify({ start: anchor('a'), end: anchor('b'), labelColor: 'rebeccapurple' })
       )?.labelColor
-    ).toBe(DEFAULT_LABEL_COLOR)
+    ).toBe('#FFFFFF')
   })
 
   /** A look-and-feel choice, like the line's own colour, so the next connector starts from it. */
   it('carries forward to the next connector', () => {
-    const prefs = { ...DEFAULT_CONNECTOR_STYLE_PREFS, labelColor: '#FECC00' }
+    const prefs = { ...defaultPrefs, labelColor: '#FECC00' }
     expect(createConnectorRecord('a', 'b', prefs).labelColor).toBe('#FECC00')
     expect(parseConnectorStylePrefs(serialiseConnectorStylePrefs(prefs)).labelColor).toBe('#FECC00')
   })
@@ -145,25 +149,25 @@ describe('parseConnectorStylePrefs / serialiseConnectorStylePrefs', () => {
    */
   it('does not carry a pinned detour forward to the next connector', () => {
     const raw = serialiseConnectorStylePrefs({
-      ...DEFAULT_CONNECTOR_STYLE_PREFS,
+      ...defaultPrefs,
       color: '#8C8C8C'
     })
     expect(raw).not.toContain('detour')
     expect(parseConnectorStylePrefs(JSON.stringify({ detour: 'BOTTOM' }))).toEqual(
-      DEFAULT_CONNECTOR_STYLE_PREFS
+      defaultPrefs
     )
     expect(createConnectorRecord('a', 'b', parseConnectorStylePrefs(raw)).detour).toBe(
-      DEFAULT_DETOUR
+      'AUTO'
     )
   })
 
   it('falls back to the shipped defaults for empty, malformed, or invalid-field data', () => {
-    expect(parseConnectorStylePrefs('')).toEqual(DEFAULT_CONNECTOR_STYLE_PREFS)
-    expect(parseConnectorStylePrefs('{oops')).toEqual(DEFAULT_CONNECTOR_STYLE_PREFS)
-    expect(parseConnectorStylePrefs('null')).toEqual(DEFAULT_CONNECTOR_STYLE_PREFS)
+    expect(parseConnectorStylePrefs('')).toEqual(defaultPrefs)
+    expect(parseConnectorStylePrefs('{oops')).toEqual(defaultPrefs)
+    expect(parseConnectorStylePrefs('null')).toEqual(defaultPrefs)
     expect(
       parseConnectorStylePrefs(JSON.stringify({ color: 'not-a-hex', strokeWeight: -1, lineStyle: 'ZIGZAG' }))
-    ).toEqual(DEFAULT_CONNECTOR_STYLE_PREFS)
+    ).toEqual(defaultPrefs)
   })
 })
 
@@ -197,9 +201,9 @@ describe('parseConnectorRecord', () => {
       opacity: 1.5
     })
     const parsed = parseConnectorRecord(raw)
-    expect(parsed?.strokeWeight).toBe(DEFAULT_CONNECTOR_WEIGHT)
-    expect(parsed?.color).toBe(DEFAULT_CONNECTOR_COLOR)
-    expect(parsed?.opacity).toBe(DEFAULT_CONNECTOR_OPACITY)
+    expect(parsed?.strokeWeight).toBe(1.5)
+    expect(parsed?.color).toBe('#000000')
+    expect(parsed?.opacity).toBe(1)
   })
 
   it('reads a valid opacity within 0..1', () => {
@@ -229,8 +233,8 @@ describe('parseConnectorRecord', () => {
       endCap: 5
     })
     const invalid = parseConnectorRecord(invalidRaw)
-    expect(invalid?.startCap).toBe(DEFAULT_START_CAP)
-    expect(invalid?.endCap).toBe(DEFAULT_END_CAP)
+    expect(invalid?.startCap).toBe('CIRCLE_FILLED')
+    expect(invalid?.endCap).toBe('ARROW_EQUILATERAL')
   })
 
   it('reads a valid lineStyle and falls back to the default for an untrustworthy one', () => {
@@ -253,7 +257,7 @@ describe('parseConnectorRecord', () => {
       end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' },
       lineStyle: 'CURVY'
     })
-    expect(parseConnectorRecord(invalidRaw)?.lineStyle).toBe(DEFAULT_LINE_STYLE)
+    expect(parseConnectorRecord(invalidRaw)?.lineStyle).toBe('ELBOW')
   })
 
   it('reads a valid cornerRadius and falls back to the default for a negative or missing one', () => {
@@ -269,7 +273,7 @@ describe('parseConnectorRecord', () => {
       end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' },
       cornerRadius: -5
     })
-    expect(parseConnectorRecord(invalidRaw)?.cornerRadius).toBe(DEFAULT_CORNER_RADIUS)
+    expect(parseConnectorRecord(invalidRaw)?.cornerRadius).toBe(20)
   })
 
   it('accepts a free-point anchor', () => {
@@ -293,7 +297,7 @@ describe('parseConnectorRecord', () => {
       start: { kind: 'magnet', nodeId: 'a', magnet: 'AUTO' },
       end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' }
     })
-    expect(parseConnectorRecord(withoutLabel)?.label).toBe(DEFAULT_LABEL)
+    expect(parseConnectorRecord(withoutLabel)?.label).toBe('')
   })
 })
 
@@ -369,7 +373,7 @@ describe('connectorRoutePoints', () => {
     // immediately run horizontally out of the start, ignoring its side.
     const points = connectorRoutePoints({ x: 0, y: 0 }, { x: 200, y: 10 }, 'ELBOW', 'BOTTOM', 'LEFT')
     expect(points[0]).toEqual({ x: 0, y: 0 })
-    expect(points[1]).toEqual({ x: 0, y: ELBOW_STUB }) // straight down out of the BOTTOM side first
+    expect(points[1]).toEqual({ x: 0, y: 80 }) // straight down out of the BOTTOM side first
     const last = points[points.length - 1]
     const secondLast = points[points.length - 2]
     expect(last).toEqual({ x: 200, y: 10 })
@@ -1116,7 +1120,7 @@ describe('edgesOn — how far a route stands off each box', () => {
     ]
     // Nothing above or below any of them, so nothing is crowding them.
     for (const [low, high] of edgesOn({ foreign: row, own: [] }, 'y')) {
-      expect(high - low).toBe(812 + ELBOW_STUB * 2)
+      expect(high - low).toBe(812 + 80 * 2)
     }
   })
 
@@ -1136,7 +1140,7 @@ describe('edgesOn — how far a route stands off each box', () => {
       { x: 535, y: 892, width: 375, height: 812 }
     ]
     const [first] = edgesOn({ foreign: board, own: [] }, 'y')
-    expect((first as [number, number])[1]).toBe(812 + ELBOW_STUB)
+    expect((first as [number, number])[1]).toBe(812 + 80)
   })
 })
 
@@ -1146,13 +1150,13 @@ describe('clearanceBeside', () => {
   })
 
   it('never crowds an edge, however tight the gap', () => {
-    expect(clearanceBeside(10)).toBe(OBSTACLE_CLEARANCE)
-    expect(clearanceBeside(0)).toBe(OBSTACLE_CLEARANCE)
+    expect(clearanceBeside(10)).toBe(20)
+    expect(clearanceBeside(0)).toBe(20)
   })
 
   it('does not wander off across an empty board', () => {
-    expect(clearanceBeside(4000)).toBe(ELBOW_STUB)
-    expect(clearanceBeside(Number.POSITIVE_INFINITY)).toBe(ELBOW_STUB)
+    expect(clearanceBeside(4000)).toBe(80)
+    expect(clearanceBeside(Number.POSITIVE_INFINITY)).toBe(80)
   })
 })
 
@@ -1246,18 +1250,18 @@ describe('connectorStubClearance', () => {
     expect(connectorStubClearance({ x: 100, y: 50 }, 'RIGHT', frame)).toBe(400 + 20 - 100)
     expect(connectorStubClearance({ x: 300, y: 50 }, 'LEFT', frame)).toBe(320)
     // Below the flat stub, so the stub wins — see the test that follows.
-    expect(connectorStubClearance({ x: 100, y: 20 }, 'TOP', frame)).toBe(ELBOW_STUB)
+    expect(connectorStubClearance({ x: 100, y: 20 }, 'TOP', frame)).toBe(80)
     // Below the flat stub, so the stub wins.
-    expect(connectorStubClearance({ x: 100, y: 150 }, 'BOTTOM', frame)).toBe(ELBOW_STUB)
+    expect(connectorStubClearance({ x: 100, y: 150 }, 'BOTTOM', frame)).toBe(80)
   })
 
   it('never goes below the flat stub, even right at the frame edge', () => {
-    expect(connectorStubClearance({ x: 399, y: 50 }, 'RIGHT', frame)).toBe(ELBOW_STUB)
+    expect(connectorStubClearance({ x: 399, y: 50 }, 'RIGHT', frame)).toBe(80)
   })
 
   it('falls back to the flat stub with no frame or no side', () => {
-    expect(connectorStubClearance({ x: 100, y: 50 }, 'RIGHT', null)).toBe(ELBOW_STUB)
-    expect(connectorStubClearance({ x: 100, y: 50 }, null, frame)).toBe(ELBOW_STUB)
+    expect(connectorStubClearance({ x: 100, y: 50 }, 'RIGHT', null)).toBe(80)
+    expect(connectorStubClearance({ x: 100, y: 50 }, null, frame)).toBe(80)
   })
 })
 
