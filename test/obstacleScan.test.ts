@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Rect } from '../src/core/anchor.js'
-import { boxesChangedBetweenScans } from '../src/core/obstacleScan.js'
+import type { Point, Rect } from '../src/core/anchor.js'
+import type { ConnectorGeometry } from '../src/core/connector.js'
+import {
+  type RouteObstacle,
+  EMPTY_OBSTACLES,
+  boxesChangedBetweenScans,
+  splitRouteObstacles
+} from '../src/core/obstacleScan.js'
 
 const scan = (entries: Record<string, Rect>): ReadonlyMap<string, Rect> =>
   new Map(Object.entries(entries))
@@ -88,5 +94,71 @@ describe('boxesChangedBetweenScans', () => {
   it('reports everything on the very first scan, when there is no previous one', () => {
     const changed = boxesChangedBetweenScans(scan({}), scan({ a: screen, b: middle }))
     expect(changed).toEqual([screen, middle])
+  })
+})
+
+describe('splitRouteObstacles', () => {
+  const geometry = (start: Point | null, end: Point | null): ConnectorGeometry => ({
+    start,
+    end,
+    complete: start !== null && end !== null,
+    startSide: 'RIGHT',
+    endSide: 'LEFT'
+  })
+  const at = (id: string, x: number): RouteObstacle => ({
+    id,
+    rect: { x, y: 0, width: 200, height: 400 }
+  })
+  const from = at('a', 0)
+  const between = at('b', 400)
+  const to = at('c', 800)
+  const ends = geometry({ x: 200, y: 200 }, { x: 800, y: 200 })
+
+  it('calls a box neither end owns a stranger', () => {
+    const split = splitRouteObstacles([from, between, to], ends, 'a', 'c')
+    expect(split.foreign).toEqual([between.rect])
+  })
+
+  // Dropping the endpoints' own screens entirely is true of the segments that
+  // leave and arrive, and false of everything in between: a route leaving by
+  // its nearest edge is otherwise free to turn straight back through the
+  // middle of that same screen.
+  it('keeps each end\'s own screen, sorted apart rather than thrown away', () => {
+    const split = splitRouteObstacles([from, between, to], ends, 'a', 'c')
+    expect(split.own).toEqual([from.rect, to.rect])
+  })
+
+  it('sorts a box both ends share into `own` once, not twice', () => {
+    const shared = at('same', 0)
+    const split = splitRouteObstacles([shared], ends, 'same', 'same')
+    expect(split.own).toEqual([shared.rect])
+    expect(split.foreign).toEqual([])
+  })
+
+  it('treats an end with no owner as owning nothing', () => {
+    const split = splitRouteObstacles([from, between, to], ends, null, null)
+    expect(split.own).toEqual([])
+    expect(split.foreign).toEqual([from.rect, between.rect, to.rect])
+  })
+
+  it('drops what is nowhere near the line', () => {
+    const miles = at('far', 90000)
+    const split = splitRouteObstacles([between, miles], ends, null, null)
+    expect(split.foreign).toEqual([between.rect])
+  })
+
+  it('avoids nothing at all when either endpoint is missing', () => {
+    const dangling = geometry({ x: 200, y: 200 }, null)
+    expect(splitRouteObstacles([from, between, to], dangling, 'a', 'c')).toEqual(EMPTY_OBSTACLES)
+  })
+
+  it('keeps two boxes that happen to share a rectangle apart by id', () => {
+    // Same numbers, different nodes — a duplicated screen sitting exactly on
+    // top of its original. Sorting by value alone would put both in whichever
+    // bucket the first one landed in.
+    const twin = { id: 'twin', rect: { ...between.rect } }
+    const split = splitRouteObstacles([between, twin], ends, 'twin', null)
+    expect(split.own).toEqual([twin.rect])
+    expect(split.foreign).toEqual([between.rect])
   })
 })

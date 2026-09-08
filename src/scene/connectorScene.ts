@@ -28,7 +28,6 @@ import {
   parseConnectorRecord,
   parseConnectorStylePrefs,
   pointAlongPolyline,
-  obstaclesInPlay,
   orientedTowards,
   pointOnCurve,
   resolveConnectorGeometry,
@@ -37,7 +36,12 @@ import {
   serialiseConnectorStylePrefs
 } from '../core/connector.js'
 import { contrastingTextColor } from '../core/category.js'
-import { boxesChangedBetweenScans } from '../core/obstacleScan.js'
+import {
+  type RouteObstacle,
+  EMPTY_OBSTACLES,
+  boxesChangedBetweenScans,
+  splitRouteObstacles
+} from '../core/obstacleScan.js'
 import { ownerIdOf } from './annotationScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import { ensureOnPage, findEnclosingFrame, topLevelAncestorIdOf } from './frames.js'
@@ -674,54 +678,6 @@ async function boxesOf(nodeId: string): Promise<EndpointBoxes> {
   }
 }
 
-const EMPTY_OBSTACLES: RouteObstacles = { foreign: [], own: [] }
-
-/**
- * Sorts the page's boxes into the two kinds `RouteObstacles` distinguishes,
- * and drops the ones too far away to matter.
- *
- * The endpoints' own frames used to be dropped entirely, on the grounds that
- * a connector cannot avoid the screens it is attached to. True of the
- * segments that leave and arrive, and false of everything in between — a
- * route that leaves a screen by its nearest edge is otherwise free to turn
- * straight back through the middle of that same screen, which is exactly the
- * shape `resolveMagnetEscapingFrame` was added to stop producing.
- */
-function splitRouteObstacles(
-  all: ReadonlyArray<RouteObstacle>,
-  geometry: ReturnType<typeof resolveConnectorGeometry>,
-  startBoxes: EndpointBoxes,
-  endBoxes: EndpointBoxes
-): RouteObstacles {
-  const start = geometry.start
-  const end = geometry.end
-  if (start === null || end === null) return EMPTY_OBSTACLES
-  const ownIds = new Set(
-    [startBoxes.obstacleId, endBoxes.obstacleId].filter((id): id is string => id !== null)
-  )
-  const near = obstaclesInPlay(
-    all.map((obstacle) => obstacle.rect),
-    start,
-    end,
-    ROUTE_SEARCH_MARGIN
-  )
-  const nearRects = new Set(near)
-  const foreign: Array<Rect> = []
-  const own: Array<Rect> = []
-  for (const obstacle of all) {
-    if (!nearRects.has(obstacle.rect)) continue
-    if (ownIds.has(obstacle.id)) own.push(obstacle.rect)
-    else foreign.push(obstacle.rect)
-  }
-  return { foreign, own }
-}
-
-/** A box an elbow route should bend around, tagged with the node it came from so an endpoint's own screen can be told apart. */
-export interface RouteObstacle {
-  readonly id: string
-  readonly rect: Rect
-}
-
 /**
  * What a connector will *not* route around, by type.
  *
@@ -879,7 +835,12 @@ export async function syncConnector(
   )
   const obstacles =
     record.lineStyle === 'ELBOW' && !record.manualGeometry
-      ? splitRouteObstacles(known ?? collectRouteObstacles(), geometry, startBoxes, endBoxes)
+      ? splitRouteObstacles(
+          known ?? collectRouteObstacles(),
+          geometry,
+          startBoxes.obstacleId,
+          endBoxes.obstacleId
+        )
       : EMPTY_OBSTACLES
 
   try {
