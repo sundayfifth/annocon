@@ -66,6 +66,11 @@ import {
   updateConnectorAnchorSide,
   updateConnectorStyle
 } from './scene/connectorScene.js'
+import {
+  type ObservedChange,
+  classifyBatch,
+  isEmptyBatch
+} from './core/nodeChanges.js'
 import { CHUNK_SIZE, yieldToMainThread } from './scene/chunking.js'
 import { isSuppressed } from './scene/pluginData.js'
 
@@ -95,22 +100,6 @@ function trackSelectionOrder(): void {
  * eye on a screen parked between two connected screens has to re-route the
  * lines passing it in both directions.
  */
-const POSITIONAL_PROPERTIES = [
-  'x',
-  'y',
-  'width',
-  'height',
-  'relativeTransform',
-  'rotation',
-  'visible',
-  // Reshaping a connector need not change its box at all — pull a bend
-  // inwards and the two ends still define the same rectangle with the same
-  // number of vertices. Without this, that edit is filtered out here and
-  // then quietly redrawn over on the next sync. (`vectorPaths` is not a
-  // property Figma reports a change on; `vectorNetwork` is the one.)
-  'vectorNetwork'
-]
-
 /**
  * What each selected node stands for: a card or leader stands for its note's
  * layer, a label pill for its connector, everything else for itself.
@@ -444,58 +433,37 @@ interface TouchedNodes {
  */
 function handleNodeChange(event: NodeChangeEvent): void {
   if (isSuppressed()) return
-  const deletedIds = new Set<string>()
-  const movedTargetIds = new Set<string>()
-  const draggedCardOwnerIds = new Set<string>()
-  const editedTextNodes: Array<TextNode> = []
+  // Kept alongside the ids, because the classifier answers in ids and the
+  // text nodes themselves are what gets read back.
+  const textNodesById = new Map<string, TextNode>()
+  const observed = event.nodeChanges.map((change): ObservedChange => {
+    const node = change.node
+    const common = {
+      type: change.type,
+      nodeId: node.id,
+      properties: change.type === 'PROPERTY_CHANGE' ? change.properties : [],
+      nodeType: node.type
+    }
+    // A `RemovedNode` carries id/type/removed and nothing else, and reading
+    // any other property off one throws — so this is both the test for
+    // whether there is a node left to look at and what narrows it to one.
+    // A node deleted in the same batch as a property change arrives this way.
+    if (!('absoluteBoundingBox' in node)) {
+      return { ...common, hasBox: false, role: null, ownerId: null }
+    }
+    if (node.type === 'TEXT') textNodesById.set(node.id, node)
+    return { ...common, hasBox: true, role: roleOf(node), ownerId: ownerIdOf(node) }
+  })
 
-  for (const change of event.nodeChanges) {
-    if (change.type === 'DELETE') {
-      deletedIds.add(change.node.id)
-      continue
-    }
-    if (change.type !== 'PROPERTY_CHANGE') continue
-    // Someone typed into a card or a label pill on the canvas. Collected
-    // before the positional filter below, since `characters` is not a
-    // position — and separately from it, because what has to happen next is
-    // to read the words back into the record rather than to re-render.
-    // `absoluteBoundingBox` narrows a RemovedNode out — a node deleted in
-    // this same batch has nothing left to read.
-    if (
-      change.properties.includes('characters') &&
-      change.node.type === 'TEXT' &&
-      'absoluteBoundingBox' in change.node
-    ) {
-      editedTextNodes.push(change.node)
-    }
-    if (!change.properties.some((property) => POSITIONAL_PROPERTIES.includes(property))) continue
-    // A RemovedNode never carries this property; narrows change.node to SceneNode.
-    if (!('absoluteBoundingBox' in change.node)) continue
-
-    const role = roleOf(change.node)
-    if (role === 'card') {
-      const ownerId = ownerIdOf(change.node)
-      if (ownerId !== null) draggedCardOwnerIds.add(ownerId)
-      continue
-    }
-    // Badge/leader are locked and repositioned only by our own sync code —
-    // reacting to their moves here would just chase our own writes.
-    if (role === 'badge' || role === 'leader') continue
-    movedTargetIds.add(change.node.id)
+  const effects = classifyBatch(observed)
+  if (isEmptyBatch(effects)) return
+  for (const id of effects.deletedIds) waiting.deletedIds.add(id)
+  for (const id of effects.movedTargetIds) waiting.movedTargetIds.add(id)
+  for (const id of effects.draggedCardOwnerIds) waiting.draggedCardOwnerIds.add(id)
+  for (const id of effects.editedTextNodeIds) {
+    const node = textNodesById.get(id)
+    if (typeof node !== 'undefined') waiting.editedTextNodes.push(node)
   }
-
-  if (
-    deletedIds.size === 0 &&
-    movedTargetIds.size === 0 &&
-    draggedCardOwnerIds.size === 0 &&
-    editedTextNodes.length === 0
-  ) {
-    return
-  }
-  for (const id of deletedIds) waiting.deletedIds.add(id)
-  for (const id of movedTargetIds) waiting.movedTargetIds.add(id)
-  for (const id of draggedCardOwnerIds) waiting.draggedCardOwnerIds.add(id)
-  waiting.editedTextNodes.push(...editedTextNodes)
   scheduleResync()
 }
 
