@@ -38,16 +38,44 @@ import {
   contrastingTextColor,
   findCategory
 } from '../core/category.js'
+import {
+  type Placement,
+  placedByUs,
+  placementFingerprint
+} from '../core/authorship.js'
 import { polylineAtOrigin, samePolyline } from '../core/drawnShape.js'
 import { getCategories } from './categoryScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import { ensureOnPage, findEnclosingFrame, raiseAbove } from './frames.js'
 import { ownership } from './ownership.js'
-import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
+import { removeNode } from './removals.js'
 
 const ANNOTATION_KEY = 'annotation'
 const OWNER_KEY = 'annotationOwner'
 const ROLE_KEY = 'annotationRole'
+/**
+ * Where this plugin last put a card, so a person moving one can be told from
+ * a sync moving one. The card's counterpart to `connectorDrawnAs` — see
+ * `core/authorship.ts` for why both exist and what each leaves out.
+ */
+const PLACED_AT_KEY = 'annotationPlacedAt'
+
+/** The card's absolute box, which is what a placement is measured in — see `placementFingerprint`. */
+function placementOf(card: FrameNode): Placement | null {
+  const box = card.absoluteBoundingBox
+  return box === null ? null : { x: box.x, y: box.y, width: box.width }
+}
+
+/**
+ * Records where a card was just put. Called after every write of a card's
+ * position, including the stacking pass, which deliberately puts a card
+ * somewhere other than where its layout alone would.
+ */
+function rememberPlacement(card: FrameNode): void {
+  const placement = placementOf(card)
+  if (placement === null) return
+  card.setPluginData(PLACED_AT_KEY, placementFingerprint(placement))
+}
 
 type Role = 'badge' | 'card' | 'leader'
 
@@ -87,7 +115,7 @@ function resolveCardFont(): Promise<FontName> {
     }
     const probe = figma.createText()
     const fallback = probe.fontName as FontName
-    probe.remove()
+    removeNode(probe)
     return fallback
   })()
   return resolvedCardFont
@@ -139,19 +167,15 @@ export function findAnnotationTargetsUnder(
 }
 
 function writeAnnotationRecord(node: SceneNode, record: AnnotationRecord): void {
-  withSuppressedNodeChange(() => {
-    node.setPluginData(ANNOTATION_KEY, serialiseAnnotationRecord(record))
-    // Lets a teammate right-click the node on canvas and reopen the plugin
-    // straight into the editor for it, instead of hunting for it in the UI.
-    node.setRelaunchData({ annotate: '' })
-  })
+  node.setPluginData(ANNOTATION_KEY, serialiseAnnotationRecord(record))
+  // Lets a teammate right-click the node on canvas and reopen the plugin
+  // straight into the editor for it, instead of hunting for it in the UI.
+  node.setRelaunchData({ annotate: '' })
 }
 
 function eraseAnnotationRecord(node: SceneNode): void {
-  withSuppressedNodeChange(() => {
-    node.setPluginData(ANNOTATION_KEY, '')
-    node.setRelaunchData({})
-  })
+  node.setPluginData(ANNOTATION_KEY, '')
+  node.setRelaunchData({})
 }
 
 /** The badges, cards and leaders, indexed by the layer each annotates. Annotate remembers a role per node. */
@@ -314,7 +338,7 @@ async function ensureCategoryPill(
       child.type === 'FRAME' && child.getPluginData(CATEGORY_PILL_KEY) === 'true'
   )
   if (category === null) {
-    if (typeof existingPill !== 'undefined') existingPill.remove()
+    if (typeof existingPill !== 'undefined') removeNode(existingPill)
     return
   }
   const pill = existingPill ?? figma.createFrame()
@@ -636,11 +660,12 @@ async function syncAnnotationExclusive(target: SceneNode, known?: RenderedNodes)
   if (rect === null) return
 
   // Every write below — position, resize, vector network — is itself a
-  // property change our own `nodechange` listener sees. Left unsuppressed,
-  // positioning the card here looks identical to a person dragging it, and
-  // gets fed back into `updateCardFromDrag`, which can then overwrite
-  // the record with an offset read mid-write — corrupted, sometimes wildly
-  // off-canvas, positions with no error anywhere.
+  // property change our own `nodechange` listener sees. The card's is the one
+  // that matters: positioning it here is indistinguishable from a person
+  // dragging it, so `syncAnnotationBody` records where it put the card and
+  // `updateCardFromDrag` checks that before believing a move (see
+  // `core/authorship.ts`). Without that, a sync's own write comes back as a
+  // drag and overwrites the record with an offset read mid-write.
   const category = findCategory(getCategories(), record.categoryId)
   const color = category?.color ?? DEFAULT_ANNOTATION_COLOR
 
@@ -667,7 +692,7 @@ async function syncAnnotationBody(
   category: Category | null,
   color: string
 ): Promise<void> {
-  await withSuppressedNodeChangeAsync(async () => {
+  {
     // Reparent to the page *before* touching anything else. Every x/y
     // write below is a page-absolute coordinate — but the card is
     // deliberately draggable, and Figma auto-reparents any node dropped
@@ -698,6 +723,10 @@ async function syncAnnotationBody(
     card.name = CARD_LAYER_NAME
     card.x = layout.cardTopLeft.x
     card.y = layout.cardTopLeft.y
+    // Fingerprinted straight after the write, so the `nodechange` this very
+    // write is about to fire can be recognised as ours whenever it arrives.
+    // The stacking pass below may move the card again and re-record it.
+    rememberPlacement(card)
     if (text.characters !== record.text) {
       await figma.loadFontAsync(text.fontName as FontName)
       text.characters = record.text
@@ -742,7 +771,7 @@ async function syncAnnotationBody(
     // the page's order than the leader — checked rather than re-asserted, so
     // the layer tree is only touched when it is actually wrong.
     raiseAbove(card, placedLeader)
-  })
+  }
 }
 
 // Wider than the strictly-needed clearance between two card bodies — Figma
@@ -844,11 +873,7 @@ export async function applyCardStacking(): Promise<void> {
       // other card still waiting in this same pass.
       if (typeof top !== 'number' || item.card.removed) continue
       try {
-        // Suppressed per card, not for the whole batch — moving a card to
-        // avoid overlap must not look like a person dragging it, but one
-        // suppression window spanning every annotation on the page would
-        // also drop genuine unrelated edits for as long as this ran.
-        await withSuppressedNodeChangeAsync(async () => {
+        {
           // Same reparent-before-position reasoning as `syncAnnotationExclusive`
           // — the card may have drifted into another frame since the last sync.
           ensureOnPage(item.card)
@@ -858,6 +883,11 @@ export async function applyCardStacking(): Promise<void> {
           // only `y` leaves the card sitting a frame's width off to the side.
           item.card.x = item.left
           item.card.y = top
+          // Recorded here too, and this is the case a comparison against the
+          // layout alone could not cover: stacking deliberately puts a card
+          // somewhere its own layout does not, so "is it where the layout
+          // says" would read every stacked card as dragged.
+          rememberPlacement(item.card)
           if (item.leader === null || item.leader.removed) return
           ensureOnPage(item.leader)
 
@@ -874,7 +904,7 @@ export async function applyCardStacking(): Promise<void> {
             item.leader,
             leaderIntoCard(item.edgeStart, to, CARD_APPROACH_STUB, laneOffset)
           )
-        })
+        }
       } catch (error) {
         failures += 1
         console.error(error)
@@ -1024,6 +1054,14 @@ export async function updateCardFromDrag(target: SceneNode): Promise<void> {
   // is immune to whatever the parent currently is.
   const cardBox = rendered.card.absoluteBoundingBox
   if (cardBox === null) return
+
+  // Our own write coming back. A card is unlocked so a person can drag it,
+  // which means a `nodechange` for one says nothing about who moved it —
+  // this is the only write in the plugin where that is true, and it is what
+  // `withSuppressedNodeChange` used to be raised for. Answered by content
+  // instead: if the card is exactly where this plugin last put it, nobody
+  // has touched it since.
+  if (placedByUs(rendered.card.getPluginData(PLACED_AT_KEY), cardBox)) return
 
   const before = layoutFor(target, rect, record)
   const newOffset: Point = {

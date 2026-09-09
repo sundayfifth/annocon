@@ -58,8 +58,15 @@ Manual verification steps are in `docs/qa-checklist.md`.
 - Geometry flows one way: pluginData record → rendered node. Never read geometry
   back off a node; `vectorPaths` round-trips lossily and setting it moves and
   resizes the node.
-- Writing our own `pluginData` echoes back through `nodechange`. Raise the
-  suppress flag around every write or the re-route loops.
+- Our own writes come back through `nodechange`, and are told from a person's
+  edits **by content, never by timing**. Three mechanisms, in the order a
+  change meets them: the property filter in `core/nodeChanges.ts` drops what
+  no feature acts on (a `pluginData` echo, a reparent); `core/authorship.ts`
+  fingerprints the two writes that are genuinely ambiguous (a card's placement,
+  a connector's shape); `scene/removals.ts` names nodes we deleted, since a
+  deletion leaves no content to compare. Add a write that a person could also
+  make by hand and it needs one of these — a flag raised around the write does
+  not work, which is why there is no longer one.
 - Treat the canvas as untrusted: users move and delete the rendered nodes by
   hand, so reconciliation repairs whatever it finds instead of assuming.
 - Chunk long work. The plugin runs on the editor's main thread — a slow loop

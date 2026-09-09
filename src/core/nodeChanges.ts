@@ -1,14 +1,17 @@
 /**
  * What a batch of `nodechange` events is asking the plugin to do.
  *
- * This is the filter every live update runs through, and until now it lived
- * inline in `main.ts` with no test — which mattered, because it is also the
- * mechanism that decides how much work the suppress flag is actually doing.
- * A change to our own `pluginData`, or to a node's `parent`, never gets past
- * `positional` below, so the echo `withSuppressedNodeChange` was written to
- * stop cannot reach anything whether the flag is raised or not. What the flag
- * is still load-bearing for is narrower than its own docstring claims, and the
- * tests next door are what say so.
+ * This is the filter every live update runs through, and it is the first and
+ * largest of the three things that tell this plugin's own writes from a
+ * person's. A change to our own `pluginData`, or to a node's `parent`, never
+ * gets past `positional` below, so those echoes stop here and no other
+ * mechanism has to think about them. `core/authorship.ts` handles the two
+ * writes that reach this filter looking exactly like an edit, and
+ * `scene/removals.ts` handles deletions, which have no content left to judge.
+ *
+ * A timing-based flag used to sit in front of all of this, dropping any batch
+ * that arrived while a write was in flight. Measuring what it caught is what
+ * produced this file; nothing it did is missing.
  *
  * Structural change type, like `TreeNode` and `OwnedNode` elsewhere in core:
  * the scene layer reads Figma's `NodeChangeEvent` and hands the parts of it
@@ -92,8 +95,8 @@ const NOTHING: ChangeEffects = {
  *
  * A badge or a leader that moved is ignored outright. Those are locked and
  * repositioned only by this plugin's own sync, so reacting to them would be
- * chasing our own writes — which is the same job the suppress flag claims,
- * done here by asking what the node *is* instead of when the write happened.
+ * chasing our own writes — attributed by asking what the node *is*, which
+ * needs no clock.
  */
 export function classifyChange(change: ObservedChange): ChangeEffects {
   if (change.type === 'DELETE') return { ...NOTHING, deleted: true }

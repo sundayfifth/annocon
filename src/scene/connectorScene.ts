@@ -36,11 +36,11 @@ import {
   serialiseConnectorStylePrefs
 } from '../core/connector.js'
 import { contrastingTextColor } from '../core/category.js'
+import { shapeFingerprint } from '../core/authorship.js'
 import {
   type DrawnRun,
   alreadyDrawn,
   polylineAtOrigin,
-  shapeFingerprint,
   walkDrawnShape
 } from '../core/drawnShape.js'
 import { topLevelAncestorIdOf } from '../core/nodeTree.js'
@@ -54,7 +54,6 @@ import { ownerIdOf } from './annotationScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import { ensureOnPage, findEnclosingFrame } from './frames.js'
 import { ownership } from './ownership.js'
-import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
 
 const CONNECTOR_KEY = 'connector'
 const BROKEN_COLOR = '#E5484D'
@@ -66,11 +65,10 @@ const LAST_STYLE_KEY = 'lastConnectorStyle'
  * The shape this plugin last drew, as `x,y,width,height,vertexCount`.
  *
  * How a person reshaping a line is told from this plugin drawing one.
- * Suppression cannot answer it: it releases a tick after the write, and a
- * sync's awaits mean the `nodechange` for a vector write can land after the
- * window has closed. Comparing against what we drew does not depend on when
- * an event turns up — the same test that tells a dragged card width from a
- * re-rendered one.
+ * Comparing against what we drew does not depend on when an event turns up,
+ * which is why this outlived the timing-based flag that used to sit beside it
+ * — see `core/authorship.ts`, and `annotationPlacedAt` for a card's version
+ * of the same question.
  */
 const DRAWN_AS_KEY = 'connectorDrawnAs'
 
@@ -101,9 +99,7 @@ export function isConnector(node: SceneNode): boolean {
 }
 
 function writeConnectorRecord(node: SceneNode, record: ConnectorRecord): void {
-  withSuppressedNodeChange(() => {
-    node.setPluginData(CONNECTOR_KEY, serialiseConnectorRecord(record))
-  })
+  node.setPluginData(CONNECTOR_KEY, serialiseConnectorRecord(record))
 }
 
 function findAllConnectors(): Array<VectorNode> {
@@ -719,7 +715,7 @@ async function syncConnectorBody(
   obstacles: RouteObstacles,
   labels?: LabelIndex
 ): Promise<void> {
-  await withSuppressedNodeChangeAsync(async () => {
+  {
     // Same reparent-before-position reasoning as annotation cards — the
     // connector itself is never locked (it must stay selectable so its
     // style panel works), so a person can drag it onto a frame and Figma
@@ -843,7 +839,7 @@ async function syncConnectorBody(
       record.labelColor,
       midpoint
     )
-  })
+  }
 }
 
 interface PolylineRoute extends ElbowRouteOptions {

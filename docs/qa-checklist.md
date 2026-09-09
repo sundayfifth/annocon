@@ -259,6 +259,30 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       (80 units), which should read as less cramped than before against a
       full-width screen.
 
+## Telling our own writes from a person's
+
+The timing-based suppress flag is gone. What replaced it is content-based, so
+these are the paths that used to depend on the flag being raised in time.
+
+- [ ] Drag a note card somewhere else and let go → it stays where it was put,
+      and stays there through further edits to the same note. (The card is the
+      one write the plugin cannot tell from a drag on its own.)
+- [ ] Annotate several layers along one frame edge so their cards crowd and
+      get stacked apart → the stacked cards keep their own offsets. Move the
+      crowding away and each card returns to where it was put, rather than
+      keeping the stacked position as if it had been dragged there.
+- [ ] Drag a card's side edge to widen it → the width sticks, and a later sync
+      that shrinks the card to fit a narrow gap does not overwrite it.
+- [ ] Reshape a connector with the vector tools → it stays reshaped, and the
+      panel says so.
+- [ ] Delete a note card by hand → the note goes with it, and does not come
+      back on the next sync.
+- [ ] Delete a connector's label pill by hand → it stays deleted.
+- [ ] Remove a category from a note → the pill goes, and nothing else about
+      the note changes.
+- [ ] Open the plugin on a file made before this change: nothing re-routes or
+      shifts on its own, and cards that were dragged are still where they were.
+
 ## The connector panel's number fields
 
 All three now clamp on **blur** and write the clamped value back. `minimum` /
