@@ -660,6 +660,95 @@ describe('connectorRoutePoints — obstacle avoidance', () => {
     expect(sideways).toEqual(auto)
   })
 
+  /**
+   * The other three pins, so the mapping from a compass direction to a side
+   * of the obstacle is stated rather than inferred from `TOP` alone. A pin
+   * only applies to the axis a route can actually be moved on: `LEFT`/`RIGHT`
+   * for a line running top to bottom, `TOP`/`BOTTOM` for one running side to
+   * side.
+   */
+  it('passes below when pinned BOTTOM, and above when pinned TOP', () => {
+    const obstacles = [{ x: 150, y: -220, width: 100, height: 440 }]
+    const args = [{ x: 0, y: 0 }, { x: 400, y: 0 }, 'ELBOW', 'RIGHT', 'LEFT'] as const
+    const over = connectorRoutePoints(...args, {
+      ...facing,
+      obstacles: foreign(obstacles),
+      detour: 'TOP'
+    })
+    const under = connectorRoutePoints(...args, {
+      ...facing,
+      obstacles: foreign(obstacles),
+      detour: 'BOTTOM'
+    })
+    expect(routeCrossings(over, obstacles)).toBe(0)
+    expect(routeCrossings(under, obstacles)).toBe(0)
+    expect(Math.min(...over.map((point) => point.y))).toBeLessThan(-220)
+    expect(Math.max(...under.map((point) => point.y))).toBeGreaterThan(220)
+  })
+
+  it('passes left when pinned LEFT, and right when pinned RIGHT', () => {
+    // A route running top to bottom, so the axis it can be moved on is x.
+    const obstacles = [{ x: -220, y: 150, width: 440, height: 100 }]
+    const args = [{ x: 0, y: 0 }, { x: 0, y: 400 }, 'ELBOW', 'BOTTOM', 'TOP'] as const
+    const left = connectorRoutePoints(...args, {
+      ...facing,
+      obstacles: foreign(obstacles),
+      detour: 'LEFT'
+    })
+    const right = connectorRoutePoints(...args, {
+      ...facing,
+      obstacles: foreign(obstacles),
+      detour: 'RIGHT'
+    })
+    expect(routeCrossings(left, obstacles)).toBe(0)
+    expect(routeCrossings(right, obstacles)).toBe(0)
+    expect(Math.min(...left.map((point) => point.x))).toBeLessThan(-220)
+    expect(Math.max(...right.map((point) => point.x))).toBeGreaterThan(220)
+  })
+
+  /**
+   * A pin is a preference between ways round, not a demand for a detour that
+   * has nothing to go around. Handing back an empty candidate list here would
+   * leave the caller with no route at all.
+   */
+  it('draws the route it would have drawn when a pin has nothing to act on', () => {
+    const args = [{ x: 0, y: 0 }, { x: 400, y: 0 }, 'ELBOW', 'RIGHT', 'LEFT'] as const
+    const plain = connectorRoutePoints(...args, { ...facing, obstacles: foreign([]) })
+    const pinned = connectorRoutePoints(...args, {
+      ...facing,
+      obstacles: foreign([]),
+      detour: 'TOP'
+    })
+    expect(pinned).toEqual(plain)
+  })
+
+  /**
+   * Past `MAX_MEASURED_NEIGHBOURS` boxes the standoff stops being measured
+   * against the nearest box on each side and goes back to a flat clearance.
+   * The trade is deliberate: how pretty a line looks passing one screen,
+   * against the editor stuttering on a board with hundreds of them.
+   */
+  it('still clears every box on a board too crowded to measure gaps on', () => {
+    const many = Array.from({ length: 80 }, (_unused, i) => ({
+      x: 40 + i * 60,
+      y: -30,
+      width: 24,
+      height: 60
+    }))
+    const route = connectorRoutePoints(
+      { x: 0, y: 0 },
+      { x: 5200, y: 0 },
+      'ELBOW',
+      'RIGHT',
+      'LEFT',
+      { ...facing, obstacles: foreign(many) }
+    )
+    expect(route.length).toBeGreaterThan(1)
+    // Whichever way it went, it is a real route rather than a line through
+    // the middle of every one of them.
+    expect(routeCrossings(route, many)).toBeLessThan(many.length)
+  })
+
   it('does not detour at all when nothing is in the way, however it is pinned', () => {
     const args = [{ x: 0, y: 0 }, { x: 400, y: 100 }, 'ELBOW', 'RIGHT', 'LEFT'] as const
     const plain = connectorRoutePoints(...args, facing)

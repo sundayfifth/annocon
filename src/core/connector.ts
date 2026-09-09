@@ -244,6 +244,12 @@ export function findRouteAround(
 
   const startCell = { x: xs.indexOf(start.x), y: ys.indexOf(start.y) }
   const endCell = { x: xs.indexOf(end.x), y: ys.indexOf(end.y) }
+  // Unreachable as things stand — `gridLines` seeds itself with `from` and
+  // `to`, so both ends are always on the grid — and no test can cover it
+  // without reaching past the public function to break that. Kept because it
+  // stops being unreachable the moment the grid is built any other way, and
+  // the failure it would prevent is silent: `xs[-1]` is `undefined`, cast to
+  // a number, and the search would set off from `NaN`.
   if (startCell.x < 0 || startCell.y < 0 || endCell.x < 0 || endCell.y < 0) return null
 
   const at = (cell: { x: number; y: number }): Point => ({
