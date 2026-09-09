@@ -1,7 +1,13 @@
 /**
  * Shared by Annotate and Connect — both route around the enclosing frame a
  * node sits inside, and both put their rendered nodes back on the page.
+ *
+ * The rules themselves live in `core/nodeTree.ts`, which walks `parent` links
+ * and never touches the `figma` global. What is left here is the part that
+ * genuinely needs a document: the page to append to, and the mutation itself.
  */
+
+import { enclosingFrameOf, needsRaising } from '../core/nodeTree.js'
 
 /**
  * Puts a rendered node back on the page, and does nothing when it is already
@@ -25,63 +31,23 @@ export function ensureOnPage(node: SceneNode): void {
 
 /**
  * Makes sure `node` draws over `under`, without touching the layer order when
- * it already does.
- *
- * Re-appending is the usual way to raise a node and it works, but it fires
- * whether or not the order was wrong. Comparing first costs nothing and keeps
- * the layer tree still.
+ * it already does. `needsRaising` holds the rule and the reasons.
  */
 export function raiseAbove(node: SceneNode, under: SceneNode | null): void {
-  if (under === null || under.removed || node.removed) return
-  const parent = node.parent
-  if (parent === null || parent !== under.parent) return
-  if (parent.children.indexOf(node) > parent.children.indexOf(under)) return
-  parent.appendChild(node)
+  if (!needsRaising(node, under)) return
+  // Not null, and in the same parent as `node`: `needsRaising` said so.
+  node.parent?.appendChild(node)
 }
 
 /**
- * The outermost frame `node` sits inside — the "screen" it belongs to, as
- * opposed to a group, section, or component nested deeper inside one.
- * `null` when the node is a top-level page child itself, or isn't inside a
- * frame at all.
+ * The outermost frame `node` sits inside, as a real `FrameNode` so its box can
+ * be read. `enclosingFrameOf` holds the rule.
+ *
+ * The cast is this layer's to make: the walk deals in the structural node
+ * `core` can be tested against, and only a caller holding a real document
+ * knows that a node reporting `type === 'FRAME'` is a `FrameNode`.
  */
 export function findEnclosingFrame(node: SceneNode): FrameNode | null {
-  let current: BaseNode | null = node.parent
-  let outermost: FrameNode | null = null
-  while (current !== null && current.type !== 'PAGE') {
-    if (current.type === 'FRAME') outermost = current
-    current = current.parent
-  }
-  return outermost
-}
-
-/**
- * The box `node` belongs to as far as routing is concerned — `node` itself
- * when it is already one.
- *
- * Broader than `findEnclosingFrame` on purpose: that one deliberately only
- * counts `FRAME`s, because a "screen" is what a connector routes *around*.
- * This answers a different question — which box *is* this node part of — so
- * it follows sections and components too, or a node inside a top-level
- * section reports itself and gets treated as a foreign obstacle by its own
- * connector.
- *
- * `GROUP`s and `SECTION`s are stepped over rather than reported, matching
- * `collectRouteObstacles`, which looks inside them for the screens instead
- * of treating the container as one box. Both are ways of handling several
- * things at once, not things in their own right — people put a flow in a
- * section and still mean the screens. Reporting the container here would
- * name something that is never collected as an obstacle, so a connector's
- * own screen would come back as a foreign box for it to avoid.
- */
-const STEPPED_OVER: ReadonlySet<string> = new Set(['GROUP', 'SECTION'])
-
-export function topLevelAncestorIdOf(node: SceneNode): string {
-  let current: BaseNode = node
-  let outermost: BaseNode = node
-  while (current.parent !== null && current.parent.type !== 'PAGE' && current.parent.type !== 'DOCUMENT') {
-    current = current.parent
-    if (!STEPPED_OVER.has(current.type)) outermost = current
-  }
-  return outermost.id
+  const frame = enclosingFrameOf(node)
+  return frame === null ? null : (frame as FrameNode)
 }
