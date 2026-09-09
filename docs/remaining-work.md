@@ -3,14 +3,14 @@
 > **baseline เดิม:** `main @ 5c05097` · ตรวจเมื่อ 8 กันยายน 2026 —
 > 272 tests / 6 files · coverage `src/core/**` 90.76% stmts · 86.58% branch · 97.5% funcs · 93.97% lines
 >
-> **สถานะวันนี้:** `sundayfifth/feat-connector-drag-handles @ d7d19cd` · 9 กันยายน 2026
-> `npm run typecheck` · `npm run lint` · `npm test` (**290 tests / 7 files**) · `npm run build` ผ่านทั้งหมด
-> **coverage `src/core/**`:** **91.49% stmts · 87.96% branch · 97.61% funcs · 94.66% lines**
+> **สถานะวันนี้:** `sundayfifth/feat-connector-drag-handles @ 8b4818c` · 9 กันยายน 2026
+> `npm run typecheck` · `npm run lint` · `npm test` (**305 tests / 8 files**) · `npm run build` ผ่านทั้งหมด
+> **coverage `src/core/**`:** **91.72% stmts · 88.12% branch · 97.67% funcs · 94.79% lines**
 > ขึ้นทุกตัวเลขจาก baseline ทั้งที่ B1 ตัด test ที่ไม่ถือ coverage ของตัวเองออก 10 ตัว
-> และ A2/V1 ลบ test ของ state ที่ไม่มีอยู่อีก 2 ตัว — B4 เพิ่มกลับมา 30
+> และ A2/V1 ลบ test ของ state ที่ไม่มีอยู่อีก 2 ตัว — B4 เพิ่มกลับมา 30 · B2 อีก 15
 >
-> **ปิดแล้วในรอบนี้:** B1 · A4 · A2 · V1 · V2 · B4 · T1 T2 T3 T5 T7 · T4 (premise ผิด ไม่ต้องแก้)
-> **ถัดไป:** B2 → B3 (ตามลำดับนี้เท่านั้น) · B5 B7 แทรกได้ · B6 ท้ายสุด
+> **ปิดแล้วในรอบนี้:** B1 · A4 · A2 · V1 · V2 · B4 · B2 · T1 T2 T3 T5 T7 · T4 (premise ผิด ไม่ต้องแก้)
+> **ถัดไป:** B3 (ต้องหลัง B2 ซึ่งลงแล้ว) · B5 B7 แทรกได้ · B6 ท้ายสุด
 
 เอกสารนี้แปลง architecture review (rev.2, อ้าง `main @ 471a8fb`) มาเป็นรายการงานที่
 **ตรวจซ้ำทุกข้อบน `5c05097` แล้ว** เลข `file:line` ในข้อที่**ยังไม่ปิด** เป็นของ `5c05097`
@@ -227,66 +227,48 @@ coverage `src/core/**` ไม่ต่ำกว่า 90.76% stmts — ✔️ �
 
 ---
 
-### B2 ✅ index เดียวแทน "หา node ที่เป็นของ owner นี้" สองชุด (candidate 4)
+### B2 ✔️ ปิดแล้ว — index เดียวแทน "หา node ที่เป็นของ owner นี้" สองชุด (candidate 4)
 
-**หลักฐาน — ทั้งสองชุด ตำแหน่งจริงวันนี้**
+> **ลงแล้วบน `sundayfifth/feat-connector-drag-handles`:** `8b4818c`
+> เกิด `src/scene/ownership.ts` (174) + `src/core/ownerIndex.ts` (76) + `test/ownerIndex.test.ts` (138) ·
+> `src/scene/orphans.ts` ถูกพับเข้าไป (ลบทิ้ง) · `annotationScene.ts` **-83 บรรทัด** ·
+> `connectorScene.ts` **-47 บรรทัด**
+> **owner-key page scan ใน `src/scene/**` จาก 5 → 1** · test 290 → 305 ·
+> coverage `src/core/**` **91.49 → 91.72 stmts · 87.96 → 88.12 branch** · `ownerIndex.ts` 100%
 
-| งาน | annotation | connector |
-|:--|:--|:--|
-| cache owner ของ node ที่ถูกลบ | `annotationScene.ts:166` `ownerIdByRenderedNodeId` | `connectorScene.ts:310` `labelOwnerByRenderedNodeId` |
-| อ่าน cache | `:183` `lastKnownOwnerOf` | `:342` `lastKnownLabelOwnerOf` |
-| scan ทั้ง page ครั้งเดียว | `:225` `collectRenderedByOwner` | `:289` `collectConnectorLabels` |
-| scan ต่อ owner | `:255` `findRenderedNodes` | `:267` `findLabelsFor` |
-| dedupe เมื่อเจอซ้ำ | `:209-214` `dedupe` → `:284-291` `removeIfPresent` | `:263` inline |
-| map node ที่เลือก → owner | `:315` `annotationTargetsBehind` | `:320` `connectorsBehindLabels` |
+ทั้ง 6 งานในตารางเดิมเหลือทางเดียว `ownership(key)` = index ต่อ pluginData key หนึ่งอัน
+(ข้อมูลแยก พฤติกรรมร่วม) พร้อม `Meta` สำหรับของที่แต่ละฝั่งต้องจำเพิ่มต่อ node —
+Annotate เก็บ role ไว้ที่นั้น Connect ไม่เก็บอะไร · ตอนนี้ key ถูกเขียนชื่อที่เดียวแล้วส่งเข้า
+`ownership` ไม่มีที่อื่นอ่านมันอีก
 
-ปลายทางของสองแถวสุดท้ายคือจุดเดียวกัน — `main.ts:131-137` `resolveSelectionOwners` เอาผลสองฝั่ง
-มา merge กลับเป็น `Map` เดียว:
-```ts
-const owners = new Map<string, SceneNode>(annotationTargetsBehind(nodes))
-for (const [pillId, connector] of connectorsBehindLabels(nodes)) {
-  owners.set(pillId, connector)
-}
-```
-โค้ดที่ต้องเอาผลของสองระบบมาต่อกันเองแบบนี้ คือหลักฐานว่ามันควรเป็นระบบเดียวมาแต่แรก
+**✅ สำเนาสองชุดเพี้ยนไปคนละทางจริง — และเพี้ยนมากกว่าที่เอกสารเดิมเจอ**
 
-สำนวน `typeof x === 'undefined' ? set([node]) : push` ก๊อปมาทั้งดุ้น เทียบ
-`annotationScene.ts:230-232` กับ `connectorScene.ts:297-299`
+| ที่ | เพี้ยนอะไร |
+|:--|:--|
+| ลบ label ซ้ำ (`connectorScene`) | ไม่เคลียร์ owner cache **และ**ไม่เช็ค `.removed` — ฝั่ง annotation ทำทั้งสอง (เอกสารเดิมเจอข้อนี้) |
+| orphan sweep (`orphans.ts`) | **ไม่เคลียร์ cache ทั้งสองฝั่ง** — 🆕 เจอตอนทำ |
+| `applyCardStacking` (`annotationScene`) | **สำเนาที่สาม**ของ group-แล้วแยก-role และเก็บ node ตัวสุดท้ายที่เห็นต่อ role แทนที่จะเคลียร์คู่ที่กำกวมแบบอีกสองที่ — 🆕 เจอตอนทำ |
 
-**⚠️ สำเนาสองชุดเพี้ยนไปคนละทางแล้ว — ตรวจยืนยันแล้ว**
+ทั้งสามทางเดียวกันหมดแล้ว ข้อสังเกตที่เอกสารเดิมเขียนไว้ยังยืน: ฝั่ง connector มีที่เคลียร์ map
+ถูกต้องอยู่สองจุด แปลว่ารู้ว่าต้องทำ แต่ทำไม่ครบทุกทาง — นี่คือสิ่งที่จะเกิดเรื่อยๆ ตราบใดที่ยังมีสองชุด
 
-`connectorScene.ts:263`
-```ts
-for (const node of found) node.remove()
-```
-`annotationScene.ts:284-291`
-```ts
-function removeIfPresent(node: BaseNode | null): void {
-  if (node !== null && !node.removed) {
-    node.remove()
-    ownerIdByRenderedNodeId.delete(node.id)
-    roleByRenderedNodeId.delete(node.id)
-  }
-}
-```
-ฝั่ง connector ต่างสองอย่าง: **ไม่เคลียร์ `labelOwnerByRenderedNodeId`** และ
-**ไม่เช็ค `.removed` ก่อนเรียก `.remove()`**
+**กฎที่ test ได้ อยู่ใน core** `core/ownerIndex.ts` ถือ `ownerIdOf` · `groupByOwner` ·
+`resolveOwnersBehind` — รับ node list เป็น input ตามที่เอกสารเดิมตั้งเงื่อนไขไว้ ใช้ structural
+type (`OwnedNode` = `{ id, getPluginData }`) แบบเดียวกับ `TreeNode` ใน B4
+ส่วนที่เหลือใน `scene/ownership.ts` คือ page scan, การลบ, และ session cache ซึ่ง test ไม่ได้
 
-ฝั่ง connector มีที่เคลียร์ map ถูกต้องอยู่ที่ `:476` และ `:502` — แปลว่ารู้ว่าต้องทำ แต่ทำไม่ครบทุกทาง
-นี่คือสิ่งที่จะเกิดเรื่อยๆ ตราบใดที่ยังมีสองชุด
+**contract ที่สำคัญที่สุดและ test จับไว้แล้ว** `resolveOwnersBehind` **ต้องไม่เรียก `findOwners()`**
+เมื่อไม่มี node ที่ถูก tag อยู่ใน selection — คือ selection ธรรมดาทุกครั้ง นี่คือเหตุผลที่มันรันบน
+`selectionchange` ได้โดยไม่ scan page ทุกครั้งที่คนคลิก layer (`vi.fn` + `not.toHaveBeenCalled`)
 
-**ต้นแบบที่มีอยู่แล้วใน repo** `src/scene/orphans.ts` (21 บรรทัด) คือสิ่งเดียวที่ deduplicate สำเร็จ
-ทั้งสองฝั่งเรียก `removeOrphansByOwnerKey` ตัวเดียวกัน (`annotationScene.ts:360`,
-`connectorScene.ts:1157`) call site เหลือบรรทัดเดียว
+**⚠️ `main.ts:132` ยัง merge สอง map อยู่ และควรเป็นอย่างนั้น** เอกสารเดิมบอกว่าการ merge
+เป็นหลักฐานว่าควรเป็นระบบเดียว — ครึ่งแรกถูก (การ*ทำงาน*ควรเป็นชุดเดียว ซึ่งตอนนี้เป็นแล้ว)
+แต่ *ข้อมูล*ต้องแยก: node ที่ถูกเลือกเป็น rendered node ของ annotation **หรือ** label ของ
+connector ไม่ใช่ทั้งสอง และ owner ที่ได้เป็น type ต่างกัน (`SceneNode` เป้าหมาย vs `VectorNode` เส้น)
+สอง index ที่ merge ตรงจุดใช้งาน คือรูปที่ถูกแล้ว
 
-**สิ่งที่ต้องทำ** module เดียวรับ `ownerKey` เป็น parameter ให้ครบทั้ง 6 งานในตารางข้างบน
-แล้วให้ทั้งสองฝั่งเรียกตัวเดียวกัน
-
-**ตรวจว่าสำเร็จ** `grep -c 'findAllWithCriteria' src/scene/*.ts` ต้องลดลง และการลบ label ซ้ำ
-ต้องเคลียร์ cache (เขียน test ได้ถ้า index แยกออกมาเป็น module ที่รับ node list เป็น input)
-
-**ความเสี่ยง/ชนกับใคร** แตะ `annotationScene.ts` + `connectorScene.ts` ซึ่งเป็นไฟล์ที่ commit ล่าสุด
-ลงบ่อยสุด — **สูง** ควรทำเป็น branch สั้น merge เร็ว
+**ความเสี่ยงที่ประเมินไว้** สูง (แตะสองไฟล์ที่ร้อนสุด) — ลงเป็น commit เดียว typecheck/lint/test/build
+ผ่านทุกขั้นระหว่างทาง
 
 ---
 
@@ -548,8 +530,8 @@ record ที่อยู่บน disk แล้วยังมี `v` ติ�
 | 2 | ~~B1~~ ✔️ | อยู่ใน `core/**` + `test/**` เกือบทั้งหมด ความเสี่ยงต่ำสุดในบรรดางาน architecture · ทำแค่ `connector.ts`; `annotation.ts` วัดแล้วไม่ควรทำ ดู B1 |
 | 3 | ~~A4 + A2 + V1 + V2~~ ✔️ | A4 ปิดไปก่อนใน `d79e5fa` · A2/V2 ตัด anchor union (`1e7d6e9`) · V1 ลบ version marker (`696e214`) — ตัดสินใจสองเรื่องนี้พร้อมกันเพราะเป็นการเลือกว่า "ของที่ไม่มีใครใช้" คือ seam ที่เก็บไว้หรือความซับซ้อนที่ตัดทิ้ง |
 | 4 | ~~B4~~ ✔️ | เขียนตาข่าย `core/nodeTree.ts` + `polylineAtOrigin` — เป็นตาข่ายให้ B2 กับ B3 · T4 ตรวจแล้ว premise ผิด ไม่ต้องแก้ |
-| **5 ← ถัดไป** | B2 | branch สั้น merge เร็ว |
-| 6 | B3 | หลัง B2 เท่านั้น ทั้งสองข้อเขียน write path ใหม่ทั้งคู่ |
+| 5 | ~~B2~~ ✔️ | ลงเป็น commit เดียว `8b4818c` · เจอ drift เพิ่มอีกสองจุดที่เอกสารเดิมไม่เห็น |
+| **6 ← ถัดไป** | B3 | หลัง B2 เท่านั้น ทั้งสองข้อเขียน write path ใหม่ทั้งคู่ — B2 ลงแล้ว ทางเปิด |
 | 7 | B5 B7 | อิสระจากข้ออื่น ทำแทรกตอนไหนก็ได้ |
 | 8 | B6 | ท้ายสุด เพราะการแตกไฟล์ทำให้ทุก commit ที่ลงทีหลังกลายเป็น conflict |
 
