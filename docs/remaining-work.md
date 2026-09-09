@@ -3,18 +3,17 @@
 > **baseline เดิม:** `main @ 5c05097` · ตรวจเมื่อ 8 กันยายน 2026 —
 > 272 tests / 6 files · coverage `src/core/**` 90.76% stmts · 86.58% branch · 97.5% funcs · 93.97% lines
 >
-> **สถานะวันนี้:** `sundayfifth/feat-connector-drag-handles @ be089c8` · 9 กันยายน 2026
-> `npm run typecheck` · `npm run lint` · `npm test` (**357 tests / 11 files**) · `npm run build` ผ่านทั้งหมด
-> **coverage `src/core/**`:** **92.16% stmts · 88.71% branch · 97.82% funcs · 95.06% lines**
-> ขึ้นทุกตัวเลขจาก baseline ทั้งที่ B1 ตัด test ที่ไม่ถือ coverage ของตัวเองออก 10 ตัว
-> และ A2/V1 ลบ test ของ state ที่ไม่มีอยู่อีก 2 ตัว —
-> B4 เพิ่มกลับมา 30 · B2 อีก 15 · B5 อีก 17 · B3 อีก 35
-> (B7 ไม่เพิ่ม test เพราะอยู่ใน `main.ts`/`ui.tsx` ทั้งหมด — ไป QA checklist แทน)
+> **สถานะวันนี้:** `b6/split-connector @ 4c6c196` · 9 กันยายน 2026
+> `npm run typecheck` · `npm run lint` · `npm test` (**368 tests / 12 files**) · `npm run build` ผ่านทั้งหมด
+> **coverage `src/core/**`:** **95.74% stmts · 93.89% branch · 98.55% funcs · 97.46% lines**
+> ขึ้นทุกตัวเลขจาก baseline (90.76 / 86.58) ทั้งที่ระหว่างทางลบ test ที่จับ bug ไม่ได้ทิ้ง 12 ตัว
 >
-> **ปิดแล้ว:** A1 A2 A3 A4 · B1 B2 B3 B4 B5 B7 · V1 V2 V3 · T1 T2 T3 T5 T7 ·
+> **ปิดครบทุกข้อ:** A1 A2 A3 A4 · B1 B2 B3 B4 B5 B6 B7 · V1 V2 V3 · T1 T2 T3 T5 T7 ·
 > T4 (ตรวจสองรอบ premise ผิด ไม่ต้องแก้)
-> **เหลือข้อเดียว:** B6 (ผ่า `connector.ts` — ต้องทำท้ายสุดตามข้อจำกัดเรื่อง conflict)
-> · T6 เป็นข้อเสนอ ไม่ใช่ปัญหา ไม่ใช่งานค้าง
+> **เหลือ:** T6 อย่างเดียว ซึ่งเป็น**ข้อเสนอ ไม่ใช่ปัญหา** (ลอง `strictTypeChecked` ดูว่าได้ error กี่ตัว)
+>
+> **ที่ต้องทำหลัง merge B6:** bump version — เลื่อนมาจาก PR #5 โดยตั้งใจ เพื่อให้งานทั้งรอบ
+> เป็น version เดียว · main อยู่ที่ 0.5.0 และ T7 มีอยู่เพื่อให้ระบุ build ที่รันใน Figma ได้
 
 เอกสารนี้แปลง architecture review (rev.2, อ้าง `main @ 471a8fb`) มาเป็นรายการงานที่
 **ตรวจซ้ำทุกข้อบน `5c05097` แล้ว** เลข `file:line` ในข้อที่**ยังไม่ปิด** เป็นของ `5c05097`
@@ -428,28 +427,55 @@ elbow ไม่สนว่าเส้นปรับเองแล้ว · l
 
 ---
 
-### B6 ✅ ผ่า `connector.ts` (candidate 5)
+### B6 ✔️ ปิดแล้ว — ผ่า `connector.ts` (candidate 5)
 
-**สถานะวันนี้ (วัดซ้ำบน `b8c06b0`)** 1,654 บรรทัด · **33 export** (B1 หดจาก 50) ·
-coverage **88.32% stmts · 82.84% branch** — branch ต่ำสุดใน core
+> **ลงแล้วบน `b6/split-connector`:** `d2d3172` · `408e03b` · `3fb1cf5` · `7f36dde` · `4c6c196`
+> `src/core/connector.ts` **1,654 → 929 บรรทัด** · เกิด 4 ไฟล์ใหม่
+> test 357 → **368** · coverage `src/core/**` **92.16 → 95.74% stmts · 88.71 → 93.89% branch**
+> router เอง **82.84 → 93.42% branch**
 
-**หลักฐานว่า concern สานกันจริงในระดับกลไก ไม่ใช่แค่สไตล์ — ตรวจซ้ำแล้ว เลขขยับ**
+**สี่คัตที่ทำจริง**
 
-- forward reference ข้าม ~356 บรรทัด: `:624` เรียก `clearanceBeside` ที่ประกาศที่ `:980`
-- `ConnectorRecord.manualShape` ที่ `:137` อ้าง type `ManualShape` ที่ประกาศที่ `:645`
-- `ELBOW_STUB` (`:451`) ค่าเดียวถูกอ้างจาก **3 concern ที่ไม่เกี่ยวกัน**:
-  `:981-982` (`clearanceBeside`) · `:1217-1220` (`connectorStubClearance` — ระยะเลี่ยง frame) ·
-  ค่า default ของ `connectorRoutePoints` แก้เพราะเหตุผลนึง กระทบอีกสอง
+| ไฟล์ | บรรทัด | ถืออะไร |
+|:--|--:|:--|
+| `connector.ts` | 929 | elbow router + A\* fallback — "เส้นไปทางไหน" |
+| `connectorRecord.ts` | 330 | connector *คืออะไร* — record, style, default, การ decode |
+| `routeCost.ts` | 182 | route ถูกตัดสินด้วยอะไร — obstacle vocabulary + การให้คะแนน |
+| `manualShape.ts` | 172 | เส้นที่คนปรับเอง (ปลั๊กอินยกให้คนตัดสิน) |
+| `connectorCurve.ts` | 120 | เส้นโค้ง + อ่านจุดบน route เพื่อวางป้าย |
 
-**ลำดับการตัดที่ edge น้อยสุดไปมากสุด** manual shape (0 edge) → A* search (1 edge, ต่อผ่าน
-`orSearched`) → record/validation (2 type union) → geometry helper เหลือ elbow router ~750 บรรทัด
-เป็น deep module อันเดียว ซึ่งเป็น concern เดียวจริงๆ ไม่ควรแยกต่อ
+**✅ บททดสอบที่เอกสารตั้งไว้เอง — ผ่าน** `ELBOW_STUB` เคยถูกอ้างจาก 3 concern ที่ไม่เกี่ยวกัน
+วันนี้เป็น **internal ของไฟล์เดียว** ไม่ต้อง export ข้ามไฟล์เลย แปลว่าเส้นแบ่งตกถูกที่
 
-**⚠️ ข้อควรระวังที่ต้องบอกให้ชัด** git ตาม rename ทั้งไฟล์ได้ แต่ตาม**การแตกไฟล์**ไม่ได้
-ทุก commit ที่ลงใน `connector.ts` หลังจาก branch นี้เปิด จะกลายเป็น conflict ที่ต้องแก้มือ
-**ทำข้อนี้ท้ายสุด และทำใน branch ที่ merge ภายในวันเดียว**
+**🆕 ผลพลอยได้ที่ใหญ่กว่าที่คิด: เลข coverage เดิมโกหก**
 
-**ความเสี่ยง/ชนกับใคร** สูงถ้า branch อยู่นาน · ต่ำถ้า merge เร็ว
+`connector.ts` 82.84% branch เป็นเหตุผลหนึ่งที่ B6 ถูก justify — พอแยกแล้วเห็นว่า
+`connectorRecord.ts` อยู่ที่ **100% ทั้งสองตัว** ส่วน router ต่างหากที่ต่ำจริง
+เลขเดิมคือ**ค่าเฉลี่ยที่ซ่อนว่าครึ่งไหนไม่ได้ถูกทดสอบ** → ตามอุดด้วย test 4 ตัวใน `4c6c196`
+(กฎ pin ทั้ง 4 ทิศ · pin ที่ไม่มีอะไรให้ทำ · board ที่แน่นเกิน `MAX_MEASURED_NEIGHBOURS`)
+
+**🆕 แก้ backwards dependency 2 จุดที่เอกสารไม่เห็น**
+
+- `drawnShape.ts` import `ManualVertex` จาก `connector.ts` — module เล็กดึงไฟล์ 1,650 บรรทัด
+  มาเพื่อตั้งชื่อ type เดียว
+- `obstacleScan.ts` import `RouteObstacles` · `ROUTE_SEARCH_MARGIN` · `obstaclesInPlay` จาก router
+
+ทั้งสองหายไปแล้ว — ตอนนี้ไม่มี core module ไหน import router เพื่อเอาของที่ router ไม่ได้เป็นเจ้าของ
+
+**❌ ลำดับที่เอกสารเสนอไม่รอดการวัด** เอกสารเสนอ manual shape → **A\* search** → record → geometry
+วัดแล้ว search ตัดออกไม่คุ้ม:
+
+- `simplifyRoute` ถูก router เรียก **6 ครั้ง** และ search เรียก 1 ครั้ง — เป็นเครื่องมือของ router
+  ยก search ออกต้องลาก `simplifyRoute` ไปอยู่ module ที่ตั้งขึ้นมาเพื่อการนี้โดยเฉพาะ
+- search คือ**ทางยอมแพ้ของ router เอง** (ADR 0004 "search for a route when the rules run out")
+  ต่อกันที่ `orSearched` บรรทัดเดียว ไม่ใช่ concern แยก
+
+จึงตัด **record + curve + routeCost** แทน ซึ่งเอกสารจัดไว้ทีหลังหรือไม่ได้พูดถึง
+ผลลัพธ์ 929 บรรทัด ใกล้เป้า ~750 ที่เอกสารตั้งไว้ และ search เป็น 130 ของมัน
+
+**❌ `edgesOn` — เอกสารเข้าใจผิด** เอกสารบอกว่า `edgesOn` seed ให้ search
+ตรวจแล้ว `gridLines` สร้าง grid ของตัวเองจาก `OBSTACLE_CLEARANCE` · `edgesOn` ถูกเรียกจาก
+`sameAxisCandidates` (elbow router) เท่านั้น
 
 ---
 
@@ -586,7 +612,7 @@ record ที่อยู่บน disk แล้วยังมี `v` ติ�
 | 5 | ~~B2~~ ✔️ | ลงเป็น commit เดียว `8b4818c` · เจอ drift เพิ่มอีกสองจุดที่เอกสารเดิมไม่เห็น |
 | ~~6~~ ✔️ | ~~B3~~ | หลัง B2 เท่านั้น ทั้งสองข้อเขียน write path ใหม่ทั้งคู่ · วัดก่อน (`320a357`) แล้วทำคนละทางกับที่เอกสารเสนอ (`be089c8`) — **ลบ** suppression ทิ้งทั้งกลไก ไม่ใช่เพิ่ม type ให้มัน |
 | 7 | ~~B5 B7~~ ✔️ | ลงแล้วทั้งคู่ — B7 (`8e35eeb`, `f51e6c6`) · B5 (`b8c06b0`) |
-| **8 ← เหลือข้อเดียว** | B6 | ท้ายสุดเพราะการแตกไฟล์ทำให้ทุก commit ที่ลงทีหลังกลายเป็น conflict — ทำใน branch ที่ merge ภายในวันเดียว |
+| ~~8~~ ✔️ | ~~B6~~ | ทำท้ายสุดจริงตามข้อจำกัด — merge งานที่เหลือเข้า main ก่อน (PR #5) แล้วเปิด branch ใหม่จาก main ที่สดที่สุด ทำให้ B6 เป็น branch ที่มีเรื่องเดียว |
 
 **ข้อที่ไม่ควรรวม branch เดียวกัน**
 
