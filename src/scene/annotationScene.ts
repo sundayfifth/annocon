@@ -38,7 +38,7 @@ import {
   contrastingTextColor,
   findCategory
 } from '../core/category.js'
-import { samePolyline } from '../core/drawnShape.js'
+import { polylineAtOrigin, samePolyline } from '../core/drawnShape.js'
 import { getCategories } from './categoryScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import { ensureOnPage, findEnclosingFrame, raiseAbove } from './frames.js'
@@ -544,24 +544,6 @@ function ensureLeader(existing: VectorNode | null, ownerId: string, color: strin
 }
 
 /** Turns a leader polyline (2 points straight, 3 points elbowed) into a positioned vector network. */
-function polylineNetwork(points: ReadonlyArray<Point>): {
-  x: number
-  y: number
-  vectorNetwork: VectorNetwork
-} {
-  const originX = Math.min(...points.map((point) => point.x))
-  const originY = Math.min(...points.map((point) => point.y))
-  return {
-    x: originX,
-    y: originY,
-    vectorNetwork: {
-      vertices: points.map((point) => ({ x: point.x - originX, y: point.y - originY })),
-      segments: points.slice(1).map((_point, index) => ({ start: index, end: index + 1 })),
-      regions: []
-    }
-  }
-}
-
 /**
  * Retargets an outside-frame leader's card-side endpoint at the card's
  * actual vertical centre — its x (which edge, left or right) is kept as
@@ -591,7 +573,7 @@ function leaderToCardBoundary(from: Point, card: FrameNode): ReadonlyArray<Point
 }
 
 async function positionLeader(leader: VectorNode, points: ReadonlyArray<Point>): Promise<void> {
-  const { x, y, vectorNetwork } = polylineNetwork(points)
+  const { x, y, vertices, segments } = polylineAtOrigin(points)
   // Opening the plugin re-renders every note on the page, and most of the
   // time nothing has moved since it was last closed — so most of the time
   // this is being asked to draw the line that is already there.
@@ -603,10 +585,10 @@ async function positionLeader(leader: VectorNode, points: ReadonlyArray<Point>):
     vertices: leader.vectorNetwork.vertices,
     segments: leader.vectorNetwork.segments
   }
-  if (samePolyline(onCanvas, x, y, vectorNetwork)) return
+  if (samePolyline(onCanvas, x, y, { vertices, segments })) return
   leader.x = x
   leader.y = y
-  await leader.setVectorNetworkAsync(vectorNetwork)
+  await leader.setVectorNetworkAsync({ vertices, segments, regions: [] })
 }
 
 /**
