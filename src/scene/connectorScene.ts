@@ -53,12 +53,14 @@ import {
 import { ownerIdOf } from './annotationScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import { ensureOnPage, findEnclosingFrame } from './frames.js'
-import { removeOrphansByOwnerKey } from './orphans.js'
+import { ownership } from './ownership.js'
 import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
 
 const CONNECTOR_KEY = 'connector'
 const BROKEN_COLOR = '#E5484D'
 const LABEL_OWNER_KEY = 'connectorLabelOwner'
+/** The label pills, indexed by the connector each belongs to. Connect keeps no per-node metadata. */
+const labelOwners = ownership<undefined>(LABEL_OWNER_KEY)
 const LAST_STYLE_KEY = 'lastConnectorStyle'
 /**
  * The shape this plugin last drew, as `x,y,width,height,vertexCount`.
@@ -254,25 +256,14 @@ export function findConnectorsNearBoxes(
  * Figma, so this has to be its own top-level node rather than nested inside
  * the connector.
  */
-function findConnectorLabel(
-  connectorId: string,
-  known?: LabelIndex
-): FrameNode | null {
-  const found = known?.get(connectorId) ?? findLabelsFor(connectorId)
-  if (found.length <= 1) return found[0] ?? null
-  // Same dedupe-and-recreate reasoning as annotation's rendered nodes — no
-  // reliable way to tell which duplicate is "correct", so clear the slate.
-  for (const node of found) node.remove()
-  return null
+function findConnectorLabel(connectorId: string, known?: LabelIndex): FrameNode | null {
+  const found = known?.get(connectorId) ?? labelPills(labelOwners.findFor(connectorId))
+  return labelOwners.soleNode(found)
 }
 
-function findLabelsFor(connectorId: string): ReadonlyArray<FrameNode> {
-  return figma.currentPage
-    .findAllWithCriteria({ pluginData: { keys: [LABEL_OWNER_KEY] } })
-    .filter(
-      (node): node is FrameNode =>
-        node.type === 'FRAME' && node.getPluginData(LABEL_OWNER_KEY) === connectorId
-    )
+/** A label is always a frame; anything else tagged as one is not ours to draw with. */
+function labelPills(nodes: ReadonlyArray<SceneNode>): ReadonlyArray<FrameNode> {
+  return nodes.filter((node): node is FrameNode => node.type === 'FRAME')
 }
 
 /** Every label pill on the page, grouped by the connector it belongs to. */
@@ -289,60 +280,29 @@ export type LabelIndex = ReadonlyMap<string, ReadonlyArray<FrameNode>>
  * with both the size of the file and the number of lines near the drag.
  */
 export function collectConnectorLabels(): LabelIndex {
-  const byConnector = new Map<string, Array<FrameNode>>()
-  for (const node of figma.currentPage.findAllWithCriteria({
-    pluginData: { keys: [LABEL_OWNER_KEY] }
-  })) {
-    if (node.type !== 'FRAME') continue
-    const ownerId = node.getPluginData(LABEL_OWNER_KEY)
-    if (ownerId === '') continue
-    const existing = byConnector.get(ownerId)
-    if (typeof existing === 'undefined') byConnector.set(ownerId, [node])
-    else existing.push(node)
+  const byConnector = new Map<string, ReadonlyArray<FrameNode>>()
+  for (const [connectorId, nodes] of labelOwners.collectByOwner()) {
+    byConnector.set(connectorId, labelPills(nodes))
   }
   return byConnector
 }
-
-// A deleted label's pluginData is gone by the time `nodechange` reports the
-// DELETE — same reasoning as annotation's `ownerIdByRenderedNodeId`. Without
-// this, a person deleting a label pill directly (a real, selectable,
-// unlocked node) while the plugin is open has no way to trace back to which
-// connector it belonged to, so `record.label` never gets cleared and the
-// next sync recreates the very pill that was just deleted.
-const labelOwnerByRenderedNodeId = new Map<string, string>()
 
 /**
  * The connector each label pill in `nodes` belongs to, keyed by the pill's id.
  *
  * Lets a selection of the pill stand for a selection of its line, so clicking
  * the label on the canvas opens that connector for editing rather than
- * selecting a frame the panel has nothing to say about. Whole-selection and
- * single-scan for the same reason as `annotationTargetsBehind`.
+ * selecting a frame the panel has nothing to say about.
  */
 export function connectorsBehindLabels(
   nodes: ReadonlyArray<SceneNode>
 ): Map<string, VectorNode> {
-  const wanted = new Map<string, Array<string>>()
-  for (const node of nodes) {
-    const ownerId = node.getPluginData(LABEL_OWNER_KEY)
-    if (ownerId === '') continue
-    const asking = wanted.get(ownerId)
-    if (typeof asking === 'undefined') wanted.set(ownerId, [node.id])
-    else asking.push(node.id)
-  }
-  const resolved = new Map<string, VectorNode>()
-  if (wanted.size === 0) return resolved
-  for (const connector of findAllConnectors()) {
-    const asking = wanted.get(connector.id)
-    if (typeof asking === 'undefined') continue
-    for (const id of asking) resolved.set(id, connector)
-  }
-  return resolved
+  return labelOwners.ownersBehind(nodes, findAllConnectors)
 }
 
-/** The connector a now-deleted label used to belong to — see `labelOwnerByRenderedNodeId`. */
+/** The connector a now-deleted label used to belong to — see `Ownership.lastKnownOwnerOf`. */
 export function lastKnownLabelOwnerOf(labelId: string): string | null {
-  return labelOwnerByRenderedNodeId.get(labelId) ?? null
+  return labelOwners.lastKnownOwnerOf(labelId)
 }
 
 /**
@@ -356,8 +316,8 @@ export function lastKnownLabelOwnerOf(labelId: string): string | null {
 export async function captureLabelTextEdit(text: TextNode): Promise<boolean> {
   const pill = text.parent
   if (pill === null || pill.type !== 'FRAME') return false
-  const connectorId = pill.getPluginData(LABEL_OWNER_KEY)
-  if (connectorId === '') return false
+  const connectorId = labelOwners.ownerIdOf(pill)
+  if (connectorId === null) return false
   const connector = findAllConnectors().find((node) => node.id === connectorId)
   if (typeof connector === 'undefined') return false
   const record = getConnectorRecord(connector)
@@ -472,11 +432,7 @@ function midpointOfDrawnLine(node: VectorNode): Point {
 
 /** Removes a connector's label, if it has one — used when the connector itself is deleted. */
 export function removeConnectorLabel(connectorId: string): void {
-  const label = findConnectorLabel(connectorId)
-  if (label !== null) {
-    label.remove()
-    labelOwnerByRenderedNodeId.delete(label.id)
-  }
+  labelOwners.remove(findConnectorLabel(connectorId))
 }
 
 const LABEL_FONT: FontName = { family: 'Inter', style: 'Regular' }
@@ -499,10 +455,7 @@ async function ensureConnectorLabel(
 ): Promise<void> {
   const trimmed = text.trim()
   if (trimmed === '') {
-    if (existing !== null) {
-      existing.remove()
-      labelOwnerByRenderedNodeId.delete(existing.id)
-    }
+    labelOwners.remove(existing)
     return
   }
 
@@ -517,8 +470,7 @@ async function ensureConnectorLabel(
     pill.paddingBottom = LABEL_PADDING_Y
     pill.cornerRadius = 6
     pill.strokeWeight = 1
-    pill.setPluginData(LABEL_OWNER_KEY, connectorId)
-    labelOwnerByRenderedNodeId.set(pill.id, connectorId)
+    labelOwners.tag(pill, connectorId, undefined)
   }
   // Unlocked, unlike the badge and leader, so a person can click the pill on
   // the canvas to edit its line's label. Set every sync rather than only on
@@ -703,7 +655,7 @@ function collectObstaclesFrom(
     }
     if (NOT_AN_OBSTACLE.has(node.type)) continue
     if (ownerIdOf(node) !== null) continue
-    if (node.getPluginData(LABEL_OWNER_KEY) !== '') continue
+    if (labelOwners.ownerIdOf(node) !== null) continue
     const rect = node.absoluteBoundingBox
     if (rect === null) continue
     into.push({ id: node.id, rect })
@@ -1154,7 +1106,7 @@ export async function updateConnectorAnchorSide(
 
 /** Removes any connector label whose owning connector no longer exists. */
 function removeOrphanConnectorLabels(liveConnectorIds: ReadonlySet<string>): void {
-  removeOrphansByOwnerKey(LABEL_OWNER_KEY, liveConnectorIds)
+  labelOwners.removeOrphans(liveConnectorIds)
 }
 
 /** Re-renders every connector on the current page. */

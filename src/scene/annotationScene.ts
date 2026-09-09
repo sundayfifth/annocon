@@ -42,7 +42,7 @@ import { polylineAtOrigin, samePolyline } from '../core/drawnShape.js'
 import { getCategories } from './categoryScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import { ensureOnPage, findEnclosingFrame, raiseAbove } from './frames.js'
-import { removeOrphansByOwnerKey } from './orphans.js'
+import { ownership } from './ownership.js'
 import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
 
 const ANNOTATION_KEY = 'annotation'
@@ -154,39 +154,26 @@ function eraseAnnotationRecord(node: SceneNode): void {
   })
 }
 
-// A deleted node's pluginData is gone by the time `nodechange` reports the
-// DELETE — Figma hands back only a `RemovedNode` (id/type/removed), nothing
-// queryable. Without this, deleting a card or leader directly (both are
-// real, selectable, unlocked-or-not nodes a person can click and hit
-// Delete on) leaves the target's record and the other rendered node
-// dangling, with nothing left able to trace back to who owned it — or, for
-// the role, what kind of deletion just happened (see `lastKnownRoleOf`).
-// Both are in-memory, session-only caches — reconciliation on open rebuilds
-// everything from scratch anyway, so nothing is lost by not persisting them.
-const ownerIdByRenderedNodeId = new Map<string, string>()
-const roleByRenderedNodeId = new Map<string, Role>()
+/** The badges, cards and leaders, indexed by the layer each annotates. Annotate remembers a role per node. */
+const renderedOwners = ownership<Role>(OWNER_KEY)
 
 function tag(node: SceneNode, ownerId: string, role: Role): void {
-  node.setPluginData(OWNER_KEY, ownerId)
+  renderedOwners.tag(node, ownerId, role)
   node.setPluginData(ROLE_KEY, role)
-  ownerIdByRenderedNodeId.set(node.id, ownerId)
-  roleByRenderedNodeId.set(node.id, role)
+}
+
+/** The owner a now-deleted card or leader used to belong to — see `Ownership.lastKnownOwnerOf`. */
+export function lastKnownOwnerOf(nodeId: string): string | null {
+  return renderedOwners.lastKnownOwnerOf(nodeId)
 }
 
 /**
- * The owner a now-deleted card or leader used to belong to, from the
- * cache `tag` maintains — `null` if `nodeId` was never one of ours, or we
- * simply don't remember it (a fresh plugin session that hasn't touched
- * this node yet). See `ownerIdByRenderedNodeId` for why this can't just
- * read the node's own pluginData instead.
+ * The role a now-deleted card or leader used to have — which is how the kind
+ * of deletion that just happened is told apart, since a deleted leader means
+ * something different from a deleted card.
  */
-export function lastKnownOwnerOf(nodeId: string): string | null {
-  return ownerIdByRenderedNodeId.get(nodeId) ?? null
-}
-
-/** The role a now-deleted card or leader used to have — see `lastKnownOwnerOf`. */
 export function lastKnownRoleOf(nodeId: string): Role | null {
-  return roleByRenderedNodeId.get(nodeId) ?? null
+  return renderedOwners.lastKnownMetaOf(nodeId)
 }
 
 interface RenderedNodes {
@@ -196,22 +183,28 @@ interface RenderedNodes {
 }
 
 /**
- * Removes every node found for a role when there's more than one, and
- * returns `null` so the caller creates a fresh one from scratch.
+ * Sorts one owner's tagged nodes into the three roles a note renders,
+ * clearing away any role that turns up more than once.
  *
- * Older, broken sync attempts (e.g. one that threw partway through, before
- * this file self-healed that class of bug) could leave a second badge/card/
- * leader tagged for the same owner. There's no reliable way to tell which of
- * several candidates is the "good" one — picking a winner risks keeping the
- * broken one and deleting the correct one — so when there's ambiguity, clear
- * the slate instead of guessing.
+ * The type each role has to be is checked here rather than trusted from the
+ * `ROLE_KEY` alone: the canvas is untrusted, and a node tagged `leader` that
+ * is not a vector cannot be drawn into.
  */
-function dedupe<T extends SceneNode>(nodes: ReadonlyArray<T>): T | null {
-  if (nodes.length <= 1) return nodes[0] ?? null
+function renderedFrom(nodes: ReadonlyArray<SceneNode>): RenderedNodes {
+  const badges: Array<FrameNode> = []
+  const cards: Array<FrameNode> = []
+  const leaders: Array<VectorNode> = []
   for (const node of nodes) {
-    removeIfPresent(node)
+    const role = node.getPluginData(ROLE_KEY)
+    if (role === 'badge' && node.type === 'FRAME') badges.push(node)
+    else if (role === 'card' && node.type === 'FRAME') cards.push(node)
+    else if (role === 'leader' && node.type === 'VECTOR') leaders.push(node)
   }
-  return null
+  return {
+    badge: renderedOwners.soleNode(badges),
+    card: renderedOwners.soleNode(cards),
+    leader: renderedOwners.soleNode(leaders)
+  }
 }
 
 /**
@@ -223,29 +216,9 @@ function dedupe<T extends SceneNode>(nodes: ReadonlyArray<T>): T | null {
  * appeared — which is what "it takes a while to open" was.
  */
 export function collectRenderedByOwner(): Map<string, RenderedNodes> {
-  const badges = new Map<string, Array<FrameNode>>()
-  const cards = new Map<string, Array<FrameNode>>()
-  const leaders = new Map<string, Array<VectorNode>>()
-  const push = <T>(into: Map<string, Array<T>>, ownerId: string, node: T): void => {
-    const list = into.get(ownerId)
-    if (typeof list === 'undefined') into.set(ownerId, [node])
-    else list.push(node)
-  }
-  for (const node of figma.currentPage.findAllWithCriteria({ pluginData: { keys: [OWNER_KEY] } })) {
-    const ownerId = node.getPluginData(OWNER_KEY)
-    if (ownerId === '') continue
-    const role = node.getPluginData(ROLE_KEY)
-    if (role === 'badge' && node.type === 'FRAME') push(badges, ownerId, node)
-    else if (role === 'card' && node.type === 'FRAME') push(cards, ownerId, node)
-    else if (role === 'leader' && node.type === 'VECTOR') push(leaders, ownerId, node)
-  }
   const byOwner = new Map<string, RenderedNodes>()
-  for (const ownerId of new Set([...badges.keys(), ...cards.keys(), ...leaders.keys()])) {
-    byOwner.set(ownerId, {
-      badge: dedupe(badges.get(ownerId) ?? []),
-      card: dedupe(cards.get(ownerId) ?? []),
-      leader: dedupe(leaders.get(ownerId) ?? [])
-    })
+  for (const [ownerId, nodes] of renderedOwners.collectByOwner()) {
+    byOwner.set(ownerId, renderedFrom(nodes))
   }
   return byOwner
 }
@@ -253,25 +226,10 @@ export function collectRenderedByOwner(): Map<string, RenderedNodes> {
 const NOTHING_RENDERED: RenderedNodes = { badge: null, card: null, leader: null }
 
 function findRenderedNodes(ownerId: string): RenderedNodes {
-  const owned = figma.currentPage.findAllWithCriteria({ pluginData: { keys: [OWNER_KEY] } })
-  const badges: Array<FrameNode> = []
-  const cards: Array<FrameNode> = []
-  const leaders: Array<VectorNode> = []
-  for (const node of owned) {
-    if (node.getPluginData(OWNER_KEY) !== ownerId) continue
-    const role = node.getPluginData(ROLE_KEY)
-    if (role === 'badge' && node.type === 'FRAME') badges.push(node)
-    else if (role === 'card' && node.type === 'FRAME') cards.push(node)
-    else if (role === 'leader' && node.type === 'VECTOR') leaders.push(node)
-  }
-  return {
-    badge: dedupe(badges),
-    card: dedupe(cards),
-    leader: dedupe(leaders)
-  }
+  return renderedFrom(renderedOwners.findFor(ownerId))
 }
 
-/** Same idea as `dedupe`, for a badge/card's own text child. */
+/** Same idea as `Ownership.soleNode`, for a badge/card's own text child. */
 function dedupeTextChild(parent: FrameNode): TextNode | undefined {
   const texts = parent.children.filter((child): child is TextNode => child.type === 'TEXT')
   if (texts.length <= 1) return texts[0]
@@ -282,18 +240,11 @@ function dedupeTextChild(parent: FrameNode): TextNode | undefined {
 }
 
 function removeIfPresent(node: BaseNode | null): void {
-  if (node !== null && !node.removed) {
-    node.remove()
-    // Harmless no-op for anything that was never in the cache (a text
-    // child, say) — only card/leader ids are ever actually present.
-    ownerIdByRenderedNodeId.delete(node.id)
-    roleByRenderedNodeId.delete(node.id)
-  }
+  renderedOwners.remove(node)
 }
 
 export function ownerIdOf(node: SceneNode): string | null {
-  const value = node.getPluginData(OWNER_KEY)
-  return value === '' ? null : value
+  return renderedOwners.ownerIdOf(node)
 }
 
 /**
@@ -306,35 +257,15 @@ export function ownerIdOf(node: SceneNode): string | null {
  * has just dragged a card is holding the one thing the panel has nothing to
  * say about.
  *
- * Takes the whole selection rather than one node at a time, and answers all
- * of it from a single page scan. Called on every `selectionchange`, where
- * Select All on a page of annotations would otherwise scan once per card.
- * Scans at all — rather than taking each id to `getNodeByIdAsync` — so it can
- * stay synchronous, which that caller needs.
+ * Called on every `selectionchange`, so see `Ownership.ownersBehind` for why
+ * it takes the whole selection at once and why it stays synchronous.
  */
 export function annotationTargetsBehind(
   nodes: ReadonlyArray<SceneNode>
 ): Map<string, SceneNode> {
-  const wanted = new Map<string, Array<string>>()
-  for (const node of nodes) {
-    const ownerId = ownerIdOf(node)
-    if (ownerId === null) continue
-    const asking = wanted.get(ownerId)
-    if (typeof asking === 'undefined') wanted.set(ownerId, [node.id])
-    else asking.push(node.id)
-  }
-  const resolved = new Map<string, SceneNode>()
-  // Nothing rendered by us is selected, so there is nothing to look up and no
-  // reason to scan — which is every ordinary selection.
-  if (wanted.size === 0) return resolved
-  for (const target of figma.currentPage.findAllWithCriteria({
-    pluginData: { keys: [ANNOTATION_KEY] }
-  })) {
-    const asking = wanted.get(target.id)
-    if (typeof asking === 'undefined') continue
-    for (const id of asking) resolved.set(id, target)
-  }
-  return resolved
+  return renderedOwners.ownersBehind(nodes, () =>
+    figma.currentPage.findAllWithCriteria({ pluginData: { keys: [ANNOTATION_KEY] } })
+  )
 }
 
 export function roleOf(node: SceneNode): Role | null {
@@ -357,7 +288,7 @@ export function removeRenderedNodesForOwner(ownerId: string, known?: RenderedNod
 
 /** Deletes rendered nodes whose owner is not in `liveTargetIds`. Returns the count removed. */
 export function removeOrphanRenderedNodes(liveTargetIds: ReadonlySet<string>): number {
-  return removeOrphansByOwnerKey(OWNER_KEY, liveTargetIds)
+  return renderedOwners.removeOrphans(liveTargetIds)
 }
 
 interface Card {
@@ -847,20 +778,15 @@ interface StackItem {
  * next one's natural position, need this.
  */
 export async function applyCardStacking(): Promise<void> {
-  const owned = figma.currentPage.findAllWithCriteria({ pluginData: { keys: [OWNER_KEY] } })
-  const cardsByOwner = new Map<string, FrameNode>()
-  const leadersByOwner = new Map<string, VectorNode>()
-  for (const node of owned) {
-    const ownerId = node.getPluginData(OWNER_KEY)
-    if (ownerId === '') continue
-    const role = node.getPluginData(ROLE_KEY)
-    if (role === 'card' && node.type === 'FRAME') cardsByOwner.set(ownerId, node)
-    else if (role === 'leader' && node.type === 'VECTOR') leadersByOwner.set(ownerId, node)
-  }
-
+  // A third copy of the group-and-split-by-role scan used to live here, and
+  // it kept the last node it saw for a role instead of clearing an ambiguous
+  // pair the way the other two did. Nothing should reach here with a
+  // duplicate, since the sync that just ran cleared them — but repairing
+  // whatever is found is the rule, not a thing to do in two places of three.
   const groups = new Map<'LEFT' | 'RIGHT', Array<StackItem>>()
   let prepared = 0
-  for (const [ownerId, card] of cardsByOwner) {
+  for (const [ownerId, { card, leader }] of collectRenderedByOwner()) {
+    if (card === null) continue
     const target = await figma.getNodeByIdAsync(ownerId)
     prepared += 1
     if (prepared % CHUNK_SIZE === 0) await yieldToMainThread()
@@ -883,7 +809,7 @@ export async function applyCardStacking(): Promise<void> {
     list.push({
       ownerId,
       card,
-      leader: leadersByOwner.get(ownerId) ?? null,
+      leader,
       edgeStart,
       nearEdgeX,
       naturalTop: resolved.layout.cardTopLeft.y,
