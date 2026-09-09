@@ -68,14 +68,27 @@ Manual verification steps are in `docs/qa-checklist.md`.
 - Commit in small steps that actually work.
 - Run `npm run typecheck && npm test` after every change, before reporting it
   done. Not on request — every time.
-- Let npm regenerate `package-lock.json` — never hand-fix it — and check the npm
-  version first. `vitest`'s bundled `vite` peer-depends on `esbuild ^0.27 ||
-  ^0.28` while `@create-figma-plugin/build` pins `0.25.1`, so the lock has to
-  carry a second `esbuild` nested under `vitest`. **npm 11.12.1 drops it**;
-  10.9.9 and 11.3.0 keep it. A lock written by 11.12.1 still installs on 11.12.1
-  and then fails `npm ci` on every earlier npm, including CI's. `engines` covers
-  the versions known to write a usable lock, so `npm install` says `EBADENGINE`
-  on one that does not — read it. `.nvmrc` is 22 to match CI.
+- Let npm regenerate `package-lock.json` — never hand-fix it — and **write it
+  with `npx npm@10.9.9 install`**, whatever npm you otherwise run. `vitest`'s
+  bundled `vite` peer-depends on `esbuild ^0.27 || ^0.28` while
+  `@create-figma-plugin/build` pins `0.25.1`, so the lock has to carry a second
+  `esbuild` nested under `vitest`. Measured, one version at a time:
+
+  | npm | writes both entries |
+  |:--|:--|
+  | 10.9.9 (what CI's Node 22 ships) | yes |
+  | 11.3.0 | yes |
+  | 11.6.2 | **no** |
+  | 11.12.1 | **no** |
+
+  A lock missing the nested entry still installs for whoever wrote it and then
+  fails `npm ci` on CI, which is how `f9df652` shipped with red CI. `engines`
+  is the guard and has been wrong once already — it said `<11.12` when the
+  break starts at 11.6.2, so npm 11.6.2 wrote a bad lock without a word.
+  It now says `<11.4`; if you widen it, measure first rather than assuming the
+  next version is fine. `.nvmrc` is 22 to match CI.
+- **Check CI after pushing.** The lock break above was invisible locally —
+  `npm ci` passed on the machine that wrote it.
 
 ## Notes
 
