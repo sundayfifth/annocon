@@ -29,7 +29,16 @@ import {
   type ConnectorDetour,
   type ConnectorLineStyle
 } from './core/connector.js'
+import {
+  CORNER_RADIUS_FIELD,
+  OPACITY_FIELD,
+  STROKE_WEIGHT_FIELD,
+  commitNumericField,
+  numericFieldText,
+  visibleConnectorControls
+} from './core/panelFields.js'
 import { ICON_DATA_URL } from './icon.js'
+import { CapGlyph, LineStyleGlyph } from './ui/glyphs.js'
 import type {
   AddCategoryHandler,
   CategoriesChangedHandler,
@@ -205,67 +214,6 @@ const CAP_LABELS: Record<ConnectorCap, string> = {
 }
 
 /**
- * A short stub line ending in the cap's actual shape — not a generic icon,
- * a preview of what the connector end will look like — so picking a cap
- * doesn't require reading eight near-identical-length labels apart.
- */
-function CapGlyph({ cap, color, size = 14 }: { cap: ConnectorCap; color: string; size?: number }) {
-  const content = (() => {
-    switch (cap) {
-      case 'NONE':
-        return <line stroke={color} strokeWidth="1.4" x1="2" x2="14" y1="8" y2="8" />
-      case 'ARROW_LINES':
-        return (
-          <>
-            <line stroke={color} strokeWidth="1.4" x1="1" x2="10" y1="8" y2="8" />
-            <path
-              d="M7 4.5L11 8L7 11.5"
-              fill="none"
-              stroke={color}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="1.4"
-            />
-          </>
-        )
-      case 'ARROW_EQUILATERAL':
-        return (
-          <>
-            <line stroke={color} strokeWidth="1.4" x1="1" x2="8" y1="8" y2="8" />
-            <path d="M8 5L13 8L8 11Z" fill={color} />
-          </>
-        )
-      case 'DIAMOND_FILLED':
-        return (
-          <>
-            <line stroke={color} strokeWidth="1.4" x1="1" x2="8" y1="8" y2="8" />
-            <path d="M11 5L14 8L11 11L8 8Z" fill={color} />
-          </>
-        )
-      case 'TRIANGLE_FILLED':
-        return (
-          <>
-            <line stroke={color} strokeWidth="1.4" x1="1" x2="8" y1="8" y2="8" />
-            <path d="M8 5.5L14 8L8 10.5Z" fill={color} />
-          </>
-        )
-      case 'CIRCLE_FILLED':
-        return (
-          <>
-            <line stroke={color} strokeWidth="1.4" x1="2" x2="9" y1="8" y2="8" />
-            <circle cx="12" cy="8" fill={color} r="3" />
-          </>
-        )
-    }
-  })()
-  return (
-    <svg height={size} style={{ flexShrink: 0 }} viewBox="0 0 16 16" width={size}>
-      {content}
-    </svg>
-  )
-}
-
-/**
  * The cap picker as an icon button + flyout grid, Autoflow-style, instead
  * of a text `Dropdown` — the button previews the selected cap directly
  * rather than naming it. Sized to `--space-24`/`--border-radius-4`, the
@@ -398,42 +346,6 @@ const LINE_STYLE_LABELS: Record<ConnectorLineStyle, string> = {
 }
 
 const LINE_STYLES: ReadonlyArray<ConnectorLineStyle> = ['STRAIGHT', 'CURVE', 'ELBOW']
-
-/** A small preview of what the route itself will look like, not a name. */
-function LineStyleGlyph({ style, color }: { style: ConnectorLineStyle; color: string }) {
-  const content = (() => {
-    switch (style) {
-      case 'STRAIGHT':
-        return <line stroke={color} strokeLinecap="round" strokeWidth="1.6" x1="4" x2="14" y1="14" y2="4" />
-      case 'CURVE':
-        return (
-          <path
-            d="M4 14C4 14 5 4 9 4C13 4 10 14 14 14"
-            fill="none"
-            stroke={color}
-            strokeLinecap="round"
-            strokeWidth="1.6"
-          />
-        )
-      case 'ELBOW':
-        return (
-          <path
-            d="M4 14H10V4H14"
-            fill="none"
-            stroke={color}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="1.6"
-          />
-        )
-    }
-  })()
-  return (
-    <svg height="16" style={{ flexShrink: 0 }} viewBox="0 0 18 18" width="16">
-      {content}
-    </svg>
-  )
-}
 
 /** Three icon toggles instead of `SegmentedControl`'s text labels — the route shape previews itself, Autoflow-style. */
 function LineStylePicker({
@@ -614,22 +526,6 @@ const SIZE_OPTIONS = ANNOTATION_SIZES.map((size) => ({
   children: SIZE_LABELS[size]
 }))
 
-/**
- * The thinnest stroke worth drawing — below this a line stops reading as one
- * at ordinary zoom. Enforced on blur only, deliberately **not** handed to
- * `TextboxNumeric` as `minimum`.
- *
- * `minimum` reads as a bound on the finished value; it is really a bound on
- * every keystroke. `RawTextboxNumeric` evaluates what the field would say
- * after each key and calls `preventDefault()` when that is out of range — so
- * a minimum of 0.5 rejects the leading `0` of `0.8`, and every value from
- * 0.5 to 0.9 becomes untypeable. The field refuses the values it exists to
- * accept, and says nothing about why.
- *
- * Clamping on blur costs one wrong-looking number for as long as the cursor
- * is in the field, and gets the whole range back.
- */
-const MIN_STROKE_WEIGHT = 0.5
 
 function SectionLabel({ children }: { children: string }) {
   return (
@@ -646,19 +542,20 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
   // value here is what makes the unit visible immediately, before anyone's
   // touched the field at all, instead of it looking unfinished until they do.
   const [weightText, setWeightText] = useState<string>(
-    typeof style?.strokeWeight === 'undefined' ? '' : `${style.strokeWeight}px`
+    numericFieldText(style?.strokeWeight, STROKE_WEIGHT_FIELD)
   )
   const [radiusText, setRadiusText] = useState<string>(
-    typeof style?.cornerRadius === 'undefined' ? '' : `${style.cornerRadius}px`
+    numericFieldText(style?.cornerRadius, CORNER_RADIUS_FIELD)
   )
   const [opacityText, setOpacityText] = useState<string>(
-    `${Math.round((style?.opacity ?? 1) * 100)}%`
+    numericFieldText(Math.round((style?.opacity ?? 1) * 100), OPACITY_FIELD)
   )
   const [labelText, setLabelText] = useState<string>(style?.label ?? '')
   useAdoptedFromOutside(style?.label ?? '', setLabelText)
   // Only one flyout open at a time across the whole panel — colour and both cap pickers share this.
   const [openFlyout, setOpenFlyout] = useState<'color' | 'startCap' | 'endCap' | null>(null)
   if (style === null) return null
+  const visible = visibleConnectorControls(style)
 
   const update = (
     changes: Partial<{
@@ -714,14 +611,10 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
         <div style={{ flex: '1 1 0' }}>
           <TextboxNumeric
             onBlur={() => {
-              const parsed = Number.parseFloat(weightText)
-              if (!Number.isFinite(parsed)) return
-              // Written back, the same way the opacity field does it: a
-              // clamped value the box still shows the rejected number for
-              // reads as the edit having been ignored.
-              const clamped = Math.max(MIN_STROKE_WEIGHT, parsed)
-              setWeightText(`${clamped}px`)
-              update({ strokeWeight: clamped })
+              const committed = commitNumericField(weightText, STROKE_WEIGHT_FIELD)
+              if (committed === null) return
+              setWeightText(committed.text)
+              update({ strokeWeight: committed.value })
             }}
             onValueInput={setWeightText}
             suffix="px"
@@ -730,26 +623,19 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
         </div>
         <div style={{ flex: '1 1 0' }}>
           <TextboxNumeric
-            maximum={100}
-            minimum={0}
             onBlur={() => {
-              const parsed = Number.parseFloat(opacityText)
-              if (Number.isFinite(parsed)) {
-                const clamped = Math.min(100, Math.max(0, parsed))
-                setOpacityText(String(clamped))
-                update({ opacity: clamped / 100 })
-              }
+              const committed = commitNumericField(opacityText, OPACITY_FIELD)
+              if (committed === null) return
+              setOpacityText(committed.text)
+              update({ opacity: committed.value / 100 })
             }}
             onValueInput={setOpacityText}
             suffix="%"
             value={opacityText}
           />
         </div>
-        {/* Hidden on a hand-drawn line, along with corner radius and Go
-            around: the shape is no longer the plugin's to decide, so
-            switching between straight, curved and elbowed would change
-            nothing. A control that does nothing is worse than no control. */}
-        {style.manualGeometry ? null : (
+        {/* Which of these appear, and why, is `visibleConnectorControls`. */}
+        {visible.lineStyle ? (
           <div style={{ flex: '0 0 auto' }}>
             <LineStylePicker
               onChange={(lineStyle) => {
@@ -758,14 +644,15 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
               value={style.lineStyle}
             />
           </div>
-        )}
-        {style.lineStyle === 'ELBOW' && !style.manualGeometry ? (
+        ) : null}
+        {visible.cornerRadius ? (
           <div style={{ flex: '1 1 0' }}>
             <TextboxNumeric
-              minimum={0}
               onBlur={() => {
-                const parsed = Number.parseFloat(radiusText)
-                if (Number.isFinite(parsed) && parsed >= 0) update({ cornerRadius: parsed })
+                const committed = commitNumericField(radiusText, CORNER_RADIUS_FIELD)
+                if (committed === null) return
+                setRadiusText(committed.text)
+                update({ cornerRadius: committed.value })
               }}
               onValueInput={setRadiusText}
               suffix="px"
@@ -818,7 +705,7 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
           value={style.endMagnet}
         />
       </div>
-      {style.manualGeometry ? (
+      {visible.handedOver ? (
         <>
           <VerticalSpace space="medium" />
           <SectionLabel>เส้นนี้ปรับเอง</SectionLabel>
@@ -841,7 +728,7 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
           </Button>
         </>
       ) : null}
-      {style.lineStyle === 'ELBOW' && !style.manualGeometry ? (
+      {visible.detour ? (
         <>
           <VerticalSpace space="medium" />
           <SectionLabel>Go around</SectionLabel>
