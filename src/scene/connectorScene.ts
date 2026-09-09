@@ -131,7 +131,7 @@ export function findConnectorsInvolving(
 }
 
 function anchorRefersTo(anchor: ConnectorRecord['start'], nodeId: string): boolean {
-  return anchor.kind !== 'free' && anchor.nodeId === nodeId
+  return anchor.nodeId === nodeId
 }
 
 /**
@@ -153,7 +153,7 @@ export function findConnectorBetween(aId: string, bId: string): VectorNode | nul
 }
 
 function anchorIn(anchor: ConnectorRecord['start'], ids: ReadonlySet<string>): boolean {
-  return anchor.kind !== 'free' && ids.has(anchor.nodeId)
+  return ids.has(anchor.nodeId)
 }
 
 /**
@@ -392,8 +392,8 @@ export async function captureManualReshape(node: SceneNode): Promise<boolean> {
   // instead is what the project's own rule warns against, and what made the
   // handles loop.
   const [startBoxes, endBoxes] = await Promise.all([
-    record.start.kind === 'free' ? Promise.resolve(NO_ENDPOINT) : boxesOf(record.start.nodeId),
-    record.end.kind === 'free' ? Promise.resolve(NO_ENDPOINT) : boxesOf(record.end.nodeId)
+    boxesOf(record.start.nodeId),
+    boxesOf(record.end.nodeId)
   ])
   const geometry = resolveConnectorGeometry(
     record,
@@ -725,8 +725,8 @@ export async function syncConnector(
   if (record === null) return
 
   const [startBoxes, endBoxes] = await Promise.all([
-    record.start.kind === 'free' ? Promise.resolve(NO_ENDPOINT) : boxesOf(record.start.nodeId),
-    record.end.kind === 'free' ? Promise.resolve(NO_ENDPOINT) : boxesOf(record.end.nodeId)
+    boxesOf(record.start.nodeId),
+    boxesOf(record.end.nodeId)
   ])
   const geometry = resolveConnectorGeometry(
     record,
@@ -1151,8 +1151,7 @@ export async function updateConnectorStyle(
 
 /**
  * Pins which side of the start or end node the connector exits/enters from,
- * overriding AUTO. Only meaningful for a `magnet`-kind anchor — a `free` or
- * `ratio` anchor has no "side" to pin, so this is a no-op for those.
+ * overriding AUTO.
  */
 export async function updateConnectorAnchorSide(
   node: VectorNode,
@@ -1162,7 +1161,6 @@ export async function updateConnectorAnchorSide(
   const record = getConnectorRecord(node)
   if (record === null) return
   const anchor: Anchor = record[side]
-  if (anchor.kind !== 'magnet') return
   writeConnectorRecord(node, { ...record, [side]: { ...anchor, magnet } })
   await syncConnector(node)
 }

@@ -6,7 +6,6 @@ import {
   centerOf,
   magnetPoint,
   outwardNormal,
-  ratioPoint,
   resolveAnchorPair,
   resolveMagnet,
   resolveMagnetEscapingFrame,
@@ -23,14 +22,6 @@ describe('magnetPoint', () => {
     expect(magnetPoint(box, 'LEFT')).toEqual({ x: 100, y: 210 })
     expect(magnetPoint(box, 'RIGHT')).toEqual({ x: 140, y: 210 })
     expect(magnetPoint(box, 'CENTER')).toEqual(centerOf(box))
-  })
-})
-
-describe('ratioPoint', () => {
-  it('maps 0..1 onto the box', () => {
-    expect(ratioPoint(box, { x: 0, y: 0 })).toEqual({ x: 100, y: 200 })
-    expect(ratioPoint(box, { x: 1, y: 1 })).toEqual({ x: 140, y: 220 })
-    expect(ratioPoint(box, { x: 0.25, y: 0.5 })).toEqual({ x: 110, y: 210 })
   })
 })
 
@@ -113,25 +104,19 @@ describe('resolveAnchorPair', () => {
 
   it('resolves the surviving side when the other end is orphaned', () => {
     const pair = resolveAnchorPair(auto('l'), left, auto('gone'), null)
-    expect(pair.start).not.toBeNull()
+    // AUTO with nothing to face resolves against its own centre, which is
+    // `resolveMagnet`'s documented horizontal tie-break.
+    expect(pair.start).toEqual({ x: 100, y: 50 })
     expect(pair.end).toBeNull()
   })
 
-  it('honours a free counterpart when resolving AUTO', () => {
-    const free: Anchor = { kind: 'free', point: { x: -300, y: 50 } }
-    const pair = resolveAnchorPair(auto('l'), left, free, null)
-    expect(pair.start).toEqual({ x: 0, y: 50 })
-    expect(pair.end).toEqual({ x: -300, y: 50 })
-  })
-
-  it('reports which side each endpoint resolved to, null for a free anchor', () => {
+  it('reports which side each endpoint resolved to, null for a missing box', () => {
     const pair = resolveAnchorPair(auto('l'), left, auto('r'), right)
     expect(pair.startSide).toBe('RIGHT')
     expect(pair.endSide).toBe('LEFT')
 
-    const free: Anchor = { kind: 'free', point: { x: -300, y: 50 } }
-    const withFree = resolveAnchorPair(auto('l'), left, free, null)
-    expect(withFree.endSide).toBeNull()
+    const orphaned = resolveAnchorPair(auto('l'), left, auto('gone'), null)
+    expect(orphaned.endSide).toBeNull()
   })
 })
 

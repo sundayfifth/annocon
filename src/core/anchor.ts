@@ -5,8 +5,9 @@
  * node's box. An `Anchor` is that derivation, expressed without ever touching
  * the `figma` global so it can be unit tested directly.
  *
- * The shape deliberately mirrors FigJam's `ConnectorEndpoint` union so that a
- * future FigJam port is close to a rename.
+ * The shape deliberately echoes FigJam's `ConnectorEndpoint` so that a future
+ * FigJam port is close to a rename — but only the one variant this plugin
+ * actually creates, see `Anchor`.
  */
 
 export interface Point {
@@ -46,13 +47,28 @@ export function isPoint(value: unknown): value is Point {
   )
 }
 
-export type Anchor =
-  /** Snaps to the midpoint of a side, like a FigJam magnet. */
-  | { readonly kind: 'magnet'; readonly nodeId: string; readonly magnet: Magnet }
-  /** Pinned to a fixed relative point in the node's box (0..1 on each axis). */
-  | { readonly kind: 'ratio'; readonly nodeId: string; readonly ratio: Point }
-  /** Not attached to anything — fixed in canvas space. */
-  | { readonly kind: 'free'; readonly point: Point }
+/**
+ * Snaps to the midpoint of a side of `nodeId`'s box, like a FigJam magnet.
+ *
+ * This was a three-way union — a magnet, a `ratio` pinned to a relative point
+ * in the box, and a `free` point fixed in canvas space, mirroring FigJam.
+ * Nothing ever created the other two: every anchor this plugin writes is a
+ * magnet, so the branches that resolved a `ratio` or a `free` point were
+ * unreachable, and so was the silent `return` they left in
+ * `updateConnectorAnchorSide` — which made every magnet in the panel a dead
+ * button for a state no code could produce.
+ *
+ * `kind` survives the cut with one value in it. It is on disk in every record
+ * written so far, and dropping it would make records this build writes
+ * unreadable to a teammate still running an older import of the plugin. It is
+ * also the seam to widen if a second kind ever earns its place — at which
+ * point resolution branches again, and the panel has to say so.
+ */
+export interface Anchor {
+  readonly kind: 'magnet'
+  readonly nodeId: string
+  readonly magnet: Magnet
+}
 
 /**
  * Whether two boxes occupy exactly the same space.
@@ -84,13 +100,6 @@ export function magnetPoint(rect: Rect, magnet: ResolvedMagnet): Point {
       return { x: rect.x + rect.width, y: center.y }
     case 'CENTER':
       return center
-  }
-}
-
-export function ratioPoint(rect: Rect, ratio: Point): Point {
-  return {
-    x: rect.x + rect.width * ratio.x,
-    y: rect.y + rect.height * ratio.y
   }
 }
 
@@ -272,7 +281,7 @@ export function outwardNormal(side: ResolvedMagnet): Point {
 
 interface ResolvedAnchorPoint {
   readonly point: Point | null
-  /** The side of the box the point landed on — `null` for a `free`/`ratio` anchor, which has no "side". */
+  /** The side of the box the point landed on — `null` only when there is no box, i.e. the anchored node is gone. */
   readonly side: ResolvedMagnet | null
 }
 
@@ -282,14 +291,8 @@ function resolveAnchorDetailed(
   towards: Point | null,
   frame: Rect | null
 ): ResolvedAnchorPoint {
-  if (anchor.kind === 'free') {
-    return { point: anchor.point, side: null }
-  }
   if (rect === null) {
     return { point: null, side: null }
-  }
-  if (anchor.kind === 'ratio') {
-    return { point: ratioPoint(rect, anchor.ratio), side: null }
   }
   const magnet =
     anchor.magnet === 'AUTO'
@@ -302,7 +305,7 @@ function resolveAnchorDetailed(
 export interface ResolvedPair {
   readonly start: Point | null
   readonly end: Point | null
-  /** Which side of its box each endpoint sits on — `null` for a `free`/`ratio` anchor. Used to route a connector out perpendicular to the edge instead of flush against it. */
+  /** Which side of its box each endpoint sits on — `null` on a side whose node is missing, together with that side's point. Used to route a connector out perpendicular to the edge instead of flush against it. */
   readonly startSide: ResolvedMagnet | null
   readonly endSide: ResolvedMagnet | null
 }
@@ -332,11 +335,8 @@ export function resolveAnchorPair(
   startFrame: Rect | null = null,
   endFrame: Rect | null = null
 ): ResolvedPair {
-  const seed = (anchor: Anchor, rect: Rect | null): Point | null =>
-    anchor.kind === 'free' ? anchor.point : rect === null ? null : centerOf(rect)
-
-  const startSeed = seed(start, startRect)
-  const endSeed = seed(end, endRect)
+  const startSeed = startRect === null ? null : centerOf(startRect)
+  const endSeed = endRect === null ? null : centerOf(endRect)
 
   const firstStart = resolveAnchorDetailed(start, startRect, endSeed, startFrame)
   const firstEnd = resolveAnchorDetailed(end, endRect, startSeed, endFrame)
