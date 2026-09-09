@@ -1,12 +1,20 @@
 # งานที่เหลือจาก architecture review
 
-> **baseline:** `main @ 5c05097` · ตรวจเมื่อ 8 กันยายน 2026
-> **สถานะตอนตรวจ:** `npm run typecheck` ผ่าน · `npm run lint` ผ่าน · `npm test` ผ่าน 272 tests / 6 files · `npm run build` ผ่าน
-> **coverage `src/core/**`:** 90.76% stmts · 86.58% branch · 97.5% funcs · 93.97% lines
+> **baseline เดิม:** `main @ 5c05097` · ตรวจเมื่อ 8 กันยายน 2026 —
+> 272 tests / 6 files · coverage `src/core/**` 90.76% stmts · 86.58% branch · 97.5% funcs · 93.97% lines
+>
+> **สถานะวันนี้:** `sundayfifth/feat-connector-drag-handles @ 696e214` · 9 กันยายน 2026
+> `npm run typecheck` · `npm run lint` · `npm test` (**260 tests / 6 files**) · `npm run build` ผ่านทั้งหมด
+> **coverage `src/core/**`:** **91.11% stmts · 87.4% branch · 97.45% funcs · 94.44% lines**
+> จำนวน test ลดจาก 272 เพราะ B1 ตัด test ที่ไม่ถือ coverage ของตัวเอง 10 ตัว
+> และ A2/V1 ลบ test ของ state ที่ไม่มีอยู่แล้วอีก 2 ตัว — coverage ขึ้นทุกตัวเลข
+>
+> **ปิดแล้วในรอบนี้:** B1 · A4 · A2 · V1 · V2 · T1 T2 T3 T5 T7 (+ A1 A3 จากรอบก่อน)
+> **ถัดไป:** B4 (พร้อม T4) · แล้ว B2 → B3 · B5 B7 แทรกได้ · B6 ท้ายสุด
 
 เอกสารนี้แปลง architecture review (rev.2, อ้าง `main @ 471a8fb`) มาเป็นรายการงานที่
-**ตรวจซ้ำทุกข้อบน `5c05097` แล้ว** เลข `file:line` ทุกตัวข้างล่างเป็นของ commit นี้
-ไม่ใช่ของรีวิวเดิม
+**ตรวจซ้ำทุกข้อบน `5c05097` แล้ว** เลข `file:line` ในข้อที่**ยังไม่ปิด** เป็นของ `5c05097`
+ไม่ใช่ของรีวิวเดิม — และขยับไปแล้วจากงานที่ปิดในรอบนี้ ยืนยันด้วยคำสั่งในหัวข้อ 8 ก่อนใช้
 
 เครื่องหมายที่ใช้:
 
@@ -35,7 +43,7 @@
 | candidate 1 (ย้าย decision เข้า core) | ทำไปแล้วเกินครึ่ง — เกิด `src/core/obstacleScan.ts` (106) + `src/core/drawnShape.ts` (249) + test 555 บรรทัด จาก 9 commit |
 | `connector.ts` มี 3 export ที่ "ไม่มีใครใช้เลย" | ⚠️ **ไม่มีตัวไหนตายสนิท** — ทั้ง 20 ตัวที่ prod ไม่เรียก ถูกใช้ในไฟล์ตัวเองทั้งหมด มันคือ *over-export* ไม่ใช่ dead code คนละงานกัน (ดู B1) |
 | "ลบข้อความในป้ายเส้น กับในการ์ด ให้ผลไม่เหมือนกัน" | ❌ **ไม่ใช่ bug** ดูข้อ 3 |
-| `ensureOnPage` ตัวที่สองใน `connectorScene` เป็น dead call | ⚠️ วินิจฉัยผิด — มันแย่กว่านั้น ดู A4 |
+| `ensureOnPage` ตัวที่สองใน `connectorScene` เป็น dead call | ⚠️ วินิจฉัยผิด — มันแย่กว่านั้น **แก้แล้ว** (`d79e5fa`) ดู A4 |
 
 **ข้อควรรู้ที่ได้จาก `030cde9` — สำคัญกับ B5**
 
@@ -74,34 +82,29 @@
 
 ---
 
-### A2 ✅ จุด magnet เป็นปุ่มตายถ้า anchor ไม่ใช่ magnet
+### A2 ✔️ ปิดแล้ว — จุด magnet เป็นปุ่มตายถ้า anchor ไม่ใช่ magnet
 
-**หลักฐาน**
+> **ลงแล้วบน `sundayfifth/feat-connector-drag-handles`:** `1e7d6e9` — เลือกทางที่ 1
+> (ตัด union) `Anchor` จาก union 3 แบบเหลือ `interface` เดียว · `ratioPoint` ถูกลบ ·
+> สาขา no-op ใน `updateConnectorAnchorSide` หายไป · coverage `src/core/**`
+> **90.76 → 91.13 stmts · 86.58 → 87.40 branch**
 
-- `src/core/anchor.ts:51-55` — `Anchor` เป็น union 3 แบบ: `magnet` · `ratio` · `free`
-- `src/main.ts:191-192` — `summariseSelection` ยุบเหลือ `Magnet` เดียว:
-  `connectorRecord.start.kind === 'magnet' ? connectorRecord.start.magnet : 'AUTO'`
-  → UI มองไม่เห็นความต่างระหว่าง "AUTO จริง" กับ "ไม่ใช่ magnet"
-- `src/scene/connectorScene.ts:1150` — `if (anchor.kind !== 'magnet') return` เงียบสนิท
+ปัญหาเดิม: `Anchor` เป็น union 3 แบบ (`magnet` · `ratio` · `free`) แต่ `summariseSelection`
+(`main.ts:191-192`) ยุบเหลือ `Magnet` เดียว และ `connectorScene.ts:1150`
+`if (anchor.kind !== 'magnet') return` เงียบสนิท → ถ้า anchor เป็น `ratio`/`free`
+คลิกจุด magnet ใน panel จะไม่เกิดอะไรเลย
 
-**อาการ** ถ้า anchor เป็น `ratio` หรือ `free` การคลิกจุด magnet ใน panel จะไม่เกิดอะไรเลย ตลอดไป
-ไม่มี feedback
+**สิ่งที่ตัดสิน** ทางที่ 1 — ไม่มีโค้ดไหนสร้าง `ratio`/`free` เลย สาขาที่ resolve มันจึงไปไม่ถึง
+และสาขา no-op ที่มันเป็นเหตุผลให้มีอยู่ ก็ทำให้จุด magnet ทุกจุดเป็นปุ่มตายสำหรับ state
+ที่ไม่มีโค้ดไหนสร้างได้ (V2 ปิดไปพร้อมกัน)
 
-**⚠️ ข้อสำคัญที่เปลี่ยนน้ำหนักของ bug นี้** ตรวจแล้วว่า **ไม่มีโค้ดไหนสร้าง `ratio` หรือ `free` ขึ้นมาเลย**
-`createConnectorRecord` (`src/core/connector.ts:199-200`) สร้างแต่ `kind: 'magnet'` ทั้งสองด้าน
-`grep -rn "kind: 'ratio'\|kind: 'free'" src/` เจอแค่ที่ประกาศ type
-แปลว่า **วันนี้ผู้ใช้เจอ bug นี้ไม่ได้** — มันเป็นระเบิดเวลาที่จะทำงานวันที่มีคนเพิ่ม anchor แบบอื่น
+**สิ่งที่คงไว้และเพราะอะไร** `kind` ยังอยู่ โดยมีค่าเดียว — มันอยู่บน disk ในทุก record
+ที่เขียนไปแล้ว และเป็น seam ที่จะขยายถ้าวันหนึ่งมี kind ที่สองจริงๆ
 
-**สิ่งที่ต้องทำ** เลือกทางเดียว ไม่ควรทำทั้งสอง:
-
-1. **ตัด union ให้เหลือเท่าที่ใช้จริง** — ลบ `ratio`/`free` ออกจาก `Anchor` แล้ว `updateConnectorAnchorSide`
-   จะไม่มีสาขา no-op ให้ต้องมี ข้อดี: ลบความซับซ้อนที่ไม่มีใครใช้จริง (deletion test ผ่าน)
-   ข้อเสีย: `parseConnectorRecord` เลิกรับ record ที่เขียนโดย version อนาคต และต้องแก้ `captureManualReshape`
-   (`connectorScene.ts:395-396`) ที่เช็ค `record.start.kind === 'free'` อยู่
-2. **เก็บ union ไว้แล้วทำให้ UI รู้** — ส่ง `kind` ขึ้นไปใน `SelectionSummary` แล้ว disable จุด magnet
-   พร้อมบอกเหตุผล ข้อดี: รองรับของที่ ADR 0001 ตั้งใจไว้ ข้อเสีย: เขียน UI ให้ state ที่ยังไม่มีใครสร้างได้
-
-**ความเสี่ยง/ชนกับใคร** ทางเลือก 1 แตะ `core/anchor.ts` + `core/connector.ts` + `connectorScene.ts` — กลาง
+**สิ่งที่เปลี่ยนพฤติกรรมการ parse** record ที่ `kind` ไม่ใช่ `'magnet'` (คือ `ratio`/`free`
+ที่ build ในอนาคตเขียน) ถูก **ปฏิเสธทั้งก้อน** ไม่ใช่ซ่อม — ต่างจาก style field ที่ fallback
+ทีละช่อง เพราะไม่มี default endpoint ที่ไม่ใช่ "เส้นที่ลากไปที่ที่เจ้าของไม่ได้วางไว้"
+ADR 0001 บันทึกเหตุผลนี้ไว้แล้ว
 
 ---
 
@@ -126,31 +129,16 @@ pure function ใน core แล้ว test มัน (ต่อกับ B5)
 
 ---
 
-### A4 🆕 `ensureOnPage` ตัวที่สองใน `syncConnectorBody` ไม่มีการเขียนตำแหน่งคืน
+### A4 ✔️ ปิดแล้ว — `ensureOnPage` ตัวที่สองใน `syncConnectorBody` ไม่มีการเขียนตำแหน่งคืน
 
-รีวิวเดิมเรียกข้อนี้ว่า "dead call" ซึ่งไม่ถูก ของจริงคือ **โค้ดผิดอยู่หนึ่งในสองแบบ ไม่ว่าจะมองมุมไหน**
+> **ลงแล้วบน `sundayfifth/feat-connector-drag-handles`:** `d79e5fa`
+> `connectorScene.ts:865-880` — อ่าน `absoluteTransform` ก่อน `ensureOnPage` แล้วเขียน
+> `node.x`/`node.y` คืนหลัง เหมือน `:783-788`
 
-**หลักฐาน** ทั้งสองบรรทัดอยู่ใน suppress window เดียวกัน (`connectorScene.ts:768-877`)
-
-| บรรทัด | ทำอะไร |
-|:--|:--|
-| `:783-788` | อ่าน `absoluteTransform` เก็บ `absoluteX`/`absoluteY` → `ensureOnPage(node)` → **เขียน `node.x`/`node.y` คืนทันที** |
-| `:1035-1036`, `:1070-1071` | `positionPolyline` / `positionCurve` เขียน `node.x`/`node.y` (ทำงาน**ก่อน** `:865`) |
-| `:865` | `ensureOnPage(node)` — **ไม่มีการเขียนตำแหน่งคืนตามหลัง** |
-
-คอมเมนต์ที่ `:769-782` อธิบายเองว่าทำไมต้องเขียนตำแหน่งคืนหลัง reparent:
-reparent เก็บ*ตัวเลข* `x`/`y` ไว้เท่าเดิมแต่เปลี่ยนความหมาย เท่ากับ teleport node ไปเป็นระยะเท่ากับ
-origin ของ parent เดิม
-
-**เพราะฉะนั้น**
-
-- ถ้า `:865` ไม่มีทางทำงานจริง (node ขึ้น page ไปแล้วตั้งแต่ `:786` และไม่มีอะไรระหว่างนั้นย้าย parent) → มันคือบรรทัดที่ลบได้
-- ถ้ามันทำงานได้จริง (ระหว่าง `await` ของ `positionPolyline` คนลากเส้นเข้า frame ได้ เพราะ plugin ปล่อย main thread ทุก await) → มันจะ **teleport เส้นทันทีหลังวาดเสร็จ** โดยไม่มีใครเขียนตำแหน่งคืน
-
-**สิ่งที่ต้องทำ** ตัดสินว่าเป็นแบบไหน แล้วเลือกอย่างใดอย่างหนึ่ง: ลบบรรทัด `:865`
-หรือทำให้เหมือน `:783-788` (อ่าน absolute ก่อน แล้วเขียนคืนหลัง) — ห้ามปล่อยไว้แบบนี้
-
-**ความเสี่ยง/ชนกับใคร** `connectorScene.ts` — สูง (ไฟล์ที่พี่นุ่นทำงานอยู่)
+**ตัดสินว่าเป็นแบบไหน: มันทำงานได้จริง ไม่ใช่ dead call** ทุก `await` ใน
+`positionPolyline`/`positionCurve` คืน main thread ให้ Figma และเส้นถูกปล่อยไม่ให้ล็อกโดยตั้งใจ
+(เพื่อให้ style panel ทำงาน) → คนลากเส้นเข้า frame ได้ในช่วงนั้น และไม่มีที่อื่นใน function นี้
+reparent มันกลับ จึงเป็นจุดเดียวที่จับได้ คอมเมนต์ที่ `:865-874` อธิบายไว้แล้ว
 
 ---
 
@@ -171,8 +159,8 @@ origin ของ parent เดิม
 | ไฟล์ | export | prod ไม่เรียก แต่ test เรียก | prod+test ไม่เรียก (ใช้แต่ในไฟล์ตัวเอง) |
 |:--|--:|--:|--:|
 | `src/core/connector.ts` | 50 → **33** | 18 | 2 (`FRAME_CLEARANCE_MARGIN:1205`, `ConnectorCurve:1558`) |
-| `src/core/annotation.ts` | 33 | 11 | 3 (`LayoutMetrics:48`, `AnnotationLayout:164`, `StackableCard:629`) |
-| `src/core/anchor.ts` | 17 | 2 (`ratioPoint:90`, `resolveMagnetPreferringSides:155`) | 1 (`ResolvedPair:302`) |
+| `src/core/annotation.ts` | 33 → **32** | 11 | 3 (`LayoutMetrics`, `AnnotationLayout`, `StackableCard`) |
+| `src/core/anchor.ts` | 17 → **16** | 1 (`resolveMagnetPreferringSides`) | 1 (`ResolvedPair`) |
 | `src/core/drawnShape.ts` | 11 | 3 | 3 (`DrawnSegment:23`, `TangentSegment:152`, `TangentNetwork:157`) |
 | `src/core/category.ts` | 9 | 0 | 0 |
 | `src/core/obstacleScan.ts` | 4 | 0 | 0 |
@@ -219,8 +207,10 @@ test import ค่าพวกนี้มาเป็นค่าที่ค�
   `expect(resolved.layout).toEqual(annotationLayout(target, record(), DEFAULT_METRICS))`)
   ตัดแล้วต้องเขียน expectation เป็นพิกัดตรงๆ
 
-`ratioPoint` กับ `resolveMagnetPreferringSides` ใน `anchor.ts` ไม่ได้ตัดในรอบนี้ เพราะ `ratioPoint`
-มีอยู่เพื่อ anchor `kind: 'ratio'` ที่ไม่มีใครสร้าง → ผูกกับการตัดสินใจใน **A2/V2** ไม่ใช่ B1
+`ratioPoint` กับ `resolveMagnetPreferringSides` ใน `anchor.ts` ไม่ได้ตัดในรอบ B1 เพราะผูกกับ
+การตัดสินใจใน **A2/V2** ไม่ใช่ B1 — `ratioPoint` ถูก**ลบทั้งตัว**ไปแล้วใน `1e7d6e9` พร้อมกับ
+anchor kind ที่มันมีอยู่เพื่อรองรับ · `resolveMagnetPreferringSides` ยังอยู่ (prod เรียกผ่าน
+`resolveMagnetEscapingFrame`) และ `annotation.ts` เสีย 1 export จาก `ANNOTATION_VERSION` ใน `696e214`
 
 **ข้อควรระวังเรื่อง type** un-export type ได้เฉพาะตัวที่ไม่ปรากฏใน signature ของ function ที่ยัง public
 `StackableCard` เป็น parameter type ของ function ที่ export อยู่ (`annotation.ts:647`) —
@@ -476,28 +466,30 @@ if (trimmed === '') {
 
 ## 4. dead / vestigial
 
-### V1 ✅ `field v` เป็น version marker ที่ทำงานไม่ได้
+### V1 ✔️ ปิดแล้ว — `field v` เป็น version marker ที่ทำงานไม่ได้
 
-เขียนตอนสร้าง: `annotation.ts:182`, `:236` · `connector.ts:198`, `:361`
-แต่ตอน parse **hardcode ค่าปัจจุบันทับ** — `connector.ts:361`:
-```ts
-return {
-  v: CONNECTOR_VERSION,      // ← ไม่ได้อ่าน candidate.v
-  start: candidate.start,
-  ...
-```
-`grep -rn "\.v\b" src/core/annotation.ts src/core/connector.ts` = **0 hit**
+> **ลงแล้วบน `sundayfifth/feat-connector-drag-handles`:** `696e214` — เลือกทางที่ 1 (ลบ field)
+> `ANNOTATION_VERSION` / `CONNECTOR_VERSION` ถูกลบทั้งคู่ · `v` ออกจากทั้ง 2 interface,
+> 2 factory, 2 parser
 
-**ผลคือ** record ที่เขียนโดย version เก่าจะกลายเป็น "version ปัจจุบัน" เงียบๆ ทันทีที่อ่าน
-ไม่มีทางรู้ว่าต้อง migrate
+`v` เขียนตอนสร้างแต่ตอน parse hardcode ค่าปัจจุบันทับ ไม่เคยอ่าน `candidate.v` → record
+ที่เขียนโดย build เก่ารายงานตัวเองว่าเป็น version ปัจจุบันทันทีที่ถูกอ่าน ไม่มีทางรู้ว่าต้อง migrate
 
-**เลือกทางเดียว** (1) ลบ field ทิ้งพร้อมยอมรับว่าไม่มี migration story หรือ
-(2) อ่าน `candidate.v` จริงแล้วเขียน migration path ตอนที่ยังมีแค่ version 1 ให้ migrate
-— ตัดสินใจตอนนี้ถูกกว่าตอนมี version 2 แล้ว
+**เหตุผลที่เลือกลบ** marker ที่ตรวจอะไรไม่ได้แย่กว่าไม่มี เพราะมันอ่านเหมือนมี migration story
+ที่ไม่มีอยู่จริง ของที่ทำให้ record เก่ายังใช้ได้จริงๆ คือ tolerant field-by-field decode —
+field ที่ไม่รู้จักถูกเมิน field ที่หายไป fallback เป็น default ที่ตรงกับสิ่งที่วาดไว้ก่อนมี field นั้น
+(`size` เป็นตัวอย่างที่เขียนไว้ในโค้ดแล้ว)
 
-### V2 ✅ anchor kind `'ratio'` / `'free'` ไม่มีใครสร้าง
+**สิ่งที่บันทึกไว้แทน** docstring ของ `parseAnnotationRecord` เขียนไว้ว่า tolerance นี่แหละคือ
+versioning story ทั้งหมด และถ้าวันหนึ่งมีการเปลี่ยนที่ tolerance รับไม่ได้ (field ที่*ความหมาย*
+เปลี่ยน ไม่ใช่ field ที่เพิ่มมา) marker จริงต้องเกิดตอนนั้น และต้องถือว่า `v` ที่ไม่มีอยู่
+= "ทุกอย่างที่เขียนมาถึงตอนนี้" · `parseConnectorRecord` ชี้มาที่ docstring นั้น
 
-ดู A2 — parse ได้ resolve ได้ มี doc แต่ไม่มี factory ตัวไหนสร้าง
+record ที่อยู่บน disk แล้วยังมี `v` ติดอยู่ ซึ่ง decode เมินและการเขียนครั้งถัดไปทิ้งไปเอง
+
+### V2 ✔️ ปิดแล้ว — anchor kind `'ratio'` / `'free'` ไม่มีใครสร้าง
+
+ปิดพร้อม A2 ใน `1e7d6e9` — ดู A2
 
 ### V3 ✅ export ที่ไม่มีใครนอกไฟล์ใช้
 
@@ -510,13 +502,13 @@ return {
 
 | # | ข้อ | หลักฐาน | ทำอะไร |
 |:--|:--|:--|:--|
-| T1 ✅ | test วัดเวลาจริง flaky ได้บน CI ที่โหลดหนัก และวัดค่าจูน ไม่ใช่สัญญา | `test/connector.test.ts:1035-1038` `expect(Date.now() - start).toBeLessThan(200)` | ลบ assertion เวลา เก็บ `expect(points).toBeNull()` ไว้ — ถ้าอยากคุมเวลาจริง ต้องทำเป็น benchmark แยก ไม่ใช่ unit test |
-| T2 ✅ | test ที่อาจรัน 0 assertion | `test/connector.test.ts:1192-1195` — `if (routerKeepsIt) expect(...)` ถ้าเงื่อนไขไม่เข้าเลย test ผ่านโดยไม่ assert อะไร | ใส่ `expect.hasAssertions()` หรือแยกเป็น case ที่รู้คำตอบล่วงหน้า |
-| T3 🆕 | `coverage` text report ไม่แสดง `src/core/obstacleScan.ts` ทั้งที่มัน **100%** | text table แสดง 5 ไฟล์ · `json-summary` แสดง 6 ไฟล์ (`obstacleScan.ts` 31/31 stmts) · ลอง `--coverage.skipFull=false` แล้วยังไม่โชว์ · `--coverage.skipFull=true` ทำให้แถวหายทั้งตาราง (vitest 4.1.11) | เพิ่ม `'json-summary'` ใน `vitest.config.ts` reporters เพื่อให้มีตัวเลขที่เชื่อได้ — สาเหตุที่ text reporter กรองแถวยังไม่ยืนยัน อย่าเชื่อ text table เป็นแหล่งเดียว |
+| T1 ✔️ | test วัดเวลาจริง flaky ได้บน CI ที่โหลดหนัก และวัดค่าจูน ไม่ใช่สัญญา | เดิม `expect(Date.now() - start).toBeLessThan(200)` | **ปิดแล้ว** — `grep -n 'Date.now()' test/*.ts` = 0 hit |
+| T2 ✔️ | test ที่อาจรัน 0 assertion | `if (routerKeepsIt) expect(...)` ผ่านได้โดยไม่ assert อะไร | **ปิดแล้ว** — `expect.hasAssertions()` ที่ `test/connector.test.ts:1086` |
+| T3 ✔️ | `coverage` text report ไม่แสดง `src/core/obstacleScan.ts` ทั้งที่มัน **100%** | text table แสดง 5 ไฟล์ · `json-summary` แสดง 6 ไฟล์ (`obstacleScan.ts` 31/31 stmts) · ลอง `--coverage.skipFull=false` แล้วยังไม่โชว์ · `--coverage.skipFull=true` ทำให้แถวหายทั้งตาราง (vitest 4.1.11) | **ปิดแล้ว** (`1cf6133`) — `vitest.config.ts:20` reporters เป็น `['text', 'html', 'json-summary']` · สาเหตุที่ text reporter กรองแถวยังไม่ยืนยัน **อย่าเชื่อ text table เป็นแหล่งเดียว** |
 | T4 ✅ | คอมเมนต์หัวไฟล์ไม่ตรงกับความจริง | `vitest.config.ts:3-4` เขียนว่า "Only `src/core/**` is unit tested: it is the one layer that never touches the `figma` global" — ประโยคหลังยังจริง แต่ประโยคแรกกำลังจะไม่จริงทันทีที่ B4 ลง | แก้พร้อม B4 |
-| T5 ✅ | ไม่มี lint plugin ของ Preact/React | `package.json` ไม่มี `eslint-plugin-react-hooks` สำหรับไฟล์ 1,315 บรรทัดที่มี 15 hook | เพิ่ม `eslint-plugin-react-hooks` แล้วเปิดกฎ `rules-of-hooks` + `exhaustive-deps` — ทำก่อน B5 จะได้ตาข่ายตอนแยกไฟล์ |
+| T5 ✔️ | ไม่มี lint plugin ของ Preact/React | ไฟล์ 1,315 บรรทัดที่มี 15 hook ไม่มีตาข่าย | **ปิดแล้ว** (`38d2353`) — `eslint.config.js:34-37` `rules-of-hooks: error` + `exhaustive-deps: warn` เป็นตาข่ายให้ B5 แล้ว |
 | T6 ✅ | `eslint` ใช้ `recommendedTypeChecked` | `eslint.config.js:11` | อัปเป็น `strictTypeChecked` เป็น**ข้อเสนอ ไม่ใช่ bug** ควรลองแล้วดูว่าได้ error กี่ตัวก่อนตัดสินใจ |
-| T7 ✅ | `package.json` version ยัง `0.4.0` | `e1a61b2 chore: release 0.4.0` (1 ก.ย. 2026) — หลังจากนั้น main เดินไปอีก 45 commit โดยไม่ bump | bump ทุกครั้งที่ merge งานที่เปลี่ยนพฤติกรรม — ไม่งั้นระบุ build ที่รันอยู่ใน Figma ไม่ได้ ซึ่งสำคัญเพราะ distribution เป็น import manifest เอง |
+| T7 ✔️ | `package.json` version ยัง `0.4.0` | หลัง `e1a61b2 chore: release 0.4.0` main เดินไปอีก 45 commit โดยไม่ bump | **ปิดแล้ว** (`f9df652`) — วันนี้ `0.5.0` · กฎที่ต้องถือต่อ: bump ทุกครั้งที่ merge งานที่เปลี่ยนพฤติกรรม ไม่งั้นระบุ build ที่รันอยู่ใน Figma ไม่ได้ ซึ่งสำคัญเพราะ distribution เป็น import manifest เอง |
 
 ---
 
@@ -528,10 +520,10 @@ return {
 
 | ลำดับ | ทำ | เพราะ |
 |:--|:--|:--|
-| 1 | ~~T1 T2 T3 T5 T7 + A1 A3~~ ✔️ | เล็ก อิสระต่อกัน ไม่แตะไฟล์ร้อน รวมเป็น branch เดียวได้ และ T5 เป็นตาข่ายให้ B5 · **T4 ยังค้าง** — คอมเมนต์หัว `vitest.config.ts` แก้พร้อม B4 |
+| 1 | ~~T1 T2 T3 T5 T7 + A1 A3~~ ✔️ | เล็ก อิสระต่อกัน ไม่แตะไฟล์ร้อน รวมเป็น branch เดียวได้ และ T5 เป็นตาข่ายให้ B5 · **T4 ยังค้าง** — คอมเมนต์หัว `vitest.config.ts` แก้พร้อม B4 (ลำดับ 4) |
 | 2 | ~~B1~~ ✔️ | อยู่ใน `core/**` + `test/**` เกือบทั้งหมด ความเสี่ยงต่ำสุดในบรรดางาน architecture · ทำแค่ `connector.ts`; `annotation.ts` วัดแล้วไม่ควรทำ ดู B1 |
-| **3 ← ถัดไป** | A4 + A2 + V1 + V2 | ตัดสินใจเรื่อง anchor union กับ version field พร้อมกัน เพราะเกี่ยวกัน แล้วปิด A4 ไปด้วยเลยเพราะอยู่ไฟล์เดียวกัน |
-| 4 | B4 | เอา `test/frames.test.ts` กลับมา — เป็นตาข่ายให้ B2 กับ B3 **เช็คก่อนว่าไม่มีใครถืออยู่** |
+| 3 | ~~A4 + A2 + V1 + V2~~ ✔️ | A4 ปิดไปก่อนใน `d79e5fa` · A2/V2 ตัด anchor union (`1e7d6e9`) · V1 ลบ version marker (`696e214`) — ตัดสินใจสองเรื่องนี้พร้อมกันเพราะเป็นการเลือกว่า "ของที่ไม่มีใครใช้" คือ seam ที่เก็บไว้หรือความซับซ้อนที่ตัดทิ้ง |
+| **4 ← ถัดไป** | B4 | เอา `test/frames.test.ts` กลับมา — เป็นตาข่ายให้ B2 กับ B3 **เช็คก่อนว่าไม่มีใครถืออยู่** · ปิด T4 ไปพร้อมกัน (คอมเมนต์หัว `vitest.config.ts`) |
 | 5 | B2 | branch สั้น merge เร็ว |
 | 6 | B3 | หลัง B2 เท่านั้น ทั้งสองข้อเขียน write path ใหม่ทั้งคู่ |
 | 7 | B5 B7 | อิสระจากข้ออื่น ทำแทรกตอนไหนก็ได้ |
