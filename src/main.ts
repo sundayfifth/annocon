@@ -72,7 +72,7 @@ import {
   isEmptyBatch
 } from './core/nodeChanges.js'
 import { CHUNK_SIZE, yieldToMainThread } from './scene/chunking.js'
-import { isSuppressed } from './scene/pluginData.js'
+import { takeRemovedByUs } from './scene/removals.js'
 
 // `figma.currentPage.selection` is not in click order — Figma returns it in
 // layer/z-order regardless of which node was selected first. To let a
@@ -428,11 +428,14 @@ interface TouchedNodes {
  * Re-renders annotations and connectors whose endpoint moved, captures a
  * manual card drag as the record's new offset, and cleans up rendered nodes
  * whose target vanished (or marks a connector broken, for the same reason).
- * Ignores everything while our own pluginData writes are in flight — see
- * `withSuppressedNodeChange`.
+ *
+ * Nothing is ignored on the grounds of *when* it arrived. Our own writes are
+ * recognised by what they are: the property filter in `core/nodeChanges.ts`
+ * drops the ones no feature acts on, `core/authorship.ts` attributes the two
+ * that are genuinely ambiguous, and `scene/removals.ts` names the nodes this
+ * plugin deleted itself.
  */
 function handleNodeChange(event: NodeChangeEvent): void {
-  if (isSuppressed()) return
   // Kept alongside the ids, because the classifier answers in ids and the
   // text nodes themselves are what gets read back.
   const textNodesById = new Map<string, TextNode>()
@@ -455,7 +458,16 @@ function handleNodeChange(event: NodeChangeEvent): void {
     return { ...common, hasBox: true, role: roleOf(node), ownerId: ownerIdOf(node) }
   })
 
-  const effects = classifyBatch(observed)
+  const batch = classifyBatch(observed)
+  // A DELETE is the one change the classifier cannot judge on content, since
+  // the node is gone — so it is judged on the id, which was recorded as we
+  // removed it. Dropping ours here is what stops a sweep of our own rendered
+  // nodes waking a full resync pass to repair nothing. Consuming, so a second
+  // DELETE for the same id would not be dropped as well.
+  const effects = {
+    ...batch,
+    deletedIds: new Set([...batch.deletedIds].filter((id) => !takeRemovedByUs(id)))
+  }
   if (isEmptyBatch(effects)) return
   for (const id of effects.deletedIds) waiting.deletedIds.add(id)
   for (const id of effects.movedTargetIds) waiting.movedTargetIds.add(id)

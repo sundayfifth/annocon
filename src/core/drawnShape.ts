@@ -6,6 +6,10 @@
  * numbers, and it belongs where it can be tested. It is also the judgement
  * a drag leans on hardest: on a page of connectors this runs per line per
  * frame, and every wrong "no" is a redundant write to the document.
+ *
+ * A related but different question — was this node's current state written by
+ * us or by a person — is `core/authorship.ts`. These answer "would the next
+ * write change anything"; those answer "did the last change come from us".
  */
 
 import type { Point } from './anchor.js'
@@ -81,36 +85,6 @@ export function alreadyDrawn(
     if (segment.start !== i || segment.end !== i + 1) return false
   }
   return true
-}
-
-/**
- * A fingerprint of a drawn shape, for spotting an edit that was not ours.
- *
- * Every vertex and every join, not the bounding box: pulling a bend inwards
- * leaves the box exactly as it was — it is defined by the two ends — and the
- * vertex count with it, so a box-and-count fingerprint reports no change and
- * the edit is redrawn over in silence. A connector carries a handful of
- * vertices, so hashing all of them costs nothing worth measuring.
- *
- * Rounded to whole units, because the plugin's own writes come back with the
- * sub-pixel drift of a float round-trip, and a fingerprint that changes on
- * its own would claim every line in the file as hand-drawn.
- */
-export function shapeFingerprint(network: {
-  readonly vertices: ReadonlyArray<DrawnVertex>
-  readonly segments: ReadonlyArray<DrawnSegment>
-}): string {
-  const vertices = network.vertices
-    .map((vertex) => `${Math.round(vertex.x)},${Math.round(vertex.y)}`)
-    .join(';')
-  const segments = network.segments.map((segment) => `${segment.start}>${segment.end}`).join(';')
-  // Vertices and joins only, never the node's position. Vertices are stored
-  // relative to the node, so nudging a whole connector with an arrow key —
-  // or dropping it onto a frame, which reparents it and rewrites x/y —
-  // changes the position and not one thing about the shape. Including
-  // position would hand routing over for good on a keystroke that reshaped
-  // nothing, which is not what "somebody reshaped this" should mean.
-  return `${vertices}|${segments}`
 }
 
 /**

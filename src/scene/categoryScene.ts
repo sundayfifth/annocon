@@ -11,7 +11,6 @@ import {
   parseCategoryList,
   serialiseCategoryList
 } from '../core/category.js'
-import { withSuppressedNodeChange } from './pluginData.js'
 
 const CATEGORIES_KEY = 'categories'
 
@@ -20,9 +19,7 @@ export function getCategories(): ReadonlyArray<Category> {
 }
 
 function saveCategories(categories: ReadonlyArray<Category>): void {
-  withSuppressedNodeChange(() => {
-    figma.root.setPluginData(CATEGORIES_KEY, serialiseCategoryList(categories))
-  })
+  figma.root.setPluginData(CATEGORIES_KEY, serialiseCategoryList(categories))
 }
 
 /**

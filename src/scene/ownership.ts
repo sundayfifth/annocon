@@ -25,6 +25,7 @@
  */
 
 import { groupByOwner, ownerIdOf as ownerIdIn, resolveOwnersBehind } from '../core/ownerIndex.js'
+import { removeNode } from './removals.js'
 
 export interface Ownership<Meta> {
   /**
@@ -122,11 +123,12 @@ export function ownership<Meta = undefined>(ownerKey: string): Ownership<Meta> {
     figma.currentPage.findAllWithCriteria({ pluginData: { keys: [ownerKey] } })
 
   const remove = (node: BaseNode | null): void => {
-    if (node === null || node.removed) return
-    node.remove()
+    if (node === null) return
+    const { id } = node
+    if (!removeNode(node)) return
     // A no-op for anything that was never tagged — a badge's text child, say,
     // which callers pass through here for the `removed` check alone.
-    remembered.delete(node.id)
+    remembered.delete(id)
   }
 
   return {
