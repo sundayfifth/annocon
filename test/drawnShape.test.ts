@@ -5,6 +5,7 @@ import {
   type DrawnShape,
   type DrawnVertex,
   alreadyDrawn,
+  polylineAtOrigin,
   samePolyline,
   shapeFingerprint,
   walkDrawnShape
@@ -26,6 +27,134 @@ const on = (
   y = 300,
   segments = chain(vertices.length)
 ): DrawnShape => ({ x, y, vertices, segments })
+
+describe('polylineAtOrigin', () => {
+  /**
+   * The rule both features write a line through: a vector node says where the
+   * line is twice — once as the node's own position, once as vertices
+   * measured from it — and the two have to agree or the line is drawn at an
+   * offset from where it was routed.
+   */
+  it('puts the node at the top-left of the points and measures the rest from there', () => {
+    const placed = polylineAtOrigin([
+      { x: 140, y: 60 },
+      { x: 140, y: 200 },
+      { x: 400, y: 200 }
+    ])
+    expect(placed.x).toBe(140)
+    expect(placed.y).toBe(60)
+    expect(placed.vertices).toEqual([
+      { x: 0, y: 0 },
+      { x: 0, y: 140 },
+      { x: 260, y: 140 }
+    ])
+  })
+
+  /** The corner is what makes this a minimum per axis rather than the first point. */
+  it('takes the minimum on each axis independently, not the first or nearest point', () => {
+    // No single point is at the top-left corner: the leftmost is the lowest.
+    const placed = polylineAtOrigin([
+      { x: 300, y: 10 },
+      { x: 50, y: 400 }
+    ])
+    expect(placed).toMatchObject({ x: 50, y: 10 })
+    expect(placed.vertices).toEqual([
+      { x: 250, y: 0 },
+      { x: 0, y: 390 }
+    ])
+  })
+
+  it('handles negative canvas coordinates', () => {
+    const placed = polylineAtOrigin([
+      { x: -400, y: -50 },
+      { x: -100, y: -50 }
+    ])
+    expect(placed).toMatchObject({ x: -400, y: -50 })
+    expect(placed.vertices).toEqual([
+      { x: 0, y: 0 },
+      { x: 300, y: 0 }
+    ])
+  })
+
+  it('chains each point to the next', () => {
+    const four = polylineAtOrigin([
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 20, y: 10 }
+    ])
+    expect(four.segments).toEqual([
+      { start: 0, end: 1 },
+      { start: 1, end: 2 },
+      { start: 2, end: 3 }
+    ])
+  })
+
+  it('gives a two-point line one segment, and leaves a leader its bare points', () => {
+    const straight = polylineAtOrigin([
+      { x: 0, y: 0 },
+      { x: 50, y: 0 }
+    ])
+    expect(straight.segments).toEqual([{ start: 0, end: 1 }])
+    // No `ends`: a leader has no caps or rounding to carry.
+    expect(straight.vertices).toEqual([
+      { x: 0, y: 0 },
+      { x: 50, y: 0 }
+    ])
+  })
+
+  describe('with ends, as a connector draws one', () => {
+    const ends = { startCap: 'CIRCLE_FILLED', endCap: 'ARROW_EQUILATERAL', cornerRadius: 20 } as const
+    const withEnds = (count: number) =>
+      polylineAtOrigin(
+        Array.from({ length: count }, (_unused, i) => ({ x: i * 10, y: 0 })),
+        ends
+      ).vertices
+
+    /** A bend is a corner, not an end, so only the true ends are capped. */
+    it('caps the first and last vertex and nothing in between', () => {
+      const caps = withEnds(4).map((vertex) => vertex.strokeCap)
+      expect(caps).toEqual(['CIRCLE_FILLED', 'NONE', 'NONE', 'ARROW_EQUILATERAL'])
+    })
+
+    /**
+     * The mirror image of the caps: a cap is drawn past the end of the line,
+     * so rounding an end vertex has no visible effect at all — only the bends
+     * in between benefit.
+     */
+    it('rounds only the bends in between', () => {
+      const radii = withEnds(4).map((vertex) => vertex.cornerRadius)
+      expect(radii).toEqual([undefined, 20, 20, undefined])
+    })
+
+    it('gives a two-point line both caps and no rounding', () => {
+      expect(withEnds(2)).toEqual([
+        { x: 0, y: 0, strokeCap: 'CIRCLE_FILLED' },
+        { x: 10, y: 0, strokeCap: 'ARROW_EQUILATERAL' }
+      ])
+    })
+
+    /**
+     * Degenerate, and reachable only through a caller that has already lost
+     * its route: a single vertex is the first and the last at once. Which cap
+     * it gets is arbitrary — the start one, because that test runs first —
+     * and this is here so the arbitrariness is on the record rather than
+     * looking like a rule somebody should preserve or "fix".
+     */
+    it('gives a lone vertex the start cap, arbitrarily', () => {
+      expect(withEnds(1)).toEqual([{ x: 0, y: 0, strokeCap: 'CIRCLE_FILLED' }])
+    })
+  })
+
+  /**
+   * Not reachable from either caller — every route is at least two points —
+   * but `Math.min()` of nothing is `Infinity`, and that would be written to
+   * the document as a position rather than caught.
+   */
+  it('answers an empty line at the origin rather than Infinity', () => {
+    expect(polylineAtOrigin([])).toEqual({ x: 0, y: 0, vertices: [], segments: [] })
+  })
+})
 
 describe('alreadyDrawn', () => {
   it('says yes to the shape that is already there', () => {

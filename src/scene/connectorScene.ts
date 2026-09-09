@@ -39,6 +39,7 @@ import { contrastingTextColor } from '../core/category.js'
 import {
   type DrawnRun,
   alreadyDrawn,
+  polylineAtOrigin,
   shapeFingerprint,
   walkDrawnShape
 } from '../core/drawnShape.js'
@@ -1014,21 +1015,10 @@ async function drawPoints(
   points: ReadonlyArray<Point>,
   record: ConnectorRecord
 ): Promise<Point> {
-  const originX = Math.min(...points.map((point) => point.x))
-  const originY = Math.min(...points.map((point) => point.y))
-  const lastIndex = points.length - 1
-  const vertices = points.map((point: Point, index) => {
-    const isEnd = index === 0 || index === lastIndex
-    return {
-      x: point.x - originX,
-      y: point.y - originY,
-      // Only the true ends get a cap — a bend is a corner, not a cap.
-      // The reverse is true for corner rounding: a cap is drawn past
-      // the end of the line, so rounding an end vertex would have no
-      // visible effect — only the bends in between benefit from it.
-      strokeCap: index === 0 ? record.startCap : index === lastIndex ? record.endCap : 'NONE',
-      ...(isEnd ? {} : { cornerRadius: record.cornerRadius })
-    }
+  const { x, y, vertices, segments } = polylineAtOrigin(points, {
+    startCap: record.startCap,
+    endCap: record.endCap,
+    cornerRadius: record.cornerRadius
   })
 
   // `setVectorNetworkAsync` is the most expensive thing this file asks Figma
@@ -1047,14 +1037,10 @@ async function drawPoints(
     vertices: node.vectorNetwork.vertices,
     segments: node.vectorNetwork.segments
   }
-  if (!alreadyDrawn(onCanvas, vertices, originX, originY)) {
-    node.x = originX
-    node.y = originY
-    await node.setVectorNetworkAsync({
-      vertices,
-      segments: points.slice(1).map((_point, index) => ({ start: index, end: index + 1 })),
-      regions: []
-    })
+  if (!alreadyDrawn(onCanvas, vertices, x, y)) {
+    node.x = x
+    node.y = y
+    await node.setVectorNetworkAsync({ vertices, segments, regions: [] })
   }
   return pointAlongPolyline(points, 0.5)
 }
