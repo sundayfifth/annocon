@@ -3,14 +3,16 @@
 > **baseline เดิม:** `main @ 5c05097` · ตรวจเมื่อ 8 กันยายน 2026 —
 > 272 tests / 6 files · coverage `src/core/**` 90.76% stmts · 86.58% branch · 97.5% funcs · 93.97% lines
 >
-> **สถานะวันนี้:** `sundayfifth/feat-connector-drag-handles @ 8b4818c` · 9 กันยายน 2026
+> **สถานะวันนี้:** `sundayfifth/feat-connector-drag-handles @ f51e6c6` · 9 กันยายน 2026
 > `npm run typecheck` · `npm run lint` · `npm test` (**305 tests / 8 files**) · `npm run build` ผ่านทั้งหมด
 > **coverage `src/core/**`:** **91.72% stmts · 88.12% branch · 97.67% funcs · 94.79% lines**
 > ขึ้นทุกตัวเลขจาก baseline ทั้งที่ B1 ตัด test ที่ไม่ถือ coverage ของตัวเองออก 10 ตัว
 > และ A2/V1 ลบ test ของ state ที่ไม่มีอยู่อีก 2 ตัว — B4 เพิ่มกลับมา 30 · B2 อีก 15
+> (B7 ไม่เพิ่ม test เพราะอยู่ใน `main.ts`/`ui.tsx` ทั้งหมด — ไป QA checklist แทน)
 >
-> **ปิดแล้วในรอบนี้:** B1 · A4 · A2 · V1 · V2 · B4 · B2 · T1 T2 T3 T5 T7 · T4 (premise ผิด ไม่ต้องแก้)
-> **ถัดไป:** B3 (ต้องหลัง B2 ซึ่งลงแล้ว) · B5 B7 แทรกได้ · B6 ท้ายสุด
+> **ปิดแล้วในรอบนี้:** B1 · A4 · A2 · V1 · V2 · B4 · B2 · B7 · T1 T2 T3 T5 T7 ·
+> T4 (premise ผิด ไม่ต้องแก้)
+> **ถัดไป:** B5 · B3 (มีคำถามต้องเคลียร์ก่อน ดูหัวข้อ B3) · B6 ท้ายสุด
 
 เอกสารนี้แปลง architecture review (rev.2, อ้าง `main @ 471a8fb`) มาเป็นรายการงานที่
 **ตรวจซ้ำทุกข้อบน `5c05097` แล้ว** เลข `file:line` ในข้อที่**ยังไม่ปิด** เป็นของ `5c05097`
@@ -304,6 +306,24 @@ suppress window ที่มีอยู่ทั้งหมด: `annotationSce
 `appendChild` / `setVectorNetworkAsync` ได้ และหยิบได้จากในหน้าต่างเท่านั้น
 `withSceneWrite(w => { ... })` — เขียนตรงโดยไม่มี handle ต้องไม่ compile
 
+**🆕 คำถามที่ต้องตอบก่อนลงมือ — อยู่ในหลักฐานของข้อนี้เอง**
+
+ข้อนี้เขียนเองไว้ข้างบนว่า suppression **ตอบคำถาม "เราเขียนเองหรือคนเขียน" ไม่ได้** เพราะปล่อย
+หลัง write ไปหนึ่ง tick และ `nodechange` ของ vector write มาถึงหลังหน้าต่างปิดได้ — นั่นคือเหตุผล
+ที่ `shapeFingerprint` (กลไกอิงเนื้อหา เชื่อถือได้) มีอยู่
+
+ถ้าอย่างนั้น **การบังคับกลไกที่ไม่น่าเชื่อถือด้วย type ไม่ได้ทำให้มันน่าเชื่อถือขึ้น** — มันทำให้
+"ลืมยก flag" เป็น compile error ซึ่งมีค่า แต่ไม่ได้แก้เคสที่ยก flag ถูกแล้วยัง echo หลุด
+ก่อนจ่ายราคาของการเขียน write path ใหม่ทั้งสองไฟล์ ควรวัดก่อนว่า:
+
+1. echo ที่ *หลุด* จริงวันนี้มีกี่ทาง และทางไหนที่ `shapeFingerprint` ไม่ได้คุ้มอยู่แล้ว
+2. `main.ts:558` → `removeConnectorLabel` (write ที่ `suppressDepth === 0` แน่นอน) ทำให้เกิด
+   อาการที่ผู้ใช้เห็นได้จริงไหม — เอกสารนี้เองยังเขียนว่า "ยังไม่ได้ยืนยัน"
+3. ทางที่ถูกอาจเป็น **ขยาย fingerprint ให้ครอบ write ทุกชนิด** (กลไกเดียว อิงเนื้อหา)
+   แล้วเลิกใช้ suppression ไปเลย ซึ่งลบกลไกออกหนึ่งอัน แทนที่จะเพิ่ม type ให้กลไกที่ยังต้องมีสองอัน
+
+ถ้าไม่ตอบ 3 ข้อนี้ก่อน มีความเสี่ยงว่าจะได้ type safety รอบกลไกที่กำลังจะถูกแทนที่
+
 **ข้อควรคิดก่อนทำ** ทำแบบนี้จริงต้องแตะทุก write path ในสองไฟล์ใหญ่ และ `src/scene/pluginData.ts`
 (46 บรรทัด 0 figma ref) จะกลายเป็นของที่ test ได้ด้วย fake timer — แต่ควรทำ **หลัง** B2
 ไม่ใช่ก่อน เพราะทั้งสองข้อเขียน write path ใหม่ทั้งคู่ ทำพร้อมกันแล้วแยกไม่ออกว่าอะไรพัง
@@ -418,31 +438,49 @@ include เฉพาะ `test/**/*.test.ts` บน `environment: 'node'` แล�
 
 ---
 
-### B7 ✅ message contract เป็น union + ช่องบอกความล้มเหลว (candidate 7)
+### B7 ✔️ ปิดแล้ว — message contract เป็น union + ช่องบอกความล้มเหลว (candidate 7)
 
-**สถานะวันนี้** `src/messages.ts` 179 บรรทัด · 26 `export interface` (13 คู่ payload/handler) ·
-ไม่มี discriminated union · ไม่มี `COMMAND_FAILED`
+> **ลงแล้วบน `sundayfifth/feat-connector-drag-handles`:** `8e35eeb` (union + exhaustive
+> registration) · `f51e6c6` (`COMMAND_FAILED`)
+> `src/messages.ts` **179 → 194 บรรทัด** แต่ `export interface` 26 → **13 payload + 2 map**
+> (handler 13 ตัวกลายเป็น type alias บรรทัดเดียวที่ derive จาก map)
 
-**⚠️ ตรวจแล้ว: วันนี้ยังครบ** handler interface 13 ตัว หัก 2 ตัวที่เป็นทาง main→ui
-(`SelectionChangedHandler`, `CategoriesChangedHandler`) เหลือ 11 ตัวที่ต้องลงทะเบียนใน `main.ts`
-และ `main.ts` ลงทะเบียนไว้ **11 ตัวพอดี** — ไม่มีตัวไหนหลุดตอนนี้ ประเด็นคือ
-**ไม่มีอะไรบังคับ** เพิ่ม message ตัวที่ 14 แล้วลืม `on()` ก็ compile ผ่านและเงียบ
+**ส่วนที่ 1 — เพิ่ม message แล้วลืม `on()` ต้อง compile ไม่ผ่าน** `UiToMain` / `MainToUi`
+map ชื่อ message → payload ที่มันแบก แล้ว `main.ts` ลงทะเบียนจาก object ที่ type เป็น
+`UiToMain` ทั้งก้อน (`{ [Name in keyof UiToMain]: (payload: UiToMain[Name]) => void }`)
+แล้ววน `Object.keys` ลงทะเบียน — ชื่อ message จึงอยู่ที่เดียว
 
-**หลักฐานว่าไม่มีช่องบอกความล้มเหลว** `main.ts:318-320`:
-```ts
-const node = await figma.getNodeByIdAsync(targetId)
-if (node === null || node.type !== 'VECTOR') return
-```
-UI ไม่เคยรู้ว่า command ตกไป และ handler ทุกตัวจบด้วย `return` เงียบๆ แบบนี้
+**ยืนยันว่า bite จริง** เพิ่ม `TOGGLE_SOMETHING` เข้า `UiToMain` โดยไม่ใส่ handler →
+`error TS2741: Property 'TOGGLE_SOMETHING' is missing` ไม่ใช่แค่ "ควรจะจับได้"
 
-ผลคือ UI ต้องเขียนโค้ดชดเชยพฤติกรรมของอีกฝั่งที่มันมองไม่เห็น — `ui.tsx:1047-1053` มีคอมเมนต์อธิบายไว้เอง
-ว่า scene layer ปฏิเสธชื่อว่างเงียบๆ และถ้าไม่มีโค้ดชดเชย การลบชื่อทิ้งแล้วคลิกออกจะทำให้ช่องนั้น
-ค้างว่างตลอดไป
+**🆕 เจอตอนทำ: `ADD_CATEGORY` ไม่ได้ queue และนั่นถูกแล้ว** เอกสารเดิมไม่ได้พูดถึง
+ตรวจแล้ว `addCategory` sync ตั้งแต่ read ถึง write ไม่มี `await` ให้ command ที่สองแทรก
+จึงไม่มีอะไรต้อง serialise — ต่างจากอีก 3 category command ที่ work เป็น async
+เขียนเหตุผลไว้ในโค้ดแล้ว (ก่อนหน้านี้ไม่มีอะไรบอกว่าเป็นการตัดสินใจหรือการหลงลืม)
 
-**สิ่งที่ต้องทำ** `type UiToMain = …` / `type MainToUi = …` พร้อม exhaustiveness check ตรง
-registration block และเพิ่ม `COMMAND_FAILED`
+**ส่วนที่ 2 — `COMMAND_FAILED`** `commandFailed(command, reason)` = `figma.notify` (ทางที่
+plugin นี้ใช้บอก sync ล้มเหลวอยู่แล้ว) + ส่ง `COMMAND_FAILED` ให้ panel + re-emit selection
 
-**ความเสี่ยง/ชนกับใคร** ต่ำ–กลาง (`messages.ts` เกือบไม่มีใครแตะ แต่ต้องแก้ทั้งสองฝั่งพร้อมกัน)
+**⚠️ ข้อที่สำคัญและเกือบตัดออกไป: ส่ง message ให้ UI ไม่ซ้ำซ้อนกับการ re-emit selection**
+`useAdoptedFromOutside` (`ui.tsx`) รับค่าที่**เปลี่ยน**จากที่อื่นเท่านั้น — เทียบ incoming กับ
+ค่าที่เห็นล่าสุด พอ command ถูกปฏิเสธ record ไม่เปลี่ยน `incoming` จึงเท่าเดิม และเลขที่คนพิมพ์
+ค้างอยู่ในช่องเหมือนถูกบันทึกแล้ว การ re-emit selection แก้ไม่ได้ · panel จึงนับจำนวนครั้งที่ถูก
+ปฏิเสธเข้าไปใน `key` ของ editor → reset ทุกช่องกลับเป็นค่าที่เก็บจริง ซึ่งเป็นการ reset
+ที่ถูกขนาดในกรณีนี้ ต่างจาก remount ที่ A3 เอาออก เพราะ "ถูกปฏิเสธ" หมายความว่าไม่มีอะไร
+ที่พิมพ์ไว้ถูกบันทึกเลย ไม่มีงานที่ยังไม่ save ให้ต้องรักษา
+
+**⚠️ เห็นต่างกับเอกสารเดิมหนึ่งข้อ** เอกสารเดิมอ้าง `ui.tsx:1047-1053` (guard ชื่อ category ว่าง)
+เป็นหลักฐานว่า "UI ต้องเขียนโค้ดชดเชยพฤติกรรมของอีกฝั่งที่มันมองไม่เห็น" — **ครึ่งเดียวถูก**
+guard นั้นคงไว้โดยตั้งใจ: ชื่อว่างเป็นกฎที่ panel ตัดสินเองได้ ไม่ต้อง round trip และไม่ส่งของ
+ที่ยังไงก็ไม่ถูกบันทึก · main รายงานด้วยเผื่อมีทางอื่นไปถึง — คอมเมนต์ในโค้ดแก้ให้ตรงแล้ว
+
+**สโคปที่ยังไม่ครอบ — พูดตรงๆ** ที่ปิดคือ guard ของ `main.ts` เอง ส่วน scene layer มี
+silent return ของตัวเองอีกชั้น (`updateConnectorStyle` บน node ที่ record ถูกลบไปแล้ว เป็นต้น
+— `grep -c '=== null) return'` = 10 ใน `connectorScene.ts`, 7 ใน `annotationScene.ts`)
+ซึ่งต้องแก้ให้ function พวกนั้นรายงานกลับ = งานแยกที่แตะไฟล์ร้อนสองไฟล์อีกรอบ
+
+**test ไม่ได้ → เพิ่ม QA step** `docs/qa-checklist.md` หัวข้อ "A command that cannot be applied"
+5 ข้อ
 
 ---
 
@@ -532,7 +570,7 @@ record ที่อยู่บน disk แล้วยังมี `v` ติ�
 | 4 | ~~B4~~ ✔️ | เขียนตาข่าย `core/nodeTree.ts` + `polylineAtOrigin` — เป็นตาข่ายให้ B2 กับ B3 · T4 ตรวจแล้ว premise ผิด ไม่ต้องแก้ |
 | 5 | ~~B2~~ ✔️ | ลงเป็น commit เดียว `8b4818c` · เจอ drift เพิ่มอีกสองจุดที่เอกสารเดิมไม่เห็น |
 | **6 ← ถัดไป** | B3 | หลัง B2 เท่านั้น ทั้งสองข้อเขียน write path ใหม่ทั้งคู่ — B2 ลงแล้ว ทางเปิด |
-| 7 | B5 B7 | อิสระจากข้ออื่น ทำแทรกตอนไหนก็ได้ |
+| 7 | ~~B7~~ ✔️ · **B5 ← ถัดไป** | อิสระจากข้ออื่น B7 ลงแล้ว (`8e35eeb`, `f51e6c6`) · B5 มี `eslint-plugin-react-hooks` เป็นตาข่ายจาก T5 แล้ว |
 | 8 | B6 | ท้ายสุด เพราะการแตกไฟล์ทำให้ทุก commit ที่ลงทีหลังกลายเป็น conflict |
 
 **ข้อที่ไม่ควรรวม branch เดียวกัน**
