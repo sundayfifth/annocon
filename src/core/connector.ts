@@ -20,8 +20,6 @@ import {
   resolveAnchorPair
 } from './anchor.js'
 
-const CONNECTOR_VERSION = 1
-
 /**
  * A curated mirror of Figma's `StrokeCap` — the whole set is line-end
  * styles, not just arrowheads, so "cap" rather than "arrowhead" throughout.
@@ -84,7 +82,6 @@ const CONNECTOR_DETOURS: ReadonlyArray<ConnectorDetour> = [
 export type ConnectorLineStyle = 'STRAIGHT' | 'ELBOW' | 'CURVE'
 
 export interface ConnectorRecord {
-  readonly v: typeof CONNECTOR_VERSION
   readonly start: Anchor
   readonly end: Anchor
   readonly strokeWeight: number
@@ -195,7 +192,6 @@ export function createConnectorRecord(
   stylePrefs: ConnectorStylePrefs = DEFAULT_CONNECTOR_STYLE_PREFS
 ): ConnectorRecord {
   return {
-    v: CONNECTOR_VERSION,
     start: { kind: 'magnet', nodeId: startNodeId, magnet: 'AUTO' },
     end: { kind: 'magnet', nodeId: endNodeId, magnet: 'AUTO' },
     ...stylePrefs,
@@ -341,7 +337,10 @@ function isAnchor(value: unknown): value is Anchor {
 /**
  * Decodes a record out of pluginData. Deliberately tolerant, same reasoning
  * as `parseAnnotationRecord`: a record we cannot read at all is `null`; one
- * that is merely incomplete falls back to defaults field by field.
+ * that is merely incomplete falls back to defaults field by field. That
+ * tolerance is also this record's entire versioning story — see
+ * `parseAnnotationRecord` for why the `v` marker these records used to carry
+ * was removed rather than fixed.
  */
 export function parseConnectorRecord(raw: string): ConnectorRecord | null {
   if (raw === '') return null
@@ -355,7 +354,6 @@ export function parseConnectorRecord(raw: string): ConnectorRecord | null {
   const candidate = parsed as Record<string, unknown>
   if (!isAnchor(candidate.start) || !isAnchor(candidate.end)) return null
   return {
-    v: CONNECTOR_VERSION,
     start: candidate.start,
     end: candidate.end,
     ...stylePrefsFrom(candidate),

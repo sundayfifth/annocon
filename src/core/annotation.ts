@@ -19,10 +19,7 @@ import {
   resolveMagnet
 } from './anchor.js'
 
-export const ANNOTATION_VERSION = 1
-
 export interface AnnotationRecord {
-  readonly v: typeof ANNOTATION_VERSION
   readonly text: string
   /** Which side of the target the badge sits on. `AUTO` follows the card. */
   readonly side: Magnet
@@ -179,7 +176,6 @@ export function createAnnotationRecord(
   size: AnnotationSize = DEFAULT_ANNOTATION_SIZE
 ): AnnotationRecord {
   return {
-    v: ANNOTATION_VERSION,
     text,
     side: 'AUTO',
     cardOffset: DEFAULT_CARD_OFFSET,
@@ -214,6 +210,20 @@ function isAnnotationSize(value: unknown): value is AnnotationSize {
  * Deliberately tolerant: the string comes from a document that other versions
  * of this plugin — and users editing by hand — may have touched. A record we
  * cannot read at all is `null`; one that is merely incomplete gets defaults.
+ *
+ * That tolerance is the whole versioning story, and it is on purpose. Records
+ * used to carry a `v: 1` marker, written on the way out and never read on the
+ * way in — parsing hardcoded the current version over whatever was there, so a
+ * record written by any older build reported itself as current the instant it
+ * was read, and nothing could ever have noticed it needed migrating. A marker
+ * that cannot detect anything is worse than none, because it reads as a
+ * migration story that does not exist. What actually keeps old records working
+ * is right here: a field this build does not recognise is ignored, and one it
+ * expects but does not find falls back to the default that matches what was
+ * drawn before the field existed (see `size` below). If a change ever arrives
+ * that this cannot absorb — a field whose meaning changes rather than one
+ * added — that is when a real marker has to be introduced, and it will have to
+ * treat an absent `v` as "everything written up to now".
  */
 export function parseAnnotationRecord(raw: string): AnnotationRecord | null {
   if (raw === '') {
@@ -233,7 +243,6 @@ export function parseAnnotationRecord(raw: string): AnnotationRecord | null {
     return null
   }
   return {
-    v: ANNOTATION_VERSION,
     text: candidate.text,
     side: isMagnet(candidate.side) ? candidate.side : 'AUTO',
     // Every annotation written before sizes existed reads back as M, which
