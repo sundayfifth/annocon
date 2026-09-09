@@ -638,7 +638,7 @@ async function syncAnnotationExclusive(target: SceneNode, known?: RenderedNodes)
   // Every write below — position, resize, vector network — is itself a
   // property change our own `nodechange` listener sees. Left unsuppressed,
   // positioning the card here looks identical to a person dragging it, and
-  // gets fed back into `updateCardOffsetFromDrag`, which can then overwrite
+  // gets fed back into `updateCardFromDrag`, which can then overwrite
   // the record with an offset read mid-write — corrupted, sometimes wildly
   // off-canvas, positions with no error anywhere.
   const category = findCategory(getCategories(), record.categoryId)
