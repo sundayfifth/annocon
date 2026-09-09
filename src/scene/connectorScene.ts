@@ -42,6 +42,7 @@ import {
   shapeFingerprint,
   walkDrawnShape
 } from '../core/drawnShape.js'
+import { topLevelAncestorIdOf } from '../core/nodeTree.js'
 import {
   type RouteObstacle,
   EMPTY_OBSTACLES,
@@ -50,7 +51,7 @@ import {
 } from '../core/obstacleScan.js'
 import { ownerIdOf } from './annotationScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
-import { ensureOnPage, findEnclosingFrame, topLevelAncestorIdOf } from './frames.js'
+import { ensureOnPage, findEnclosingFrame } from './frames.js'
 import { removeOrphansByOwnerKey } from './orphans.js'
 import { withSuppressedNodeChange, withSuppressedNodeChangeAsync } from './pluginData.js'
 
