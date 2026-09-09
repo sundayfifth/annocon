@@ -63,7 +63,9 @@
 
 ## 1. bug ที่ผู้ใช้เจอได้
 
-### A1 ✅ สั่งสองอย่างติดกันแล้วอันหลังทับอันแรก
+### A1 ✔️ ปิดแล้ว — สั่งสองอย่างติดกันแล้วอันหลังทับอันแรก
+
+> ลงแล้วบน main: `66b8a7f` — command ที่แก้ record เดียวกันเข้าคิวต่อกันด้วย promise chain ต่อ node id
 
 **หลักฐาน**
 
@@ -111,7 +113,10 @@ ADR 0001 บันทึกเหตุผลนี้ไว้แล้ว
 
 ---
 
-### A3 ✅ แก้ label แล้วค่าที่พิมพ์ค้างในช่องอื่นหาย
+### A3 ✔️ ปิดแล้ว — แก้ label แล้วค่าที่พิมพ์ค้างในช่องอื่นหาย
+
+> ลงแล้วบน main: `4b2cb59` — เอาเนื้อหา record ออกจาก `key` เหลือ id เดี่ยว
+> แล้วรับค่าจากภายนอกด้วย `useAdoptedFromOutside` แทนการ remount ทั้ง subtree
 
 **หลักฐาน**
 
@@ -576,7 +581,7 @@ record ที่อยู่บน disk แล้วยังมี `v` ติ�
 
 ปิดพร้อม A2 ใน `1e7d6e9` — ดู A2
 
-### V3 ✅ export ที่ไม่มีใครนอกไฟล์ใช้
+### V3 ✔️ ปิดแล้ว — export ที่ไม่มีใครนอกไฟล์ใช้
 
 `FRAME_CLEARANCE_MARGIN` (`connector.ts:1205`) · `ConnectorCurve` (`:1558`) และอีก 7 type
 ในไฟล์อื่น — `annotation.ts` 3 · `drawnShape.ts` 3 · `anchor.ts` 1 (ดูตาราง B1) — รวมอยู่ใน B1 แล้ว ไม่ใช่งานแยก
@@ -592,7 +597,7 @@ record ที่อยู่บน disk แล้วยังมี `v` ติ�
 | T3 ✔️ | `coverage` text report ไม่แสดง `src/core/obstacleScan.ts` ทั้งที่มัน **100%** | text table แสดง 5 ไฟล์ · `json-summary` แสดง 6 ไฟล์ (`obstacleScan.ts` 31/31 stmts) · ลอง `--coverage.skipFull=false` แล้วยังไม่โชว์ · `--coverage.skipFull=true` ทำให้แถวหายทั้งตาราง (vitest 4.1.11) | **ปิดแล้ว** (`1cf6133`) — `vitest.config.ts:20` reporters เป็น `['text', 'html', 'json-summary']` · สาเหตุที่ text reporter กรองแถวยังไม่ยืนยัน **อย่าเชื่อ text table เป็นแหล่งเดียว** |
 | T4 ❌ | คอมเมนต์หัวไฟล์ไม่ตรงกับความจริง | `vitest.config.ts:3-4` "Only `src/core/**` is unit tested: it is the one layer that never touches the `figma` global" | **ไม่ต้องแก้ — premise ผิด** เอกสารเดิมคิดว่า B4 จะทำให้ประโยคแรกไม่จริง เพราะจะไป test โค้ด scene แต่ B4 ที่ทำถูกคือย้ายกฎ*เข้า* core แล้ว test ที่นั่น ประโยคทั้งสองจึงยังจริงหลัง B4 ลง ตรวจแล้วบน `d7d19cd` |
 | T5 ✔️ | ไม่มี lint plugin ของ Preact/React | ไฟล์ 1,315 บรรทัดที่มี 15 hook ไม่มีตาข่าย | **ปิดแล้ว** (`38d2353`) — `eslint.config.js:34-37` `rules-of-hooks: error` + `exhaustive-deps: warn` เป็นตาข่ายให้ B5 แล้ว |
-| T6 ✅ | `eslint` ใช้ `recommendedTypeChecked` | `eslint.config.js:11` | อัปเป็น `strictTypeChecked` เป็น**ข้อเสนอ ไม่ใช่ bug** ควรลองแล้วดูว่าได้ error กี่ตัวก่อนตัดสินใจ |
+| T6 ⏳ | `eslint` ใช้ `recommendedTypeChecked` | `eslint.config.js:11` | อัปเป็น `strictTypeChecked` เป็น**ข้อเสนอ ไม่ใช่ bug** ควรลองแล้วดูว่าได้ error กี่ตัวก่อนตัดสินใจ |
 | T7 ✔️ | `package.json` version ยัง `0.4.0` | หลัง `e1a61b2 chore: release 0.4.0` main เดินไปอีก 45 commit โดยไม่ bump | **ปิดแล้ว** (`f9df652`) — วันนี้ `0.5.0` · กฎที่ต้องถือต่อ: bump ทุกครั้งที่ merge งานที่เปลี่ยนพฤติกรรม ไม่งั้นระบุ build ที่รันอยู่ใน Figma ไม่ได้ ซึ่งสำคัญเพราะ distribution เป็น import manifest เอง |
 
 ---
