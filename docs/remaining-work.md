@@ -3,14 +3,14 @@
 > **baseline เดิม:** `main @ 5c05097` · ตรวจเมื่อ 8 กันยายน 2026 —
 > 272 tests / 6 files · coverage `src/core/**` 90.76% stmts · 86.58% branch · 97.5% funcs · 93.97% lines
 >
-> **สถานะวันนี้:** `sundayfifth/feat-connector-drag-handles @ 696e214` · 9 กันยายน 2026
-> `npm run typecheck` · `npm run lint` · `npm test` (**260 tests / 6 files**) · `npm run build` ผ่านทั้งหมด
-> **coverage `src/core/**`:** **91.11% stmts · 87.4% branch · 97.45% funcs · 94.44% lines**
-> จำนวน test ลดจาก 272 เพราะ B1 ตัด test ที่ไม่ถือ coverage ของตัวเอง 10 ตัว
-> และ A2/V1 ลบ test ของ state ที่ไม่มีอยู่แล้วอีก 2 ตัว — coverage ขึ้นทุกตัวเลข
+> **สถานะวันนี้:** `sundayfifth/feat-connector-drag-handles @ d7d19cd` · 9 กันยายน 2026
+> `npm run typecheck` · `npm run lint` · `npm test` (**290 tests / 7 files**) · `npm run build` ผ่านทั้งหมด
+> **coverage `src/core/**`:** **91.49% stmts · 87.96% branch · 97.61% funcs · 94.66% lines**
+> ขึ้นทุกตัวเลขจาก baseline ทั้งที่ B1 ตัด test ที่ไม่ถือ coverage ของตัวเองออก 10 ตัว
+> และ A2/V1 ลบ test ของ state ที่ไม่มีอยู่อีก 2 ตัว — B4 เพิ่มกลับมา 30
 >
-> **ปิดแล้วในรอบนี้:** B1 · A4 · A2 · V1 · V2 · T1 T2 T3 T5 T7 (+ A1 A3 จากรอบก่อน)
-> **ถัดไป:** B4 (พร้อม T4) · แล้ว B2 → B3 · B5 B7 แทรกได้ · B6 ท้ายสุด
+> **ปิดแล้วในรอบนี้:** B1 · A4 · A2 · V1 · V2 · B4 · T1 T2 T3 T5 T7 · T4 (premise ผิด ไม่ต้องแก้)
+> **ถัดไป:** B2 → B3 (ตามลำดับนี้เท่านั้น) · B5 B7 แทรกได้ · B6 ท้ายสุด
 
 เอกสารนี้แปลง architecture review (rev.2, อ้าง `main @ 471a8fb`) มาเป็นรายการงานที่
 **ตรวจซ้ำทุกข้อบน `5c05097` แล้ว** เลข `file:line` ในข้อที่**ยังไม่ปิด** เป็นของ `5c05097`
@@ -330,36 +330,60 @@ suppress window ที่มีอยู่ทั้งหมด: `annotationSce
 
 ---
 
-### B4 ✅ ที่เหลือของ candidate 1 — `frames.ts`
+### B4 ✔️ ปิดแล้ว — ที่เหลือของ candidate 1 — `frames.ts`
 
-⚠️ รีวิวเดิมบอกว่า `frames.ts` มี 2 figma ref และต้องแยกก่อนย้าย ซึ่งถูก แต่ไม่ได้บอกว่าแยกที่ไหน
-ตรวจแล้ว — `figma.` ทั้งสองครั้งอยู่ใน function เดียว
+> **ลงแล้วบน `sundayfifth/feat-connector-drag-handles`:** `52e08ae` (frames.ts → `core/nodeTree.ts`) ·
+> `d7d19cd` (`polylineAtOrigin` เข้า `core/drawnShape.ts`)
+> `src/scene/frames.ts` **88 → 53 บรรทัด** · เกิด `src/core/nodeTree.ts` (111) + `test/nodeTree.test.ts` (185)
+> test **280 → 290** · coverage `src/core/**` **91.11 → 91.49 stmts · 87.4 → 87.96 branch** ·
+> `nodeTree.ts` 100% ทุกตัวเลข
 
-| function | บรรทัด | figma global | ย้ายเข้า core ได้ |
-|:--|:--|:--|:--|
-| `ensureOnPage` | `:21-24` | `figma.currentPage` × 2 | ไม่ได้ — ต้องอยู่ scene |
-| `raiseAbove` | `:34-40` | ไม่มี (อ่าน `.parent` / `.children` / `.removed`) | ได้ |
-| `findEnclosingFrame` | `:48-56` | ไม่มี | ได้ |
-| `topLevelAncestorIdOf` | `:79-87` | ไม่มี | ได้ |
+**ที่ทำ**
 
-`test/frames.test.ts` เคยมีอยู่และทดสอบสามตัวนี้ด้วย object tree ธรรมดา — commit `47585b5`
-(revert งาน section-parenting) ลบไฟล์ test ทิ้งพร้อมกับโค้ดที่ revert ทำให้หลักฐานว่าทำได้หายไป
-งานนี้จึงเป็นการเอาตาข่ายกลับมา ไม่ใช่การสร้างใหม่
-
-**ของอีกสามตัวที่ pure แล้วและยังอยู่ใน scene** ตรวจ figma ref ในตัวมัน = 0 ทั้งสามตัว
-
-| function | ที่อยู่ | หมายเหตุ |
+| function | ไปไหน | เหลืออะไรใน scene |
 |:--|:--|:--|
-| `drawnShapeOf` | `connectorScene.ts:427-434` | 8 บรรทัด อ่าน `node.absoluteTransform` / `node.vectorNetwork` แล้วส่งต่อให้ `walkDrawnShape` ที่อยู่ใน core แล้ว |
-| `updateCardFromDrag` | `annotationScene.ts:1102+` | เรียก `findRenderedNodes` ซึ่งแตะ `figma.currentPage` → **ต้องแยก decision ออกจากการ scan ก่อน** ไม่ใช่ย้ายทั้งก้อน |
-| `polylineNetwork` | `annotationScene.ts:547-` | pure จริง ย้ายได้เลย |
+| `ensureOnPage` | อยู่ที่เดิม | ทั้งตัว — ต้องมี `figma.currentPage` |
+| `raiseAbove` | กฎ → `needsRaising` ใน core | การ mutate (`appendChild`) |
+| `findEnclosingFrame` | การเดิน → `enclosingFrameOf` ใน core | cast กลับเป็น `FrameNode` |
+| `topLevelAncestorIdOf` | **ทั้งตัว** — คืน `string` ไม่ต้อง cast | ไม่เหลือ (caller import จาก core ตรงๆ) |
 
-**❌ ที่ไม่แนะนำให้ย้าย** `src/scene/chunking.ts` (13 บรรทัด: `CHUNK_SIZE = 20` +
+**❌ ข้อที่เอกสารฉบับก่อนบอกผิด** เขียนไว้ว่า `test/frames.test.ts` เดิม "ทดสอบสามตัวนี้"
+และงานนี้คือ "เอาตาข่ายกลับมา ไม่ใช่สร้างใหม่" — **ตรวจแล้วไม่จริง** ไฟล์เดิม 98 บรรทัด
+(`git show 47585b5^:test/frames.test.ts`) มี `describe` เดียวคือ `commonSectionOf`
+ซึ่งเป็น function ที่ revert ลบไป ไม่เคยแตะสามตัวนี้เลย งานนี้คือ**เขียนตาข่ายใหม่**
+ของที่กู้ได้จริงคือ *เทคนิค* — fake object tree + cast ตอนส่งเข้า function
+
+**สิ่งที่ทำให้ core ยังไม่แตะ figma** ใช้ structural type (`TreeNode`, `StackedNode`,
+`CappedVertex<Cap>`) ไม่ใช่ `SceneNode`/`VectorVertex` ของ Figma — เหตุผลเดียวกับที่ `Rect`
+mirror `absoluteBoundingBox` และ `ConnectorCap` mirror `StrokeCap` ผลพลอยได้: test ใช้
+object tree ธรรมดาได้ และแต่ละ interface ขอแค่ field ที่กฎนั้นอ่านจริง
+
+**cast อยู่ที่ scene ไม่ใช่ core** `findEnclosingFrame` cast `TreeNode` → `FrameNode` เอง
+เพราะมีแต่ layer ที่ถือ document จริงที่รู้ว่า node ที่รายงาน `type === 'FRAME'` คือ `FrameNode`
+ถ้าให้ core ประกาศ return type เป็น `N | null` แบบ generic จะเป็นการโกหกใน type system
+ที่ย้ายเข้าไปอยู่ใน core ซึ่งแย่กว่า cast หนึ่งจุดที่ scene
+
+**🆕 ของที่ไม่ได้อยู่ในแผนเดิมแต่เจอตอนทำ — ซ้ำจริงสองชุด**
+
+`polylineNetwork` (annotation) กับ `drawPoints` (connector) คำนวณ **min ต่อแกน + index chain**
+เหมือนกันคนละที่ ทั้งสองตอบคำถามเดียวกัน: node บอกตำแหน่งเส้นสองครั้ง (ตัว node เอง + vertex
+ที่วัดจาก origin ของ node) และสองอันต้องตรงกัน ไม่ตรงคือเส้นถูกวาดเยื้องจากที่ route ไว้
+→ รวมเป็น `polylineAtOrigin` ใน `core/drawnShape.ts` พร้อมกฎ cap/rounding ที่เดิมอยู่แต่ในคอมเมนต์
+(ปลายจริงได้ cap เพราะหักมุมคือมุมไม่ใช่ปลาย · หักมุมได้ rounding เพราะ cap วาดเลยปลายเส้นไป
+การ round ปลายจึงไม่เห็นผล)
+
+**ยังไม่ทำ และเพราะอะไร**
+
+| function | ที่อยู่ | ทำไมยังไม่ย้าย |
+|:--|:--|:--|
+| `drawnShapeOf` | `connectorScene.ts` | 8 บรรทัดที่อ่าน `absoluteTransform`/`vectorNetwork` แล้วส่งต่อให้ `walkDrawnShape` ที่อยู่ใน core อยู่แล้ว — เป็น adapter ไม่มี decision ให้ test |
+| `updateCardFromDrag` | `annotationScene.ts` | เรียก `findRenderedNodes` ซึ่งแตะ `figma.currentPage` → **ต้องแยก decision ออกจากการ scan ก่อน** ไม่ใช่ย้ายทั้งก้อน งานคนละขนาดกับ B4 |
+
+**❌ ที่ไม่แนะนำให้ย้าย (ยังยืนอยู่)** `src/scene/chunking.ts` (13 บรรทัด: `CHUNK_SIZE = 20` +
 `yieldToMainThread` ที่ห่อ `setTimeout`) — pure จริง แต่ไม่มี decision ให้ test
 ย้ายแล้วได้แค่ความเป็นระเบียบ ไม่ได้ตาข่าย รีวิวเดิมนับมันรวมมาด้วยเพราะนับจาก "figma ref = 0"
-ซึ่งเป็นเกณฑ์ที่หยาบเกินไป
-
-**ความเสี่ยง/ชนกับใคร** เป็นงานที่ commit ล่าสุดกำลังทำอยู่พอดี — **ควรเช็คก่อนว่ายังไม่มีใครถืออยู่**
+ซึ่งเป็นเกณฑ์ที่หยาบเกินไป — **เกณฑ์ที่ใช้จริงใน B4 คือ "มี decision ที่ test จับ bug ได้ไหม"**
+วัดด้วยการ mutate โค้ดแล้วดูว่า test แดง (ดูหัวข้อ 8)
 
 ---
 
@@ -505,7 +529,7 @@ record ที่อยู่บน disk แล้วยังมี `v` ติ�
 | T1 ✔️ | test วัดเวลาจริง flaky ได้บน CI ที่โหลดหนัก และวัดค่าจูน ไม่ใช่สัญญา | เดิม `expect(Date.now() - start).toBeLessThan(200)` | **ปิดแล้ว** — `grep -n 'Date.now()' test/*.ts` = 0 hit |
 | T2 ✔️ | test ที่อาจรัน 0 assertion | `if (routerKeepsIt) expect(...)` ผ่านได้โดยไม่ assert อะไร | **ปิดแล้ว** — `expect.hasAssertions()` ที่ `test/connector.test.ts:1086` |
 | T3 ✔️ | `coverage` text report ไม่แสดง `src/core/obstacleScan.ts` ทั้งที่มัน **100%** | text table แสดง 5 ไฟล์ · `json-summary` แสดง 6 ไฟล์ (`obstacleScan.ts` 31/31 stmts) · ลอง `--coverage.skipFull=false` แล้วยังไม่โชว์ · `--coverage.skipFull=true` ทำให้แถวหายทั้งตาราง (vitest 4.1.11) | **ปิดแล้ว** (`1cf6133`) — `vitest.config.ts:20` reporters เป็น `['text', 'html', 'json-summary']` · สาเหตุที่ text reporter กรองแถวยังไม่ยืนยัน **อย่าเชื่อ text table เป็นแหล่งเดียว** |
-| T4 ✅ | คอมเมนต์หัวไฟล์ไม่ตรงกับความจริง | `vitest.config.ts:3-4` เขียนว่า "Only `src/core/**` is unit tested: it is the one layer that never touches the `figma` global" — ประโยคหลังยังจริง แต่ประโยคแรกกำลังจะไม่จริงทันทีที่ B4 ลง | แก้พร้อม B4 |
+| T4 ❌ | คอมเมนต์หัวไฟล์ไม่ตรงกับความจริง | `vitest.config.ts:3-4` "Only `src/core/**` is unit tested: it is the one layer that never touches the `figma` global" | **ไม่ต้องแก้ — premise ผิด** เอกสารเดิมคิดว่า B4 จะทำให้ประโยคแรกไม่จริง เพราะจะไป test โค้ด scene แต่ B4 ที่ทำถูกคือย้ายกฎ*เข้า* core แล้ว test ที่นั่น ประโยคทั้งสองจึงยังจริงหลัง B4 ลง ตรวจแล้วบน `d7d19cd` |
 | T5 ✔️ | ไม่มี lint plugin ของ Preact/React | ไฟล์ 1,315 บรรทัดที่มี 15 hook ไม่มีตาข่าย | **ปิดแล้ว** (`38d2353`) — `eslint.config.js:34-37` `rules-of-hooks: error` + `exhaustive-deps: warn` เป็นตาข่ายให้ B5 แล้ว |
 | T6 ✅ | `eslint` ใช้ `recommendedTypeChecked` | `eslint.config.js:11` | อัปเป็น `strictTypeChecked` เป็น**ข้อเสนอ ไม่ใช่ bug** ควรลองแล้วดูว่าได้ error กี่ตัวก่อนตัดสินใจ |
 | T7 ✔️ | `package.json` version ยัง `0.4.0` | หลัง `e1a61b2 chore: release 0.4.0` main เดินไปอีก 45 commit โดยไม่ bump | **ปิดแล้ว** (`f9df652`) — วันนี้ `0.5.0` · กฎที่ต้องถือต่อ: bump ทุกครั้งที่ merge งานที่เปลี่ยนพฤติกรรม ไม่งั้นระบุ build ที่รันอยู่ใน Figma ไม่ได้ ซึ่งสำคัญเพราะ distribution เป็น import manifest เอง |
@@ -523,8 +547,8 @@ record ที่อยู่บน disk แล้วยังมี `v` ติ�
 | 1 | ~~T1 T2 T3 T5 T7 + A1 A3~~ ✔️ | เล็ก อิสระต่อกัน ไม่แตะไฟล์ร้อน รวมเป็น branch เดียวได้ และ T5 เป็นตาข่ายให้ B5 · **T4 ยังค้าง** — คอมเมนต์หัว `vitest.config.ts` แก้พร้อม B4 (ลำดับ 4) |
 | 2 | ~~B1~~ ✔️ | อยู่ใน `core/**` + `test/**` เกือบทั้งหมด ความเสี่ยงต่ำสุดในบรรดางาน architecture · ทำแค่ `connector.ts`; `annotation.ts` วัดแล้วไม่ควรทำ ดู B1 |
 | 3 | ~~A4 + A2 + V1 + V2~~ ✔️ | A4 ปิดไปก่อนใน `d79e5fa` · A2/V2 ตัด anchor union (`1e7d6e9`) · V1 ลบ version marker (`696e214`) — ตัดสินใจสองเรื่องนี้พร้อมกันเพราะเป็นการเลือกว่า "ของที่ไม่มีใครใช้" คือ seam ที่เก็บไว้หรือความซับซ้อนที่ตัดทิ้ง |
-| **4 ← ถัดไป** | B4 | เอา `test/frames.test.ts` กลับมา — เป็นตาข่ายให้ B2 กับ B3 **เช็คก่อนว่าไม่มีใครถืออยู่** · ปิด T4 ไปพร้อมกัน (คอมเมนต์หัว `vitest.config.ts`) |
-| 5 | B2 | branch สั้น merge เร็ว |
+| 4 | ~~B4~~ ✔️ | เขียนตาข่าย `core/nodeTree.ts` + `polylineAtOrigin` — เป็นตาข่ายให้ B2 กับ B3 · T4 ตรวจแล้ว premise ผิด ไม่ต้องแก้ |
+| **5 ← ถัดไป** | B2 | branch สั้น merge เร็ว |
 | 6 | B3 | หลัง B2 เท่านั้น ทั้งสองข้อเขียน write path ใหม่ทั้งคู่ |
 | 7 | B5 B7 | อิสระจากข้ออื่น ทำแทรกตอนไหนก็ได้ |
 | 8 | B6 | ท้ายสุด เพราะการแตกไฟล์ทำให้ทุก commit ที่ลงทีหลังกลายเป็น conflict |
@@ -556,6 +580,23 @@ record ที่อยู่บน disk แล้วยังมี `v` ติ�
 ## 8. วิธี re-verify เอกสารนี้
 
 เลขทุกตัวข้างบนมาจากคำสั่งพวกนี้ รันซ้ำได้เมื่อ main เดินไปแล้ว
+
+**วัดว่า test จับ bug ได้จริงไหม (ใช้ใน B1 กับ B4)**
+
+coverage บอกว่าโค้ดถูก*รัน* ไม่ได้บอกว่าถูก*ตรวจ* — `expect(x).toBe(DEFAULT)` ที่ import
+ค่า default มาเป็นค่าที่คาดหวัง รัน 100% แล้วผ่านเสมอไม่ว่าค่านั้นจะถูกหรือผิด (ดู B1)
+วิธีที่ใช้จริง: แก้กฎในโค้ดให้ผิดหนึ่งอย่าง แล้วดูว่า test แดง ถ้าไม่แดง = ตาข่ายมีรู
+
+```sh
+cp src/core/<ไฟล์>.ts /tmp/bak            # กลับคืนได้เสมอ
+# แก้กฎให้ผิดหนึ่งอย่าง เช่น < เป็น <=, เอา guard ออก, เปลี่ยน min เป็น first
+npx vitest run 2>&1 | grep -E 'Tests +[0-9]'
+cp /tmp/bak src/core/<ไฟล์>.ts
+```
+
+ที่ B4 ทำแบบนี้ 9 mutation — แดง 8 เหลือรอด 1 (เอา guard `parent !== under.parent` ออก
+ซึ่ง `indexOf` คืน `-1` ทำให้ตอบเหมือนกันพอดี) ตัวที่รอดแบบ**ไม่มี test ไหนแยกได้**
+ให้เขียนเหตุผลไว้ในโค้ด ไม่ใช่ปล่อย test ที่แยกไม่ออกไว้ให้ดูเหมือนมีตาข่าย
 
 ```sh
 # figma ref ต่อไฟล์ (core ต้องเป็น 0)
