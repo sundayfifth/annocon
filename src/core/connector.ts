@@ -322,23 +322,20 @@ export function serialiseConnectorStylePrefs(prefs: ConnectorStylePrefs): string
   return JSON.stringify(prefs)
 }
 
+/**
+ * A record whose anchor does not decode is `null` rather than repaired, unlike
+ * the style fields — including one carrying a `kind` this build does not know,
+ * which is how a `ratio` or `free` anchor written by some future build arrives
+ * here. There is no default endpoint to fall back to: a connector with a
+ * guessed end is a line drawn somewhere nobody put it.
+ */
 function isAnchor(value: unknown): value is Anchor {
   if (typeof value !== 'object' || value === null) return false
   const candidate = value as Record<string, unknown>
-  if (candidate.kind === 'free') {
-    return isPoint(candidate.point)
-  }
-  if (candidate.kind === 'magnet') {
-    return (
-      typeof candidate.nodeId === 'string' &&
-      candidate.nodeId !== '' &&
-      isMagnet(candidate.magnet)
-    )
-  }
-  if (candidate.kind === 'ratio') {
-    return typeof candidate.nodeId === 'string' && candidate.nodeId !== '' && isPoint(candidate.ratio)
-  }
-  return false
+  if (candidate.kind !== 'magnet') return false
+  return (
+    typeof candidate.nodeId === 'string' && candidate.nodeId !== '' && isMagnet(candidate.magnet)
+  )
 }
 
 /**
@@ -380,7 +377,7 @@ export interface ConnectorGeometry {
   readonly end: Point | null
   /** `false` when either endpoint's node is gone — the connector is dangling. */
   readonly complete: boolean
-  /** Which side of its box each endpoint sits on — `null` for a `free`/`ratio` anchor. */
+  /** Which side of its box each endpoint sits on — `null` on a side whose node is gone, so never set while `complete`. */
   readonly startSide: ResolvedMagnet | null
   readonly endSide: ResolvedMagnet | null
 }
@@ -425,9 +422,9 @@ export function resolveConnectorGeometry(
  * line when the two points already share an axis, so a would-be
  * zero-length middle segment never gets drawn.
  *
- * Used directly when a side is unknown (a `free`/`ratio` anchor has none to
- * respect); when both sides are known, `sidedElbow` wraps this with stubs so
- * the route also leaves and arrives perpendicular to each edge.
+ * `sidedElbow` bends its two stub ends with this, so it is on every elbow
+ * route; `connectorRoutePoints` also falls back to it whole when a caller
+ * does not know a side to respect.
  */
 function dominantAxisElbow(start: Point, end: Point): ReadonlyArray<Point> {
   if (start.x === end.x || start.y === end.y) {
@@ -1511,10 +1508,12 @@ export interface ElbowRouteOptions {
  * for a sided `ELBOW` in the rare case that needs `detourElbow`'s full
  * stub-then-bend (most sided elbows are a clean 3- or 4-point route).
  *
- * `startSide`/`endSide` come from `ConnectorGeometry` — `null` for a
- * `free`/`ratio` anchor, which has no side to respect, so the route falls
- * back to a plain unsided bend for that case. Everything else is optional;
- * see `ElbowRouteOptions`.
+ * `startSide`/`endSide` come from `ConnectorGeometry`, which only leaves them
+ * `null` on a side whose node is gone — and such a connector is dangling and
+ * never drawn, so the plugin always passes both. They stay optional because a
+ * side is a routing *preference*: a caller with two bare points still gets a
+ * sensible bend out of this rather than having to invent one. Everything else
+ * is optional too; see `ElbowRouteOptions`.
  *
  * Deliberately does *not* shortcut to a bare `[start, end]` just because the
  * two points happen to share an x or y — with both sides known, that

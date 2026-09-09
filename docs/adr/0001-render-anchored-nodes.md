@@ -22,9 +22,20 @@ Both features render **ordinary Figma nodes** (frames, text, vectors) whose
 geometry is *derived* from an `Anchor` record stored in `setPluginData` on the
 node that owns it.
 
-`src/core/anchor.ts` is the shared model: a magnet on a side, a fixed ratio
-inside the box, or a free canvas point. Its union deliberately mirrors FigJam's
-`ConnectorEndpoint` so a future FigJam port is close to a rename.
+`src/core/anchor.ts` is the shared model: a magnet on a side of the anchored
+node's box, echoing FigJam's `ConnectorEndpoint` so a future FigJam port is
+close to a rename.
+
+This was written as a three-way union — a magnet, a fixed ratio inside the box,
+or a free canvas point, matching FigJam's own three. Nothing ever created the
+latter two, so the branches that resolved them were unreachable, and so was the
+silent `return` they left in `updateConnectorAnchorSide` — which made every
+magnet in the panel a dead button for a state no code could produce. The union
+was cut back to the one variant the plugin writes; `kind` stays, with one value
+in it, because it is on disk in every record written so far and it is the seam
+to widen if a second kind ever earns its place. A record carrying a `kind` this
+build does not know is refused whole rather than repaired, since there is no
+default endpoint that would not be a line drawn where nobody put it.
 
 Geometry always flows one way — record → node. Nothing is ever read back off the
 rendered node, because `vectorPaths` round-trips lossily and setting paths moves

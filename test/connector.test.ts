@@ -273,13 +273,16 @@ describe('parseConnectorRecord', () => {
     expect(parseConnectorRecord(invalidRaw)?.cornerRadius).toBe(20)
   })
 
-  it('accepts a free-point anchor', () => {
+  it('rejects the whole record when an anchor is of a kind this build cannot resolve', () => {
+    // How a `ratio` or `free` anchor from a future build arrives here. Unlike
+    // a style field, there is no default endpoint to fall back to, so the
+    // record is refused rather than repaired into a line drawn somewhere its
+    // author never put it.
     const raw = JSON.stringify({
       start: { kind: 'free', point: { x: 1, y: 2 } },
       end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' }
     })
-    const parsed = parseConnectorRecord(raw)
-    expect(parsed?.start).toEqual({ kind: 'free', point: { x: 1, y: 2 } })
+    expect(parseConnectorRecord(raw)).toBeNull()
   })
 
   it('reads a label when present, else defaults to none', () => {
