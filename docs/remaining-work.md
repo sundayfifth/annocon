@@ -3,16 +3,17 @@
 > **baseline เดิม:** `main @ 5c05097` · ตรวจเมื่อ 8 กันยายน 2026 —
 > 272 tests / 6 files · coverage `src/core/**` 90.76% stmts · 86.58% branch · 97.5% funcs · 93.97% lines
 >
-> **สถานะวันนี้:** `sundayfifth/feat-connector-drag-handles @ f51e6c6` · 9 กันยายน 2026
-> `npm run typecheck` · `npm run lint` · `npm test` (**305 tests / 8 files**) · `npm run build` ผ่านทั้งหมด
-> **coverage `src/core/**`:** **91.72% stmts · 88.12% branch · 97.67% funcs · 94.79% lines**
+> **สถานะวันนี้:** `sundayfifth/feat-connector-drag-handles @ b8c06b0` · 9 กันยายน 2026
+> `npm run typecheck` · `npm run lint` · `npm test` (**322 tests / 9 files**) · `npm run build` ผ่านทั้งหมด
+> **coverage `src/core/**`:** **91.84% stmts · 88.22% branch · 97.72% funcs · 94.87% lines**
 > ขึ้นทุกตัวเลขจาก baseline ทั้งที่ B1 ตัด test ที่ไม่ถือ coverage ของตัวเองออก 10 ตัว
-> และ A2/V1 ลบ test ของ state ที่ไม่มีอยู่อีก 2 ตัว — B4 เพิ่มกลับมา 30 · B2 อีก 15
+> และ A2/V1 ลบ test ของ state ที่ไม่มีอยู่อีก 2 ตัว — B4 เพิ่มกลับมา 30 · B2 อีก 15 · B5 อีก 17
 > (B7 ไม่เพิ่ม test เพราะอยู่ใน `main.ts`/`ui.tsx` ทั้งหมด — ไป QA checklist แทน)
 >
-> **ปิดแล้วในรอบนี้:** B1 · A4 · A2 · V1 · V2 · B4 · B2 · B7 · T1 T2 T3 T5 T7 ·
-> T4 (premise ผิด ไม่ต้องแก้)
-> **ถัดไป:** B5 · B3 (มีคำถามต้องเคลียร์ก่อน ดูหัวข้อ B3) · B6 ท้ายสุด
+> **ปิดแล้วในรอบนี้:** B1 · A4 · A2 · V1 · V2 · B4 · B2 · B7 · B5 · T1 T2 T3 T5 T7 ·
+> T4 (ตรวจสองรอบ premise ผิด ไม่ต้องแก้)
+> **เหลือสองข้อ:** B6 (ผ่า `connector.ts` — ทำท้ายสุด) ·
+> B3 (suppress flag — **มีคำถาม 3 ข้อต้องตอบก่อน** ดูหัวข้อ B3)
 
 เอกสารนี้แปลง architecture review (rev.2, อ้าง `main @ 471a8fb`) มาเป็นรายการงานที่
 **ตรวจซ้ำทุกข้อบน `5c05097` แล้ว** เลข `file:line` ในข้อที่**ยังไม่ปิด** เป็นของ `5c05097`
@@ -389,42 +390,62 @@ object tree ธรรมดาได้ และแต่ละ interface ข�
 
 ---
 
-### B5 ✅ ดึง decision ออกจาก `ui.tsx` (candidate 6)
+### B5 ✔️ ปิดแล้ว — ดึง decision ออกจาก `ui.tsx` (candidate 6)
 
-**สถานะวันนี้** 1,315 บรรทัด · 20 component · 15 `useState` · 2 `useEffect` · **0 figma ref** · **0 test**
+> **ลงแล้วบน `sundayfifth/feat-connector-drag-handles`:** `b8c06b0`
+> `ui.tsx` **1,368 → 1,255 บรรทัด · 0 test → มีตาข่ายแล้ว** ·
+> เกิด `src/core/panelFields.ts` (129) + `src/ui/glyphs.tsx` (110) + `test/panelFields.test.ts` (156)
+> test 305 → **322** · coverage `src/core/**` **91.84 stmts · 88.22 branch** · `panelFields.ts` 100%
 
-ไฟล์นี้ไม่แตะ `figma` เลย แปลว่า decision ในนั้น test ได้ทั้งหมด ติดแค่ `vitest.config.ts`
-include เฉพาะ `test/**/*.test.ts` บน `environment: 'node'` และไม่มี test เขียนไว้
+**ก้าวแรกตามที่เอกสารแนะนำ** SVG glyph (`CapGlyph`, `LineStyleGlyph`) ออกไปเป็น
+`src/ui/glyphs.tsx` — markup ล้วน ไม่มี state ไม่มี message ไม่มี decision และเป็นก้อนใหญ่สุด
+ในไฟล์ที่ไม่มีใครต้องอ่านเวลาทำงานกับพฤติกรรมของมัน
 
-**หลักฐานความซ้ำ ตำแหน่งจริงวันนี้**
+**`commitNumericField` — แทน parse+clamp สามชุดที่ไม่ตรงกัน**
 
-- predicate เดียวกันเป๊ะ เขียนสองรอบ — `ui.tsx:760` และ `:842`:
-  `style.lineStyle === 'ELBOW' && !style.manualGeometry`
-- parse + clamp ตัวเลข สามชุด ไม่ตรงกัน — `:715` (weight) · `:734` (opacity) · `:765` (radius)
-- `key` ที่มีเนื้อหา record อยู่ในตัว — `:1251`, `:1282` (คือ A3)
+| ช่อง | เดิมทำอะไร |
+|:--|:--|
+| weight | clamp ขึ้นถึง min **แล้วเขียนค่ากลับลงช่อง** |
+| opacity | clamp สองด้าน แล้วเขียนกลับ |
+| corner radius | **ไม่ทำทั้งสอง** — พิมพ์ `-5` ค้างอยู่บนหน้าจอโดยไม่เก็บอะไรเลย |
 
-**⚠️ กับดักที่มีคนเหยียบไปแล้วรอบหนึ่ง** อ่าน "ข้อควรรู้ที่ได้จาก `030cde9`" ท้ายหัวข้อ 0 ก่อนแตะ
-ช่องตัวเลขทั้งสามช่อง
+ผลของข้อที่สาม: "นอกช่วง" กับ "ไม่ใช่ตัวเลข" หน้าตาเหมือนกันเป๊ะ ทั้งที่ควรต่างกัน
+ตอนนี้ทั้งสามช่อง clamp ตอน blur แล้วเขียนกลับ · ช่องว่างยังคงค่าที่อยู่บนจอไว้
+เพราะช่องว่างคือ "คนกำลังพิมพ์" ไม่ใช่ "คนขอค่านี้"
 
-**ก้าวแรกที่ปลอดภัยสุด** แยก SVG glyph ออกเป็น `src/ui/glyphs.tsx` — เป็น markup ล้วน ความเสี่ยงศูนย์
-แล้วค่อยดึง `visibleConnectorControls(style)` และ `parseStrokeWeight` / `parsePercent` /
-`parseCornerRadius` เข้า core พร้อม test
+**🆕 `minimum`/`maximum` ถูกเอาออกจาก opacity กับ radius ด้วย** เอกสารเตือนเรื่องกับดักนี้
+สำหรับ weight (ที่ `030cde9` จ่ายค่าไปแล้ว) แต่ไม่ได้บอกว่า**อีกสองช่องยังมี prop นั้นติดอยู่** —
+`minimum={0}` บน radius และ `minimum={0} maximum={100}` บน opacity วันนี้ยังไม่ทำให้ค่าไหน
+พิมพ์ไม่ได้ (ต่างจาก `minimum={0.5}` ที่ฆ่าช่วง 0.5–0.9) แต่มันคือระเบิดเวลาลูกเดียวกัน
+และทำให้ bound อยู่สองที่ · ตอนนี้ bound อยู่ที่ commit ที่เดียว
 
-**ความเสี่ยง/ชนกับใคร** กลาง
+**`visibleConnectorControls`** แทน `lineStyle === 'ELBOW' && !manualGeometry` ที่เขียนซ้ำสองที่
+และถือกฎที่มันพยายามพูด: เส้นที่ปรับเองแล้วยกรูปทรงให้คนไปแล้ว control ที่ตัดสินรูปทรง
+จึงต้อง**หายไป ไม่ใช่กดไม่ได้** — control ที่ไม่ทำอะไรแย่กว่าไม่มี control
+
+**mutation 7 แบบแดงหมด** Infinity หลุด · เก็บ text ที่ถูกปฏิเสธ · ไม่ clamp ด้านบน · ไม่ clamp เลย ·
+elbow ไม่สนว่าเส้นปรับเองแล้ว · line style โชว์เสมอ · min ของ weight หายไป
+
+**T4 ตรวจอีกครั้ง: ยังไม่ต้องแก้** `vitest.config.ts` เขียนว่า "Only `src/core/**` is unit tested"
+ซึ่งยังจริง — decision ของ panel ไปอยู่ `core/panelFields.ts` ไม่ใช่ test ไฟล์ `ui.tsx`
+
+**เพิ่ม QA step** `docs/qa-checklist.md` หัวข้อ "The connector panel's number fields" 7 ข้อ
+เพราะพฤติกรรมเปลี่ยนจริงสามอย่าง (radius clamp, `minimum` หาย, ช่องว่างคืนค่าเดิม)
 
 ---
 
 ### B6 ✅ ผ่า `connector.ts` (candidate 5)
 
-**สถานะวันนี้** 1,657 บรรทัด · 50 export · coverage 87.78% stmts (ต่ำสุดใน core นอกจาก `category.ts`)
+**สถานะวันนี้ (วัดซ้ำบน `b8c06b0`)** 1,654 บรรทัด · **33 export** (B1 หดจาก 50) ·
+coverage **88.32% stmts · 82.84% branch** — branch ต่ำสุดใน core
 
-**หลักฐานว่า concern สานกันจริงในระดับกลไก ไม่ใช่แค่สไตล์ — ตรวจยืนยันแล้ว**
+**หลักฐานว่า concern สานกันจริงในระดับกลไก ไม่ใช่แค่สไตล์ — ตรวจซ้ำแล้ว เลขขยับ**
 
-- forward reference ข้าม ~356 บรรทัด: `:629` เรียก `clearanceBeside` ที่ประกาศที่ `:985`
-- `ConnectorRecord.manualShape` ที่ `:140` อ้าง type `ManualShape` ที่ประกาศที่ `:650`
-- `ELBOW_STUB` (`:456`) ค่าเดียวถูกอ้างจาก **3 concern ที่ไม่เกี่ยวกัน**:
-  `:986-987` (`clearanceBeside`) · `:1222-1233` (`connectorStubClearance` — ระยะเลี่ยง frame) ·
-  `:1546-1547` (ค่า default ของ `connectorRoutePoints`) แก้เพราะเหตุผลนึง กระทบอีกสอง
+- forward reference ข้าม ~356 บรรทัด: `:624` เรียก `clearanceBeside` ที่ประกาศที่ `:980`
+- `ConnectorRecord.manualShape` ที่ `:137` อ้าง type `ManualShape` ที่ประกาศที่ `:645`
+- `ELBOW_STUB` (`:451`) ค่าเดียวถูกอ้างจาก **3 concern ที่ไม่เกี่ยวกัน**:
+  `:981-982` (`clearanceBeside`) · `:1217-1220` (`connectorStubClearance` — ระยะเลี่ยง frame) ·
+  ค่า default ของ `connectorRoutePoints` แก้เพราะเหตุผลนึง กระทบอีกสอง
 
 **ลำดับการตัดที่ edge น้อยสุดไปมากสุด** manual shape (0 edge) → A* search (1 edge, ต่อผ่าน
 `orSearched`) → record/validation (2 type union) → geometry helper เหลือ elbow router ~750 บรรทัด
@@ -570,8 +591,8 @@ record ที่อยู่บน disk แล้วยังมี `v` ติ�
 | 4 | ~~B4~~ ✔️ | เขียนตาข่าย `core/nodeTree.ts` + `polylineAtOrigin` — เป็นตาข่ายให้ B2 กับ B3 · T4 ตรวจแล้ว premise ผิด ไม่ต้องแก้ |
 | 5 | ~~B2~~ ✔️ | ลงเป็น commit เดียว `8b4818c` · เจอ drift เพิ่มอีกสองจุดที่เอกสารเดิมไม่เห็น |
 | **6 ← ถัดไป** | B3 | หลัง B2 เท่านั้น ทั้งสองข้อเขียน write path ใหม่ทั้งคู่ — B2 ลงแล้ว ทางเปิด |
-| 7 | ~~B7~~ ✔️ · **B5 ← ถัดไป** | อิสระจากข้ออื่น B7 ลงแล้ว (`8e35eeb`, `f51e6c6`) · B5 มี `eslint-plugin-react-hooks` เป็นตาข่ายจาก T5 แล้ว |
-| 8 | B6 | ท้ายสุด เพราะการแตกไฟล์ทำให้ทุก commit ที่ลงทีหลังกลายเป็น conflict |
+| 7 | ~~B5 B7~~ ✔️ | ลงแล้วทั้งคู่ — B7 (`8e35eeb`, `f51e6c6`) · B5 (`b8c06b0`) |
+| **8 ← เหลือสองข้อ** | B6 · B3 | B6 ท้ายสุดเพราะการแตกไฟล์ทำให้ทุก commit ที่ลงทีหลังกลายเป็น conflict · B3 ต้องตอบคำถาม 3 ข้อในหัวข้อ B3 ก่อนลงมือ |
 
 **ข้อที่ไม่ควรรวม branch เดียวกัน**
 
