@@ -3,18 +3,18 @@
 > **baseline เดิม:** `main @ 5c05097` · ตรวจเมื่อ 8 กันยายน 2026 —
 > 272 tests / 6 files · coverage `src/core/**` 90.76% stmts · 86.58% branch · 97.5% funcs · 93.97% lines
 >
-> **สถานะวันนี้:** `sundayfifth/feat-connector-drag-handles @ 320a357` · 9 กันยายน 2026
-> `npm run typecheck` · `npm run lint` · `npm test` (**346 tests / 10 files**) · `npm run build` ผ่านทั้งหมด
-> **coverage `src/core/**`:** **92.14% stmts · 88.68% branch · 97.79% funcs · 95.04% lines**
+> **สถานะวันนี้:** `sundayfifth/feat-connector-drag-handles @ be089c8` · 9 กันยายน 2026
+> `npm run typecheck` · `npm run lint` · `npm test` (**357 tests / 11 files**) · `npm run build` ผ่านทั้งหมด
+> **coverage `src/core/**`:** **92.16% stmts · 88.71% branch · 97.82% funcs · 95.06% lines**
 > ขึ้นทุกตัวเลขจาก baseline ทั้งที่ B1 ตัด test ที่ไม่ถือ coverage ของตัวเองออก 10 ตัว
 > และ A2/V1 ลบ test ของ state ที่ไม่มีอยู่อีก 2 ตัว —
-> B4 เพิ่มกลับมา 30 · B2 อีก 15 · B5 อีก 17 · การวัด B3 อีก 24
+> B4 เพิ่มกลับมา 30 · B2 อีก 15 · B5 อีก 17 · B3 อีก 35
 > (B7 ไม่เพิ่ม test เพราะอยู่ใน `main.ts`/`ui.tsx` ทั้งหมด — ไป QA checklist แทน)
 >
-> **ปิดแล้วในรอบนี้:** B1 · A4 · A2 · V1 · V2 · B4 · B2 · B7 · B5 · T1 T2 T3 T5 T7 ·
+> **ปิดแล้ว:** A1 A2 A3 A4 · B1 B2 B3 B4 B5 B7 · V1 V2 V3 · T1 T2 T3 T5 T7 ·
 > T4 (ตรวจสองรอบ premise ผิด ไม่ต้องแก้)
-> **เหลือสองข้อ:** B6 (ผ่า `connector.ts` — ทำท้ายสุดตามข้อจำกัดเรื่อง conflict) ·
-> B3 (suppress flag — **วัดแล้ว ข้อเสนอเปลี่ยน** รอตัดสินใจ ดูหัวข้อ B3)
+> **เหลือข้อเดียว:** B6 (ผ่า `connector.ts` — ต้องทำท้ายสุดตามข้อจำกัดเรื่อง conflict)
+> · T6 เป็นข้อเสนอ ไม่ใช่ปัญหา ไม่ใช่งานค้าง
 
 เอกสารนี้แปลง architecture review (rev.2, อ้าง `main @ 471a8fb`) มาเป็นรายการงานที่
 **ตรวจซ้ำทุกข้อบน `5c05097` แล้ว** เลข `file:line` ในข้อที่**ยังไม่ปิด** เป็นของ `5c05097`
@@ -276,90 +276,54 @@ connector ไม่ใช่ทั้งสอง และ owner ที่ไ�
 
 ---
 
-### B3 ⚠️ วัดแล้ว — ข้อเสนอเดิมเปลี่ยน · รอตัดสินใจ (candidate 2)
+### B3 ✔️ ปิดแล้ว — แต่ทำคนละทางกับที่เอกสารเสนอ (candidate 2)
 
-**ปัญหาที่เอกสารเดิมชี้ — ยังจริง** mutating call (`setPluginData` · `.remove()` ·
-`appendChild` · `insertChild` · `setVectorNetworkAsync`) ใน `src/scene/**` วันนี้ **22 จุด**
-(`annotationScene.ts` 12 · `connectorScene.ts` 7 · `ownership.ts` 2 · `categoryScene.ts` 1)
-และอ่านจากบรรทัด write แล้วยังบอกไม่ได้ว่าอยู่ใน suppress window หรือเปล่า — ต้องไล่ caller
-chain ทุกครั้ง
+> **ลงแล้วบน `sundayfifth/feat-connector-drag-handles`:** `320a357` (วัด) · `be089c8` (ทำ)
+> **`src/scene/pluginData.ts` ถูกลบทั้งไฟล์** — `withSuppressedNodeChange` /
+> `withSuppressedNodeChangeAsync` / `isSuppressed` ไม่มีอยู่ในโปรเจกต์แล้ว
+> เกิด `src/core/authorship.ts` (101) + `src/scene/removals.ts` (44) + `test/authorship.test.ts` (159)
+> test 346 → **357** · coverage `src/core/**` **92.16% stmts · 88.71% branch** · `authorship.ts` 100%
 
-**หลักฐานว่ามันหลุดจริง — ยังจริง เลขขยับ** `src/main.ts` ไม่เคยเรียก
-`withSuppressedNodeChange` เลย แต่ `main.ts:614` เรียก `removeConnectorLabel(id)` ซึ่ง
-`connectorScene.ts:434` ทำ `.remove()` → write นี้ทำงานตอน `suppressDepth === 0` แน่นอน
+**เอกสารเสนอ** ทำให้ `SceneWriter` handle เป็นทางเดียวที่เขียน node ได้ → "ลืมยก flag" กลายเป็น
+compile error · **ที่ทำจริง** ให้ 2 งานที่เหลือมีคำตอบอิงเนื้อหา แล้ว**ลบกลไกทิ้งทั้งอัน**
 
-**หลักฐานว่ากลไกนี้รู้ตัวว่าไม่พอ — ยังจริง** `connectorScene.ts` เขียนไว้ตรงๆ ว่า suppression
-ตอบคำถาม "เราเขียนเองหรือคนเขียน" ไม่ได้ เพราะมันปล่อยหลัง write ไปหนึ่ง tick และ
-`nodechange` ของ vector write มาถึงหลัง window ปิดได้ — นั่นคือเหตุผลที่ `shapeFingerprint` มีอยู่
-แปลว่ามีสองกลไกตอบคำถามเดียวกัน อันหนึ่งอิงเวลา (ไม่น่าเชื่อถือ) อีกอันอิงเนื้อหา (เชื่อถือได้)
-แต่ `CLAUDE.md` เขียนกฎไว้เฉพาะอันที่ไม่น่าเชื่อถือ
+#### สิ่งที่มาแทน — 3 กลไก เรียงตามลำดับที่ change เดินผ่าน
 
-**❌ ข้อเสนอเดิม (`SceneWriter` handle ที่หยิบได้จากในหน้าต่างเท่านั้น) — วัดแล้ว ไม่แนะนำ**
-
-เอกสารเดิมเสนอให้ `setPluginData` / `remove` / `appendChild` / `setVectorNetworkAsync`
-เข้าถึงได้ทางเดียวคือผ่าน handle ที่หยิบจากใน `withSceneWrite(w => { ... })` เท่านั้น
-เพื่อให้ "ลืมยก flag" เป็น compile error — **วัดแล้วว่าจะได้ type safety รอบกลไกที่เกือบไม่มีงานทำ**
-
----
-
-#### 🆕 ผลการวัด (`320a357`) — ตอบคำถาม 3 ข้อครบ
-
-ทำ `core/nodeChanges.ts` + `test/nodeChanges.test.ts` (245 บรรทัด · coverage 100% ·
-mutation 8 แบบแดงหมด) เพื่อให้ตัวกรองที่ใช้วัดเป็นของที่ test ได้ก่อน — คำตอบข้างล่างจึงเป็น
-**ข้อเท็จจริงที่ถูก assert** ไม่ใช่การอ่านโค้ดแล้วเชื่อ
-
-#### ข้อ 1 — echo ที่หลุดจริงมีกี่ทาง
-
-`POSITIONAL_PROPERTIES` (ตอนนี้คือ `POSITIONAL` ใน core) **ไม่มี `pluginData` และไม่มี `parent`**
-ทั้งสองเป็น `NodeChangeProperty` จริง (`plugin-api.d.ts:3730`, `:3729`) แต่ตกที่ตัวกรองก่อนถึงอะไร
-
-| write | echo ถูกดักที่ไหน | suppression จำเป็นไหม |
+| # | กลไก | ตอบอะไร |
 |:--|:--|:--|
-| `setPluginData` (9 จุด) | property filter — `pluginData` ไม่อยู่ในลิสต์ | **ไม่** |
-| `appendChild` / `insertChild` (7 จุด) | property filter — `parent` ไม่อยู่ในลิสต์ | **ไม่** |
-| ตำแหน่ง/vector ของ badge · leader | role filter — "locked, positioned by our own sync" | **ไม่** |
-| `setVectorNetworkAsync` บน connector | `shapeFingerprint` / `alreadyDrawn` (อิงเนื้อหา) | **ไม่** |
-| **ตำแหน่ง/ขนาดของ card** | ไม่มีอะไรดัก — card ปลดล็อกไว้ให้คนลาก ตัวเปลี่ยนแปลงไม่บอกว่าใครเขียน | **ใช่** |
-| **`.remove()` ของเราเอง** | ไม่มีอะไรดัก — มาเป็น DELETE ซึ่งไม่ผ่าน filter เลย | **ใช่** |
+| 1 | property filter (`core/nodeChanges.ts`) | echo ของ `pluginData` · การ reparent · badge/leader ที่ขยับ — ตกที่นี่หมด |
+| 2 | fingerprint (`core/authorship.ts`) | 2 write ที่แยกไม่ออกจริงๆ — **ตำแหน่ง/ความกว้างของ card** กับ **รูปทรงของเส้น** |
+| 3 | removal record (`scene/removals.ts`) | การลบ ซึ่งไม่เหลือเนื้อหาให้เทียบ — จำ id ตอนลบ แล้วใช้ครั้งเดียวตอน DELETE มาถึง |
 
-**สรุปข้อ 1** คอมเมนต์เดิมของ `pluginData.ts` เขียนว่า echo ของ `setPluginData`
-"would loop forever without this" — **ไม่จริงตั้งแต่มีตัวกรองแล้ว** แก้คอมเมนต์ให้ตรงแล้วใน `320a357`
-suppression เหลืองานจริง **2 อย่างจาก 6** ที่มันถูกเครดิต
+#### จุดที่ยากที่สุด และเหตุผลที่ต้อง "จำ" ไม่ใช่ "คำนวณซ้ำ"
 
-#### ข้อ 2 — `removeConnectorLabel` ที่ `suppressDepth === 0` มีอาการที่ผู้ใช้เห็นไหม
+card ที่ถูก **stacking** ย้าย อยู่คนละที่กับที่ layout ของมันเองบอก — ถ้าเช็คด้วย
+"อยู่ตรงที่ layout บอกไหม" card ที่ถูก stack ทุกใบจะถูกอ่านว่าโดนลาก
+`syncAnnotationBody` กับ stacking pass จึง**บันทึกตำแหน่งที่เพิ่งเขียน**ลง pluginData
+แล้ว `updateCardFromDrag` เทียบกับอันนั้นก่อนเชื่อว่ามีคนลาก
 
-**ไม่มี แต่รอดด้วย guard ที่ไม่ได้ตั้งใจกันเรื่องนี้** ไล่ทางเดินจริง: `.remove()` pill →
-DELETE ของ pill → เข้า loop เดิมด้วย `id` = pill id → `lastKnownLabelOwnerOf(pillId)` คืน
-connector id → `getNodeByIdAsync(connectorId)` = **`null` เพราะ connector ถูกลบไปก่อนแล้ว**
-(นี่คือทางเดียวที่เรียก `removeConnectorLabel`) → guard หยุด
+#### ทำไม fingerprint ของ card กับของเส้นตรงข้ามกัน
 
-**แต่เป็นความเสี่ยงแฝง** ถ้าวันหนึ่งมีใครเรียก `removeConnectorLabel` ตอน connector ยังอยู่
-echo จะไปถึง `updateConnectorStyle(connector, { label: '' })` = **ล้าง label ทิ้งเหมือนคนลบเอง**
-ซึ่งเป็นอาการที่ผู้ใช้เห็นได้จริง
+`shapeFingerprint` เก็บ vertex ไม่เก็บตำแหน่ง · `placementFingerprint` เก็บตำแหน่งกับความกว้าง
+ไม่เก็บความสูง — เพราะแต่ละอันเก็บ**สิ่งที่ feature นั้นยกให้คนตัดสิน**: รูปทรงของเส้นเป็นของคน
+ตำแหน่งไม่ใช่ · ตำแหน่งกับความกว้างของ card เป็นของคน ความสูงเป็นของข้อความ
+ย้าย `shapeFingerprint` มาอยู่ไฟล์เดียวกันแล้ว คำถามเดียวจึงมีที่เดียว
 
-#### ข้อ 3 — ทางที่แนะนำ
+#### ❌ แก้ข้อที่ผลการวัดเองบอกผิด
 
-**ไม่ใช่ทั้งข้อเสนอเดิม และไม่ใช่ "เปลี่ยนเป็น fingerprint ทั้งหมด"** — งานที่เหลือมี 2 อย่างเท่านั้น
-และแต่ละอย่างมีทางที่ตรงกว่าอยู่แล้วใน repo:
+การวัดรอบแรกเขียนว่า `.remove()` ของเราเอง "จำเป็นต้องมี suppression" — **ไม่จริง**
+`Ownership.remove` ลบ entry ออกจาก cache พร้อมกับลบ node อยู่แล้ว → ทุก path ที่ซ่อม
+rendered node ที่ขาดคู่ หา owner ไม่เจอ → ไม่ทำอะไร การจำ id ที่ลบจึงเป็นการ**ประหยัดงาน**
+(ไม่ให้ DELETE ของเราไปปลุก resync ที่ scan ทั้งหน้า) ไม่ใช่การแก้ correctness — เขียนไว้ในโค้ดแล้ว
 
-1. **ตำแหน่ง/ขนาดของ card** → เทียบกับสิ่งที่อยู่บน node เหมือนที่ `alreadyDrawn` / `samePolyline`
-   ทำกับเส้น และเหมือนที่ความกว้าง card ถูกแยกออกจากการลากอยู่แล้ว (อิงเนื้อหา ไม่อิงเวลา)
-2. **`.remove()` ของเราเอง** → จำ id ที่เราลบไว้ ซึ่งเป็น cache ไม่ใช่ fingerprint และ
-   `Ownership` (`scene/ownership.ts`) ถืออยู่แล้ว — `remove()` ของมันลบ id ออกจาก cache อยู่แล้ว
-   เหลือแค่จำฝั่ง "เราเพิ่งลบตัวนี้" เพิ่ม
+#### ผลข้างเคียงที่ตั้งใจ
 
-ทำสองข้อนี้แล้ว `withSuppressedNodeChange` **ลบทิ้งได้ทั้งตัว** = ลบกลไกอิงเวลาออกจาก codebase
-แทนที่จะเพิ่ม type ให้มัน · `CLAUDE.md` ข้อ "ยก suppress flag รอบทุก write" จะกลายเป็นกฎที่ไม่ต้องจำ
-เพราะไม่มี flag ให้ยก
+`CLAUDE.md` ข้อ "ยก suppress flag รอบทุก write" หายไป แทนที่ด้วย 3 กลไกข้างบนและลำดับที่เจอ
+เป็นกฎที่**ตรวจได้จากบรรทัดที่เขียน** ไม่ต้องไล่ caller chain — ซึ่งเป็นปัญหาตั้งต้นของ candidate นี้
+แก้ด้วยการเอากลไกออก ไม่ใช่ด้วยการเพิ่ม type
 
-**ประโยชน์เทียบกับข้อเสนอเดิม** ข้อเสนอเดิมแตะ write path ทุกจุดใน 2 ไฟล์ใหญ่เพื่อป้องกัน
-การลืมยก flag ในกลไกที่มีงานจริง 2 อย่าง · ทางนี้แตะ 2 จุดเพื่อ**เอากลไกออก**
-
-**ความเสี่ยง/ชนกับใคร** ทางใหม่: กลาง (แตะ `annotationScene.ts` + `pluginData.ts`) ·
-ข้อเสนอเดิม: สูงสุดในเอกสาร
-
-**ยังไม่ทำในรอบนี้** เพราะ B6 ต้องเป็นข้อสุดท้ายตามข้อจำกัดเรื่อง conflict และการวัดนี้
-เปลี่ยนตัวข้อเสนอ ไม่ใช่แค่ลำดับ — ควรให้คนตัดสินใจก่อนว่าจะเอาทางไหน
+**ไม่มี test อัตโนมัติสำหรับ path เหล่านี้** (อยู่ใน scene ทั้งหมด) → เพิ่ม QA step 8 ข้อ
+หัวข้อ "Telling our own writes from a person's"
 
 ---
 
@@ -620,9 +584,9 @@ record ที่อยู่บน disk แล้วยังมี `v` ติ�
 | 3 | ~~A4 + A2 + V1 + V2~~ ✔️ | A4 ปิดไปก่อนใน `d79e5fa` · A2/V2 ตัด anchor union (`1e7d6e9`) · V1 ลบ version marker (`696e214`) — ตัดสินใจสองเรื่องนี้พร้อมกันเพราะเป็นการเลือกว่า "ของที่ไม่มีใครใช้" คือ seam ที่เก็บไว้หรือความซับซ้อนที่ตัดทิ้ง |
 | 4 | ~~B4~~ ✔️ | เขียนตาข่าย `core/nodeTree.ts` + `polylineAtOrigin` — เป็นตาข่ายให้ B2 กับ B3 · T4 ตรวจแล้ว premise ผิด ไม่ต้องแก้ |
 | 5 | ~~B2~~ ✔️ | ลงเป็น commit เดียว `8b4818c` · เจอ drift เพิ่มอีกสองจุดที่เอกสารเดิมไม่เห็น |
-| **6 ← ถัดไป** | B3 | หลัง B2 เท่านั้น ทั้งสองข้อเขียน write path ใหม่ทั้งคู่ — B2 ลงแล้ว ทางเปิด |
+| ~~6~~ ✔️ | ~~B3~~ | หลัง B2 เท่านั้น ทั้งสองข้อเขียน write path ใหม่ทั้งคู่ · วัดก่อน (`320a357`) แล้วทำคนละทางกับที่เอกสารเสนอ (`be089c8`) — **ลบ** suppression ทิ้งทั้งกลไก ไม่ใช่เพิ่ม type ให้มัน |
 | 7 | ~~B5 B7~~ ✔️ | ลงแล้วทั้งคู่ — B7 (`8e35eeb`, `f51e6c6`) · B5 (`b8c06b0`) |
-| **8 ← เหลือสองข้อ** | B6 · B3 | B6 ท้ายสุดเพราะการแตกไฟล์ทำให้ทุก commit ที่ลงทีหลังกลายเป็น conflict · B3 วัดแล้ว (`320a357`) **ข้อเสนอเปลี่ยนจากเดิม** — ทางใหม่คือ *เอา* suppression ออก ไม่ใช่เพิ่ม type ให้มัน รอตัดสินใจ |
+| **8 ← เหลือข้อเดียว** | B6 | ท้ายสุดเพราะการแตกไฟล์ทำให้ทุก commit ที่ลงทีหลังกลายเป็น conflict — ทำใน branch ที่ merge ภายในวันเดียว |
 
 **ข้อที่ไม่ควรรวม branch เดียวกัน**
 
@@ -641,8 +605,9 @@ record ที่อยู่บน disk แล้วยังมี `v` ติ�
   ระวังการเผลอเติม `eslint-disable`
 - **ห้ามอ่าน geometry กลับจาก node** — A4 เกี่ยวข้องตรงนี้: `absoluteTransform` ที่ `:783`
   อ่านเพื่อ *กู้ตำแหน่ง* หลัง reparent ไม่ใช่เพื่อคำนวณ route ถ้าแก้ A4 ต้องไม่เปลี่ยนสถานะนั้น
-- **ยก suppress flag รอบทุก write** — B3 คือการทำให้กฎนี้เป็น type error ระหว่างที่ยังไม่ทำ
-  กฎนี้ยังต้องจำเอง
+- ~~**ยก suppress flag รอบทุก write**~~ — **กฎนี้ไม่มีแล้ว** B3 ลบกลไกทิ้ง (`be089c8`)
+  แทนที่ด้วย 3 กลไกอิงเนื้อหาที่เขียนไว้ใน `CLAUDE.md` · ถ้าเพิ่ม write ที่คนก็ทำเองได้
+  ต้องผ่านหนึ่งในนั้น
 - **commit เป็นก้าวเล็กที่ทำงานได้จริง**
 - **รัน `npm run typecheck && npm test` หลังทุกการแก้ ก่อนรายงานว่าเสร็จ ทุกครั้ง ไม่ใช่เมื่อถูกขอ**
 
@@ -679,8 +644,8 @@ done
 grep -n 'setPluginData\|\.remove()\|appendChild\|insertChild\|setVectorNetworkAsync' \
   src/scene/*.ts src/main.ts
 
-# suppress window ทั้งหมด
-grep -rn 'withSuppressedNodeChange' src/ --include='*.ts' | grep -v pluginData.ts
+# ต้องไม่เจออะไรเลย นอกจากบันทึกประวัติใน authorship.ts — กลไกถูกลบใน be089c8
+grep -rn 'withSuppressedNodeChange\|isSuppressed' src/ --include='*.ts'
 
 # coverage ที่เชื่อได้ (text table ไม่ครบ — ดู T3)
 npx vitest run --coverage --coverage.reporter=json-summary
