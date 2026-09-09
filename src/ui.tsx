@@ -33,6 +33,7 @@ import { ICON_DATA_URL } from './icon.js'
 import type {
   AddCategoryHandler,
   CategoriesChangedHandler,
+  CommandFailedHandler,
   CreateConnectorHandler,
   DeleteCategoryHandler,
   RecolorCategoryHandler,
@@ -1071,10 +1072,12 @@ function CategoryRow({
       <div style={{ flex: '1 1 auto', minWidth: 0 }}>
         <Textbox
           onBlur={() => {
-            // The scene layer silently rejects a blank name (renameCategory
-            // no-ops on an empty trim) — without this, clearing the field
-            // and clicking away leaves this textbox showing blank forever,
-            // even though the stored name never actually changed.
+            // A blank name is refused (`renameCategory` no-ops on an empty
+            // trim), and the field would sit there blank while the stored
+            // name was unchanged. Caught here rather than left to the
+            // refusal coming back, because this is a rule the panel can
+            // apply itself: it costs no round trip, and nothing is sent that
+            // was never going to be stored.
             if (name.trim() === '') {
               setName(category.name)
               return
@@ -1194,6 +1197,16 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
   // them elsewhere — the auto-jump below is only for arriving at the right
   // place, not for wrestling the tab away from someone using it.
   const tabTouched = useRef<boolean>(false)
+  // Counts commands the main thread refused. Part of the editors' `key`, so a
+  // refusal resets every field back to what is actually stored.
+  //
+  // `useAdoptedFromOutside` cannot do this job: it takes a value that
+  // *changed* elsewhere, and a refused command changed nothing, so the number
+  // someone typed would sit in the box looking saved. Resetting the whole
+  // subtree is the right amount here, unlike the remount this replaced
+  // (see `useAdoptedFromOutside`) — a refusal means nothing typed against
+  // that node was stored, so there is no unsaved work to protect.
+  const [refusals, setRefusals] = useState<number>(0)
 
   useEffect(() => {
     // Picking exactly two non-connector layers is an unambiguous "I want
@@ -1228,9 +1241,16 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
     const offCategories = on<CategoriesChangedHandler>('CATEGORIES_CHANGED', (next) => {
       setCategories(next)
     })
+    // The main thread has already told the person what happened, with a
+    // notification — all this has to do is stop the panel showing a value
+    // that was never stored.
+    const offFailed = on<CommandFailedHandler>('COMMAND_FAILED', () => {
+      setRefusals((count) => count + 1)
+    })
     return () => {
       offSelection()
       offCategories()
+      offFailed()
     }
     // `initialSelection` is the snapshot `showUI` was called with, passed once
     // at mount and never replaced — so naming it here is honest about what the
@@ -1275,11 +1295,12 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
               selection.length === 1 ? (
                 <AnnotateEditor
                   categories={categories}
-                  // Keyed on the layer alone. Selecting a different one is
-                  // the only thing that should reset every field at once;
-                  // text typed into the card on the canvas is picked up by
-                  // `useAdoptedFromOutside` without a remount.
-                  key={(selection[0] as SelectionSummary).id}
+                  // Keyed on the layer, and on how many commands have been
+                  // refused. Those are the two things that should reset every
+                  // field at once: a different layer, and a change that was
+                  // not stored. Text typed into the card on the canvas is
+                  // picked up by `useAdoptedFromOutside` without a remount.
+                  key={`${(selection[0] as SelectionSummary).id}:${refusals}`}
                   node={selection[0] as SelectionSummary}
                 />
               ) : (
@@ -1307,11 +1328,11 @@ function Plugin({ selection: initialSelection, categories: initialCategories }: 
             children:
               selection.length === 1 && (selection[0] as SelectionSummary).connectorStyle !== null ? (
                 <ConnectorStyleEditor
-                  // Keyed on the connector alone — see the annotation editor
-                  // above. Keying on the label as well remounted this whole
-                  // panel every time the label changed, resetting the weight,
-                  // opacity and radius boxes with it.
-                  key={(selection[0] as SelectionSummary).id}
+                  // Keyed on the connector and the refusal count — see the
+                  // annotation editor above. Keying on the label as well
+                  // remounted this whole panel every time the label changed,
+                  // resetting the weight, opacity and radius boxes with it.
+                  key={`${(selection[0] as SelectionSummary).id}:${refusals}`}
                   node={selection[0] as SelectionSummary}
                 />
               ) : (

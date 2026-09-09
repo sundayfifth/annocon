@@ -3,6 +3,7 @@ import { emit, on, showUI } from '@create-figma-plugin/utilities'
 import type {
   AddCategoryPayload,
   CategoriesChangedHandler,
+  CommandFailedHandler,
   CreateConnectorPayload,
   DeleteCategoryPayload,
   RecolorCategoryPayload,
@@ -204,23 +205,69 @@ async function reconcileEverything(): Promise<ReconcileResult> {
   }
 }
 
+/**
+ * Reports a command that did not apply, to the person and to the panel.
+ *
+ * Every handler below used to bail with a bare `return`. Nothing said so, and
+ * the panel went on showing the value that was typed — `useAdoptedFromOutside`
+ * in the UI only takes a value that *changed* elsewhere, and a command that
+ * was dropped changed nothing, so re-sending the selection is not enough on
+ * its own to clear it. Hence both: `figma.notify`, which is how this plugin
+ * already tells someone a sync failed, and a message the panel can act on.
+ */
+function commandFailed(command: keyof UiToMain, reason: string): void {
+  figma.notify(reason, { error: true })
+  emit<CommandFailedHandler>('COMMAND_FAILED', { command, reason })
+  emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
+}
+
+/**
+ * The layer a command names, or `null` having said why not.
+ *
+ * A command carries an id the panel read some moments ago, and the document
+ * has moved on since — most often because the layer was deleted while the
+ * message was in flight.
+ */
+// The return type is inferred rather than written: `'absoluteBoundingBox' in
+// node` narrows `BaseNode` to exactly the node types that have a box, and
+// naming that union by hand would either be wrong or need rewriting whenever
+// Figma adds a node type.
+async function layerFor(command: keyof UiToMain, id: string) {
+  const node = await figma.getNodeByIdAsync(id)
+  if (node === null || !('absoluteBoundingBox' in node)) {
+    commandFailed(command, "That layer is gone, so the change wasn't applied.")
+    return null
+  }
+  return node
+}
+
+/** The same for a connector, which additionally has to still be the vector we drew. */
+async function connectorFor(command: keyof UiToMain, id: string): Promise<VectorNode | null> {
+  const node = await figma.getNodeByIdAsync(id)
+  if (node === null || node.type !== 'VECTOR') {
+    commandFailed(command, "That connector is gone, so the change wasn't applied.")
+    return null
+  }
+  return node
+}
+
 async function handleSetAnnotationText({ targetId, text }: SetAnnotationTextPayload): Promise<void> {
-  const node = await figma.getNodeByIdAsync(targetId)
-  if (node === null || !('absoluteBoundingBox' in node)) return
+  const node = await layerFor('SET_ANNOTATION_TEXT', targetId)
+  if (node === null) return
   await setAnnotationText(node, text)
   emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
 }
 
 async function handleSetAnnotationSize({ targetId, size }: SetAnnotationSizePayload): Promise<void> {
-  const node = await figma.getNodeByIdAsync(targetId)
-  if (node === null || !('absoluteBoundingBox' in node)) return
+  const node = await layerFor('SET_ANNOTATION_SIZE', targetId)
+  if (node === null) return
   await setAnnotationSize(node, size)
   emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
 }
 
 async function handleRestoreAutoRoute(connectorId: string): Promise<void> {
-  const node = await figma.getNodeByIdAsync(connectorId)
-  if (node === null || node.type !== 'VECTOR') return
+  const node = await connectorFor('RESTORE_AUTO_ROUTE', connectorId)
+  if (node === null) return
   await restoreAutomaticRoute(node)
   emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
 }
@@ -233,14 +280,20 @@ async function handleSetAnnotationCategory({
   targetId,
   categoryId
 }: SetAnnotationCategoryPayload): Promise<void> {
-  const node = await figma.getNodeByIdAsync(targetId)
-  if (node === null || !('absoluteBoundingBox' in node)) return
+  const node = await layerFor('SET_ANNOTATION_CATEGORY', targetId)
+  if (node === null) return
   await setAnnotationCategory(node, categoryId)
   emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
 }
 
 function handleAddCategory({ name, color }: AddCategoryPayload): void {
-  if (name.trim() === '') return
+  // The panel guards this too, so this is the second line of defence rather
+  // than the one a person normally meets. Reported all the same: a command
+  // that does nothing has to say so from wherever it is refused.
+  if (name.trim() === '') {
+    commandFailed('ADD_CATEGORY', 'A category needs a name.')
+    return
+  }
   addCategory(name, color)
   broadcastCategories()
 }
@@ -276,8 +329,15 @@ async function handleCreateConnector({ startId, endId }: CreateConnectorPayload)
     figma.getNodeByIdAsync(startId),
     figma.getNodeByIdAsync(endId)
   ])
-  if (start === null || end === null) return
-  if (!('absoluteBoundingBox' in start) || !('absoluteBoundingBox' in end)) return
+  if (
+    start === null ||
+    end === null ||
+    !('absoluteBoundingBox' in start) ||
+    !('absoluteBoundingBox' in end)
+  ) {
+    commandFailed('CREATE_CONNECTOR', "One of those layers is gone, so no connector was drawn.")
+    return
+  }
 
   // Selecting the same pair again (auto-connect fires on every 2-selection,
   // not just the first) reselects the connector that's already there
@@ -305,8 +365,8 @@ async function handleUpdateConnectorStyle({
   targetId,
   ...changes
 }: UpdateConnectorStylePayload): Promise<void> {
-  const node = await figma.getNodeByIdAsync(targetId)
-  if (node === null || node.type !== 'VECTOR') return
+  const node = await connectorFor('UPDATE_CONNECTOR_STYLE', targetId)
+  if (node === null) return
   await updateConnectorStyle(node, changes)
   emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
 }
@@ -316,8 +376,8 @@ async function handleUpdateConnectorAnchor({
   side,
   magnet
 }: UpdateConnectorAnchorPayload): Promise<void> {
-  const node = await figma.getNodeByIdAsync(targetId)
-  if (node === null || node.type !== 'VECTOR') return
+  const node = await connectorFor('UPDATE_CONNECTOR_ANCHOR', targetId)
+  if (node === null) return
   await updateConnectorAnchorSide(node, side, magnet)
   emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
 }

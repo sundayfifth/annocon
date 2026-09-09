@@ -259,6 +259,25 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       (80 units), which should read as less cramped than before against a
       full-width screen.
 
+## A command that cannot be applied
+
+Every one of these used to be a bare `return` on the main thread: nothing was
+stored, nothing was said, and the panel kept showing the value that was typed.
+
+- [ ] Select a layer with a note, type into the note box, and **delete that
+      layer on the canvas before clicking away**. Expect a toast saying the
+      layer is gone — and the panel must not be left showing the words that
+      were never stored.
+- [ ] Same with a connector: type a stroke weight, delete the line, then blur
+      the box. Toast, and the weight box goes back to what is stored rather
+      than keeping the number typed.
+- [ ] Clear a category's name and click away → the name comes back, with no
+      toast. The panel refuses this one itself, so nothing is sent.
+- [ ] Select two layers to auto-connect, and delete one of them while the
+      connector is being drawn → a toast, no half-drawn line.
+- [ ] After any of the above, the panel is usable again: pick another layer
+      and edit it normally.
+
 ## Cross-cutting
 
 - [ ] ⌘Z right after creating a connector leaves no stray nodes
