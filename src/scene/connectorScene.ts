@@ -15,14 +15,16 @@ import {
   ROUTE_SEARCH_MARGIN,
   boxCouldAffectRoute,
   connectorAxisOf,
-  connectorCurveTangents,
   connectorRoutePoints,
   connectorStubClearance,
   frameGapMidpoint,
-  pointAlongPolyline,
-  pointOnCurve,
   resolveConnectorGeometry
 } from '../core/connector.js'
+import {
+  connectorCurveTangents,
+  pointAlongPolyline,
+  pointOnCurve
+} from '../core/connectorCurve.js'
 import {
   type ConnectorRecord,
   type ConnectorStylePrefs,

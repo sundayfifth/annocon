@@ -5,17 +5,19 @@ import {
   ROUTE_SEARCH_MARGIN,
   boxCouldAffectRoute,
   connectorAxisOf,
-  connectorCurveTangents,
   connectorRoutePoints,
   connectorStubClearance,
   obstaclesInPlay,
   findRouteAround,
   routeCrossings,
   frameGapMidpoint,
-  pointAlongPolyline,
-  pointOnCurve,
   resolveConnectorGeometry
 } from '../src/core/connector.js'
+import {
+  connectorCurveTangents,
+  pointAlongPolyline,
+  pointOnCurve
+} from '../src/core/connectorCurve.js'
 import {
   type ConnectorRecord,
   type ConnectorStylePrefs,
