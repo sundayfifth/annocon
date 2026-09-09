@@ -1,29 +1,19 @@
 import { emit, on, showUI } from '@create-figma-plugin/utilities'
 
 import type {
-  AddCategoryHandler,
   AddCategoryPayload,
   CategoriesChangedHandler,
-  CreateConnectorHandler,
   CreateConnectorPayload,
-  DeleteCategoryHandler,
   DeleteCategoryPayload,
-  RecolorCategoryHandler,
   RecolorCategoryPayload,
-  RenameCategoryHandler,
-  RestoreAutoRouteHandler,
   RenameCategoryPayload,
   SelectionChangedHandler,
   SelectionSummary,
-  SetAnnotationCategoryHandler,
+  UiToMain,
   SetAnnotationCategoryPayload,
-  SetAnnotationSizeHandler,
   SetAnnotationSizePayload,
-  SetAnnotationTextHandler,
   SetAnnotationTextPayload,
-  UpdateConnectorAnchorHandler,
   UpdateConnectorAnchorPayload,
-  UpdateConnectorStyleHandler,
   UpdateConnectorStylePayload
 } from './messages.js'
 import {
@@ -753,45 +743,67 @@ async function resyncTouched({
   if (touched) await finalizeLayout()
 }
 
-export default function main(): void {
-  on<SetAnnotationTextHandler>('SET_ANNOTATION_TEXT', (payload) => {
+/**
+ * What to do with each message the UI can send.
+ *
+ * Typed as the whole of `UiToMain`, which is what makes it a list rather than
+ * a habit: adding a message to that map without a line here does not compile.
+ * Registered by walking this object below, so there is no second list of
+ * names to keep in step either.
+ */
+const HANDLERS: { [Name in keyof UiToMain]: (payload: UiToMain[Name]) => void } = {
+  SET_ANNOTATION_TEXT: (payload) => {
     queueEdit(payload.targetId, () => handleSetAnnotationText(payload))
-  })
-
-  on<SetAnnotationCategoryHandler>('SET_ANNOTATION_CATEGORY', (payload) => {
+  },
+  SET_ANNOTATION_CATEGORY: (payload) => {
     queueEdit(payload.targetId, () => handleSetAnnotationCategory(payload))
-  })
-
-  on<SetAnnotationSizeHandler>('SET_ANNOTATION_SIZE', (payload) => {
+  },
+  SET_ANNOTATION_SIZE: (payload) => {
     queueEdit(payload.targetId, () => handleSetAnnotationSize(payload))
-  })
-
-  on<AddCategoryHandler>('ADD_CATEGORY', handleAddCategory)
-  on<RenameCategoryHandler>('RENAME_CATEGORY', (payload) => {
+  },
+  // Not queued, unlike the other three category commands: `addCategory` is
+  // synchronous from read to write, so there is no `await` for a second
+  // command to interleave at and nothing to serialise against. The three
+  // below are queued because each one's work is async.
+  ADD_CATEGORY: handleAddCategory,
+  RENAME_CATEGORY: (payload) => {
     queueEdit(CATEGORY_LIST_KEY, () => handleRenameCategory(payload))
-  })
-  on<RecolorCategoryHandler>('RECOLOR_CATEGORY', (payload) => {
+  },
+  RECOLOR_CATEGORY: (payload) => {
     queueEdit(CATEGORY_LIST_KEY, () => handleRecolorCategory(payload))
-  })
-  on<DeleteCategoryHandler>('DELETE_CATEGORY', (payload) => {
+  },
+  DELETE_CATEGORY: (payload) => {
     queueEdit(CATEGORY_LIST_KEY, () => handleDeleteCategory(payload))
-  })
-
-  on<CreateConnectorHandler>('CREATE_CONNECTOR', (payload) => {
+  },
+  // Not queued: it has no existing record to read-modify-write, so there is
+  // nothing for a second command to race against.
+  CREATE_CONNECTOR: (payload) => {
     fireAndForget(handleCreateConnector(payload))
-  })
-
-  on<UpdateConnectorStyleHandler>('UPDATE_CONNECTOR_STYLE', (payload) => {
+  },
+  UPDATE_CONNECTOR_STYLE: (payload) => {
     queueEdit(payload.targetId, () => handleUpdateConnectorStyle(payload))
-  })
-
-  on<RestoreAutoRouteHandler>('RESTORE_AUTO_ROUTE', ({ connectorId }) => {
-    queueEdit(connectorId, () => handleRestoreAutoRoute(connectorId))
-  })
-
-  on<UpdateConnectorAnchorHandler>('UPDATE_CONNECTOR_ANCHOR', (payload) => {
+  },
+  UPDATE_CONNECTOR_ANCHOR: (payload) => {
     queueEdit(payload.targetId, () => handleUpdateConnectorAnchor(payload))
-  })
+  },
+  RESTORE_AUTO_ROUTE: ({ connectorId }) => {
+    queueEdit(connectorId, () => handleRestoreAutoRoute(connectorId))
+  }
+}
+
+export default function main(): void {
+  // One `on` per entry, so the list of names lives in exactly one place.
+  //
+  // The cast is the price of walking the object rather than writing the calls
+  // out: `name` and `HANDLERS[name]` are correlated here, but TypeScript
+  // checks the two arguments independently and sees a union of names against
+  // a union of handlers. The declaration of `HANDLERS` above is what types
+  // each pair, and it is the thing that fails to compile if a message has no
+  // handler — this loop only has to reach every entry.
+  const register = on as (name: string, handler: (payload: never) => void) => void
+  for (const name of Object.keys(HANDLERS) as Array<keyof UiToMain>) {
+    register(name, HANDLERS[name])
+  }
 
   figma.on('selectionchange', () => {
     emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
