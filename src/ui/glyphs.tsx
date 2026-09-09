@@ -10,7 +10,7 @@
  * near-identical-length labels apart.
  */
 
-import type { ConnectorCap, ConnectorLineStyle } from '../core/connector.js'
+import type { ConnectorCap, ConnectorLineStyle } from '../core/connectorRecord.js'
 
 /**
  * A short stub line ending in the cap's actual shape — not a generic icon,

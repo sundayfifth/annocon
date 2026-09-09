@@ -28,7 +28,7 @@ import {
   type ConnectorCap,
   type ConnectorDetour,
   type ConnectorLineStyle
-} from './core/connector.js'
+} from './core/connectorRecord.js'
 import {
   CORNER_RADIUS_FIELD,
   OPACITY_FIELD,

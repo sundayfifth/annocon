@@ -8,7 +8,7 @@
  * are worth showing at all.
  */
 
-import type { ConnectorLineStyle } from './connector.js'
+import type { ConnectorLineStyle } from './connectorRecord.js'
 
 /**
  * What a numeric field accepts, and how it reads the value back.

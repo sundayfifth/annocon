@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import type { Point, Rect } from '../src/core/anchor.js'
 import {
-  type ConnectorRecord,
-  type ConnectorStylePrefs,
   ROUTE_SEARCH_MARGIN,
   boxCouldAffectRoute,
   connectorAxisOf,
@@ -13,16 +11,20 @@ import {
   obstaclesInPlay,
   findRouteAround,
   routeCrossings,
-  createConnectorRecord,
   frameGapMidpoint,
-  parseConnectorRecord,
-  parseConnectorStylePrefs,
   pointAlongPolyline,
   pointOnCurve,
-  resolveConnectorGeometry,
+  resolveConnectorGeometry
+} from '../src/core/connector.js'
+import {
+  type ConnectorRecord,
+  type ConnectorStylePrefs,
+  createConnectorRecord,
+  parseConnectorRecord,
+  parseConnectorStylePrefs,
   serialiseConnectorRecord,
   serialiseConnectorStylePrefs
-} from '../src/core/connector.js'
+} from '../src/core/connectorRecord.js'
 
 const anchor = (nodeId: string) => ({ kind: 'magnet', nodeId, magnet: 'AUTO' })
 

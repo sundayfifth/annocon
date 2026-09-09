@@ -22,7 +22,7 @@
 import type { Magnet } from './core/anchor.js'
 import type { AnnotationSize } from './core/annotation.js'
 import type { Category } from './core/category.js'
-import type { ConnectorCap, ConnectorDetour, ConnectorLineStyle } from './core/connector.js'
+import type { ConnectorCap, ConnectorDetour, ConnectorLineStyle } from './core/connectorRecord.js'
 
 export interface ConnectorStyleSummary {
   readonly color: string

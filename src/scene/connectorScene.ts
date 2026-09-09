@@ -10,27 +10,29 @@
 
 import { type Anchor, type Magnet, type Point, type Rect, type ResolvedMagnet } from '../core/anchor.js'
 import {
-  type ConnectorRecord,
-  type ConnectorStylePrefs,
   type ElbowRouteOptions,
   type RouteObstacles,
-  DEFAULT_LABEL_COLOR,
   ROUTE_SEARCH_MARGIN,
   boxCouldAffectRoute,
   connectorAxisOf,
   connectorCurveTangents,
   connectorRoutePoints,
   connectorStubClearance,
-  createConnectorRecord,
   frameGapMidpoint,
-  parseConnectorRecord,
-  parseConnectorStylePrefs,
   pointAlongPolyline,
   pointOnCurve,
-  resolveConnectorGeometry,
+  resolveConnectorGeometry
+} from '../core/connector.js'
+import {
+  type ConnectorRecord,
+  type ConnectorStylePrefs,
+  DEFAULT_LABEL_COLOR,
+  createConnectorRecord,
+  parseConnectorRecord,
+  parseConnectorStylePrefs,
   serialiseConnectorRecord,
   serialiseConnectorStylePrefs
-} from '../core/connector.js'
+} from '../core/connectorRecord.js'
 import { contrastingTextColor } from '../core/category.js'
 import { shapeFingerprint } from '../core/authorship.js'
 import {
