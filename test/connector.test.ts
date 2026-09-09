@@ -2,17 +2,19 @@ import { describe, expect, it } from 'vitest'
 
 import type { Point, Rect } from '../src/core/anchor.js'
 import {
-  ROUTE_SEARCH_MARGIN,
-  boxCouldAffectRoute,
   connectorAxisOf,
   connectorRoutePoints,
   connectorStubClearance,
-  obstaclesInPlay,
   findRouteAround,
-  routeCrossings,
   frameGapMidpoint,
   resolveConnectorGeometry
 } from '../src/core/connector.js'
+import {
+  ROUTE_SEARCH_MARGIN,
+  boxCouldAffectRoute,
+  obstaclesInPlay,
+  routeCrossings
+} from '../src/core/routeCost.js'
 import {
   connectorCurveTangents,
   pointAlongPolyline,

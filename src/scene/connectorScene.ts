@@ -11,15 +11,17 @@
 import { type Anchor, type Magnet, type Point, type Rect, type ResolvedMagnet } from '../core/anchor.js'
 import {
   type ElbowRouteOptions,
-  type RouteObstacles,
-  ROUTE_SEARCH_MARGIN,
-  boxCouldAffectRoute,
   connectorAxisOf,
   connectorRoutePoints,
   connectorStubClearance,
   frameGapMidpoint,
   resolveConnectorGeometry
 } from '../core/connector.js'
+import {
+  type RouteObstacles,
+  ROUTE_SEARCH_MARGIN,
+  boxCouldAffectRoute
+} from '../core/routeCost.js'
 import {
   connectorCurveTangents,
   pointAlongPolyline,

@@ -8,8 +8,12 @@
  * tested without a document to walk.
  */
 
-import type { ConnectorGeometry, RouteObstacles } from './connector.js'
-import { ROUTE_SEARCH_MARGIN, obstaclesInPlay } from './connector.js'
+import type { ConnectorGeometry } from './connector.js'
+import {
+  type RouteObstacles,
+  ROUTE_SEARCH_MARGIN,
+  obstaclesInPlay
+} from './routeCost.js'
 import type { Rect } from './anchor.js'
 import { sameRect } from './anchor.js'
 
