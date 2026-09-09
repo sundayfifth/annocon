@@ -11,9 +11,7 @@ import {
   connectorRoutePoints,
   connectorStubClearance,
   obstaclesInPlay,
-  orientedTowards,
   findRouteAround,
-  shiftManualShape,
   routeCrossings,
   createConnectorRecord,
   frameGapMidpoint,
@@ -838,106 +836,6 @@ describe('a connector someone has drawn by hand', () => {
     expect(byHand?.color).toBe('#8C8C8C')
     expect(byHand?.strokeWeight).toBe(3)
     expect(byHand?.label).toBe('still mine')
-  })
-})
-
-describe('shiftManualShape', () => {
-  /** A hand-drawn line: out, down, along. */
-  const shape = [
-    { x: 0, y: 0 },
-    { x: 50, y: 0 },
-    { x: 50, y: 100 },
-    { x: 200, y: 100 }
-  ]
-  const was = { start: { x: 0, y: 0 }, end: { x: 200, y: 100 } }
-
-  it('leaves the shape alone when neither end moved', () => {
-    expect(shiftManualShape(shape, was, was)).toEqual(shape)
-  })
-
-  /**
-   * The common case, and the one worth getting exactly right: a whole group
-   * of screens dragged somewhere else. Both ends move by the same amount, so
-   * the shape someone drew is still the right shape — it just belongs 300
-   * pixels to the right.
-   */
-  it('slides the whole line when both ends move the same way', () => {
-    const moved = {
-      start: { x: 300, y: 40 },
-      end: { x: 500, y: 140 }
-    }
-    expect(shiftManualShape(shape, was, moved)).toEqual([
-      { x: 300, y: 40 },
-      { x: 350, y: 40 },
-      { x: 350, y: 140 },
-      { x: 500, y: 140 }
-    ])
-  })
-
-  it('keeps both ends on their layers when only one moved', () => {
-    const moved = { start: { x: 0, y: 0 }, end: { x: 260, y: 100 } }
-    const shifted = shiftManualShape(shape, was, moved)
-    expect(shifted[0]).toEqual({ x: 0, y: 0 })
-    expect(shifted[shifted.length - 1]).toEqual({ x: 260, y: 100 })
-  })
-
-  /**
-   * The middle is carried along in proportion rather than left behind or
-   * dragged the full distance: a bend a third of the way down the line
-   * should still look a third of the way down it afterwards.
-   */
-  it('carries the middle in proportion to how far along it sits', () => {
-    const moved = { start: { x: 0, y: 0 }, end: { x: 200, y: 200 } }
-    const shifted = shiftManualShape(shape, was, moved)
-    const bend = shifted[2] as { x: number; y: number }
-    expect(bend.y).toBeGreaterThan(100)
-    expect(bend.y).toBeLessThan(200)
-  })
-
-  it('survives a shape with one point, or none', () => {
-    expect(shiftManualShape([], was, was)).toEqual([])
-    expect(shiftManualShape([{ x: 0, y: 0 }], was, { start: { x: 10, y: 10 }, end: { x: 10, y: 10 } })).toEqual([
-      { x: 10, y: 10 }
-    ])
-  })
-})
-
-describe('orientedTowards', () => {
-  const at = (x: number, y: number) => ({ at: { x, y }, tangentIn: null, tangentOut: null })
-  const start = { x: 0, y: 0 }
-  const end = { x: 200, y: 100 }
-
-  it('leaves a walk that already runs start-to-end alone', () => {
-    const drawn = { vertices: [at(0, 0), at(50, 0), at(200, 100)], order: [0, 1, 2] }
-    expect(orientedTowards(drawn, start, end).order).toEqual([0, 1, 2])
-  })
-
-  /**
-   * A vector network lists its vertices in whatever order the editor left
-   * them, so a walk can come out back to front. Uncorrected, the two ends
-   * swap arrowheads and each end follows the *other* end's layer.
-   */
-  it('turns a walk that runs end-to-start around', () => {
-    const drawn = { vertices: [at(200, 100), at(50, 0), at(0, 0)], order: [0, 1, 2] }
-    expect(orientedTowards(drawn, start, end).order).toEqual([2, 1, 0])
-  })
-
-  /** Reversing the direction of travel swaps what "in" and "out" mean. */
-  it('swaps a vertex\'s two tangents when it turns one around', () => {
-    const drawn = {
-      vertices: [
-        { at: { x: 200, y: 100 }, tangentIn: { x: 1, y: 1 }, tangentOut: { x: 2, y: 2 } },
-        { at: { x: 0, y: 0 }, tangentIn: null, tangentOut: { x: 3, y: 3 } }
-      ],
-      order: [0, 1]
-    }
-    const turned = orientedTowards(drawn, start, end)
-    expect(turned.vertices[0]).toEqual({
-      at: { x: 200, y: 100 },
-      tangentIn: { x: 2, y: 2 },
-      tangentOut: { x: 1, y: 1 }
-    })
-    expect(turned.vertices[1]?.tangentIn).toEqual({ x: 3, y: 3 })
   })
 })
 

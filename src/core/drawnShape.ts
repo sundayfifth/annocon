@@ -13,7 +13,7 @@
  */
 
 import type { Point } from './anchor.js'
-import type { ManualVertex } from './connector.js'
+import type { ManualVertex } from './manualShape.js'
 
 /**
  * One point of a drawn polyline, in the node's own coordinates.

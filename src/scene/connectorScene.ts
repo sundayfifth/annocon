@@ -13,8 +13,6 @@ import {
   type ConnectorRecord,
   type ConnectorStylePrefs,
   type ElbowRouteOptions,
-  type ManualShape,
-  type ManualVertex,
   type RouteObstacles,
   DEFAULT_LABEL_COLOR,
   ROUTE_SEARCH_MARGIN,
@@ -28,15 +26,19 @@ import {
   parseConnectorRecord,
   parseConnectorStylePrefs,
   pointAlongPolyline,
-  orientedTowards,
   pointOnCurve,
   resolveConnectorGeometry,
   serialiseConnectorRecord,
-  shiftManualShape,
   serialiseConnectorStylePrefs
 } from '../core/connector.js'
 import { contrastingTextColor } from '../core/category.js'
 import { shapeFingerprint } from '../core/authorship.js'
+import {
+  type ManualShape,
+  type ManualVertex,
+  orientedTowards,
+  shiftManualShape
+} from '../core/manualShape.js'
 import {
   type DrawnRun,
   alreadyDrawn,
