@@ -259,6 +259,27 @@ Run against a scratch file in the **desktop app** after `npm run build`.
       (80 units), which should read as less cramped than before against a
       full-width screen.
 
+## The connector panel's number fields
+
+All three now clamp on **blur** and write the clamped value back. `minimum` /
+`maximum` are gone from every one of them, because that prop bounds each
+keystroke rather than the finished value.
+
+- [ ] Type `0.8` into stroke weight → it is accepted. A `minimum` of 0.5 used
+      to reject the leading `0` and make the whole 0.5–0.9 range untypeable.
+- [ ] Type `0.1` into stroke weight and blur → the box shows `0.5px` and the
+      line is drawn at 0.5. Not `0.1px` on screen with 0.5 stored.
+- [ ] Type `-5` into corner radius and blur → the box shows `0px`. This one
+      used to leave `-5` on screen and store nothing at all.
+- [ ] Type `420` into opacity and blur → `100%`.
+- [ ] Clear a field completely and blur → the value that was there comes back
+      and nothing is stored. An empty field is somebody mid-edit.
+- [ ] Hand-drawn line → no line-style picker, no corner radius, no **Go
+      around**; the explanation and "back to automatic" button in their place.
+      Colour, caps and label still work.
+- [ ] Switch a routed line to Straight or Curve → corner radius and **Go
+      around** disappear; switch back to Elbow → they return.
+
 ## A command that cannot be applied
 
 Every one of these used to be a bare `return` on the main thread: nothing was
