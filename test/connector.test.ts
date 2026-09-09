@@ -52,7 +52,6 @@ describe('createConnectorRecord', () => {
   it('anchors both ends to the given nodes with AUTO magnets', () => {
     const record = createConnectorRecord('a', 'b')
     expect(record).toEqual({
-      v: 1,
       start: { kind: 'magnet', nodeId: 'a', magnet: 'AUTO' },
       end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' },
       strokeWeight: 1.5,
@@ -83,7 +82,6 @@ describe('createConnectorRecord', () => {
     }
     const record = createConnectorRecord('a', 'b', stylePrefs)
     expect(record).toEqual({
-      v: 1,
       start: { kind: 'magnet', nodeId: 'a', magnet: 'AUTO' },
       end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' },
       ...stylePrefs,

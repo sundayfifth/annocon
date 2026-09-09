@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import type { Rect } from '../src/core/anchor.js'
 import {
   ANNOTATION_SIZES,
-  ANNOTATION_VERSION,
   DEFAULT_ANNOTATION_SIZE,
   type AnnotationRecord,
   type CardMetrics,
@@ -54,7 +53,6 @@ describe('parseAnnotationRecord', () => {
   it('fills in defaults for fields it cannot trust', () => {
     const parsed = parseAnnotationRecord('{"text":"hi","side":"SIDEWAYS","cardOffset":{"x":1}}')
     expect(parsed).toEqual({
-      v: ANNOTATION_VERSION,
       text: 'hi',
       side: 'AUTO',
       cardOffset: DEFAULT_CARD_OFFSET,
