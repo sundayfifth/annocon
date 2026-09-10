@@ -62,6 +62,7 @@ import { ownerIdOf } from './annotationScene.js'
 import { CHUNK_SIZE, yieldToMainThread } from './chunking.js'
 import { ensureOnPage, findEnclosingFrame } from './frames.js'
 import { ownership } from './ownership.js'
+import { removeNode } from './removals.js'
 
 const CONNECTOR_KEY = 'connector'
 const BROKEN_COLOR = '#E5484D'
@@ -79,6 +80,22 @@ const LAST_STYLE_KEY = 'lastConnectorStyle'
  * of the same question.
  */
 const DRAWN_AS_KEY = 'connectorDrawnAs'
+
+/**
+ * Set while a connector has an end whose layer is gone.
+ *
+ * Derived, not authored: the sync already works this out to draw the line
+ * broken, and this is that answer written down so the panel can say the same
+ * thing in words. It is on the node rather than recomputed because deciding
+ * it means looking both endpoint layers up, which is async, and the panel's
+ * summary is built synchronously on every `selectionchange`.
+ */
+const BROKEN_KEY = 'connectorBroken'
+
+/** Whether the last sync found an end with no layer left to attach to. */
+export function isBrokenConnector(node: SceneNode): boolean {
+  return node.getPluginData(BROKEN_KEY) === 'true'
+}
 
 /**
  * The style (colour, weight, opacity, caps, line style, corner radius —
@@ -451,6 +468,19 @@ function midpointOfDrawnLine(node: VectorNode): Point {
   return pointAlongPolyline(points, 0.5)
 }
 
+/**
+ * Deletes a connector and its label, for a person who has been told the line
+ * is broken and wants it gone.
+ *
+ * The plugin does not do this by itself when an endpoint disappears: a line
+ * somebody drew is theirs, and quietly removing it on their behalf would be
+ * deciding for them. Offering it is the other half of saying what happened.
+ */
+export function deleteConnector(node: VectorNode): void {
+  removeConnectorLabel(node.id)
+  removeNode(node)
+}
+
 /** Removes a connector's label, if it has one — used when the connector itself is deleted. */
 export function removeConnectorLabel(connectorId: string): void {
   labelOwners.remove(findConnectorLabel(connectorId))
@@ -769,8 +799,10 @@ async function syncConnectorBody(
       // stale-but-honest line.
       node.strokes = [figma.util.solidPaint(BROKEN_COLOR)]
       node.dashPattern = [2, 3]
+      node.setPluginData(BROKEN_KEY, 'true')
       return
     }
+    node.setPluginData(BROKEN_KEY, '')
     node.strokes = [figma.util.solidPaint(record.color)]
     node.dashPattern = []
     node.strokeWeight = record.strokeWeight

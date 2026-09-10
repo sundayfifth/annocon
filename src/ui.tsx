@@ -44,6 +44,7 @@ import type {
   CategoriesChangedHandler,
   CommandFailedHandler,
   CreateConnectorHandler,
+  DeleteConnectorHandler,
   DeleteCategoryHandler,
   RecolorCategoryHandler,
   RenameCategoryHandler,
@@ -705,6 +706,32 @@ function ConnectorStyleEditor({ node }: { node: SelectionSummary }) {
           value={style.endMagnet}
         />
       </div>
+      {/* Before the hand-drawn notice, because it is the more urgent of the
+          two: a line whose end is gone is not doing its job at all, while one
+          somebody reshaped is working exactly as they asked. */}
+      {visible.broken ? (
+        <>
+          <VerticalSpace space="medium" />
+          <SectionLabel>เส้นนี้ขาด</SectionLabel>
+          <VerticalSpace space="extraSmall" />
+          <Text>
+            <Muted>
+              layer ที่ปลายข้างหนึ่งถูกลบไปแล้ว ปลั๊กอินจึงวาดเส้นค้างไว้เป็นเส้นประสีแดง
+              แทนที่จะเดาว่าควรลากไปที่ไหน — ถ้าไม่ต้องการเส้นนี้แล้ว ลบทิ้งได้เลย
+            </Muted>
+          </Text>
+          <VerticalSpace space="extraSmall" />
+          <Button
+            fullWidth
+            onClick={() => {
+              emit<DeleteConnectorHandler>('DELETE_CONNECTOR', { connectorId: node.id })
+            }}
+            secondary
+          >
+            ลบเส้นนี้
+          </Button>
+        </>
+      ) : null}
       {visible.handedOver ? (
         <>
           <VerticalSpace space="medium" />

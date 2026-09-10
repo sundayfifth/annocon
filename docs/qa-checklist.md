@@ -283,6 +283,22 @@ these are the paths that used to depend on the flag being raised in time.
 - [ ] Open the plugin on a file made before this change: nothing re-routes or
       shifts on its own, and cards that were dragged are still where they were.
 
+## A connector whose end is gone
+
+Deleting a layer a connector is attached to leaves the line on the canvas,
+drawn red and dashed — there is nothing correct to route to, and guessing
+would be worse than a stale but honest line. What was missing was anything
+saying so.
+
+- [ ] Draw a connector, delete the layer at one end, then select the red
+      dashed line → the panel explains what happened and offers to delete it.
+- [ ] Press that button → the line goes, and its label pill with it.
+- [ ] Select an ordinary connector → no such notice.
+- [ ] Reshape a line by hand, then delete a layer at one end → both notices
+      appear. Being broken says nothing about whose the shape is, so neither
+      state replaces the other, and no control is taken away: colour, caps and
+      the label still apply to the line sitting on the canvas.
+
 ## The connector panel's number fields
 
 All three now clamp on **blur** and write the clamped value back. `minimum` /

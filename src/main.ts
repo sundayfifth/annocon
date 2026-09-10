@@ -56,7 +56,9 @@ import {
   findAllConnectorsOnPage,
   findConnectorBetween,
   connectorWriteIsOurs,
+  deleteConnector,
   findConnectorsInvolving,
+  isBrokenConnector,
   findConnectorsNearBoxes,
   findConnectorsWithEndpointUnder,
   getConnectorRecord,
@@ -169,6 +171,7 @@ function summariseSelection(): Array<SelectionSummary> {
               cornerRadius: connectorRecord.cornerRadius,
               detour: connectorRecord.detour,
               manualGeometry: connectorRecord.manualGeometry,
+              broken: isBrokenConnector(node),
               labelColor: connectorRecord.labelColor,
               startMagnet: connectorRecord.start.kind === 'magnet' ? connectorRecord.start.magnet : 'AUTO',
               endMagnet: connectorRecord.end.kind === 'magnet' ? connectorRecord.end.magnet : 'AUTO',
@@ -260,6 +263,13 @@ async function handleRestoreAutoRoute(connectorId: string): Promise<void> {
   const node = await connectorFor('RESTORE_AUTO_ROUTE', connectorId)
   if (node === null) return
   await restoreAutomaticRoute(node)
+  emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
+}
+
+async function handleDeleteConnector(connectorId: string): Promise<void> {
+  const node = await connectorFor('DELETE_CONNECTOR', connectorId)
+  if (node === null) return
+  deleteConnector(node)
   emit<SelectionChangedHandler>('SELECTION_CHANGED', summariseSelection())
 }
 
@@ -841,6 +851,9 @@ const HANDLERS: { [Name in keyof UiToMain]: (payload: UiToMain[Name]) => void } 
   },
   RESTORE_AUTO_ROUTE: ({ connectorId }) => {
     queueEdit(connectorId, () => handleRestoreAutoRoute(connectorId))
+  },
+  DELETE_CONNECTOR: ({ connectorId }) => {
+    queueEdit(connectorId, () => handleDeleteConnector(connectorId))
   }
 }
 
