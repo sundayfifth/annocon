@@ -309,19 +309,31 @@ keystroke rather than the finished value.
 Every one of these used to be a bare `return` on the main thread: nothing was
 stored, nothing was said, and the panel kept showing the value that was typed.
 
-- [ ] Select a layer with a note, type into the note box, and **delete that
-      layer on the canvas before clicking away**. Expect a toast saying the
-      layer is gone — and the panel must not be left showing the words that
-      were never stored.
-- [ ] Same with a connector: type a stroke weight, delete the line, then blur
-      the box. Toast, and the weight box goes back to what is stored rather
-      than keeping the number typed.
+**Mostly not reachable by hand, and that is not a defect.** The panel's text
+and number fields send their value on *blur*. Deleting the layer they refer to
+changes the selection, which unmounts that editor — and React does not fire
+blur on unmount, so no command is sent at all. Nothing is sent, so nothing
+fails, so there is no toast, and the note dies with the layer it belonged to,
+which is right.
+
+What the failure path actually guards is a race: a teammate deleting the layer
+in multiplayer while you type, or a node vanishing between a command being
+sent and the main thread looking it up. Neither is a gesture you can perform
+on demand, so do not go hunting for a toast here — its absence is the ordinary
+case.
+
 - [ ] Clear a category's name and click away → the name comes back, with no
-      toast. The panel refuses this one itself, so nothing is sent.
-- [ ] Select two layers to auto-connect, and delete one of them while the
-      connector is being drawn → a toast, no half-drawn line.
-- [ ] After any of the above, the panel is usable again: pick another layer
-      and edit it normally.
+      toast. The panel refuses this one itself, so nothing is sent. **This one
+      is reachable**, and is the one to check.
+- [ ] Auto-connect fires on *selecting* two layers rather than on blur, so it
+      is the one command that can be in flight while you delete an endpoint.
+      Select two layers, then delete one immediately. Either a connector
+      appears between the survivors of what you selected, or a toast says a
+      layer is gone — never a half-drawn line, and never a silent nothing.
+- [ ] Type into a note, then click a **different layer** rather than deleting
+      the first → the note is saved against the layer you left, which is the
+      ordinary blur path the two unreachable cases above were confusing it
+      with.
 
 ## Cross-cutting
 

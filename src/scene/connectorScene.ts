@@ -331,6 +331,23 @@ export async function captureLabelTextEdit(text: TextNode): Promise<boolean> {
 }
 
 /** Records the shape just drawn, so the next change to it can be attributed. */
+/**
+ * Whether a connector still holds exactly the shape this plugin drew — see
+ * `ObservedChange.unchangedSinceOurWrite`.
+ *
+ * The same comparison `captureManualReshape` makes to decide whether somebody
+ * reshaped the line, asked earlier: a redraw of ours must not wake a pass at
+ * all, rather than wake one that then finds nothing to do. A label pill is
+ * covered too — it is fully derived from the record, so this plugin is the
+ * only thing that ever moves one.
+ */
+export function connectorWriteIsOurs(node: SceneNode): boolean {
+  if (labelOwners.ownerIdOf(node) !== null) return true
+  if (node.type !== 'VECTOR') return false
+  const remembered = node.getPluginData(DRAWN_AS_KEY)
+  return remembered !== '' && remembered === shapeFingerprint(node.vectorNetwork)
+}
+
 function rememberDrawnShape(node: VectorNode): void {
   node.setPluginData(DRAWN_AS_KEY, shapeFingerprint(node.vectorNetwork))
 }
