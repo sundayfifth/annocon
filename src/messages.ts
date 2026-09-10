@@ -36,6 +36,8 @@ export interface ConnectorStyleSummary {
   readonly detour: ConnectorDetour
   /** True once someone has reshaped the line by hand and the plugin has stopped routing it. */
   readonly manualGeometry: boolean
+  /** True when an end's layer is gone, which is what the red dashed line on the canvas means. */
+  readonly broken: boolean
   /** The label pill's fill. */
   readonly labelColor: string
   /** Which side of the start/end node the connector exits/enters from. `AUTO` picks based on relative position. */
@@ -83,6 +85,10 @@ export interface SetAnnotationSizePayload {
 }
 
 export interface RestoreAutoRoutePayload {
+  readonly connectorId: string
+}
+
+export interface DeleteConnectorPayload {
   readonly connectorId: string
 }
 
@@ -159,6 +165,7 @@ export interface UiToMain {
   UPDATE_CONNECTOR_STYLE: UpdateConnectorStylePayload
   UPDATE_CONNECTOR_ANCHOR: UpdateConnectorAnchorPayload
   RESTORE_AUTO_ROUTE: RestoreAutoRoutePayload
+  DELETE_CONNECTOR: DeleteConnectorPayload
 }
 
 /** Every message the main thread sends the UI, and what it carries. */
@@ -191,4 +198,5 @@ export type RecolorCategoryHandler = MessageHandler<UiToMain, 'RECOLOR_CATEGORY'
 export type DeleteCategoryHandler = MessageHandler<UiToMain, 'DELETE_CATEGORY'>
 export type UpdateConnectorStyleHandler = MessageHandler<UiToMain, 'UPDATE_CONNECTOR_STYLE'>
 export type UpdateConnectorAnchorHandler = MessageHandler<UiToMain, 'UPDATE_CONNECTOR_ANCHOR'>
+export type DeleteConnectorHandler = MessageHandler<UiToMain, 'DELETE_CONNECTOR'>
 export type CommandFailedHandler = MessageHandler<MainToUi, 'COMMAND_FAILED'>

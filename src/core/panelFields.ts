@@ -96,6 +96,8 @@ export interface VisibleConnectorControls {
   readonly detour: boolean
   /** The explanation of a hand-drawn line, and the button that gives routing back. */
   readonly handedOver: boolean
+  /** The explanation of a line whose end is gone, and the button that removes it. */
+  readonly broken: boolean
 }
 
 /**
@@ -111,12 +113,18 @@ export interface VisibleConnectorControls {
  * elbow: a straight line has no bend to round, and neither it nor a curve
  * avoids anything.
  *
+ * `broken` is not exclusive with any of them, unlike `handedOver`. A line
+ * whose end is gone can also be one somebody reshaped, and its colour and
+ * caps still apply to the stale line sitting on the canvas — what it needs is
+ * to be told what happened, not to have its controls taken away.
+ *
  * The elbow half of this was written out twice in `ui.tsx`, as the same
  * `lineStyle === 'ELBOW' && !manualGeometry` in two places.
  */
 export function visibleConnectorControls(style: {
   readonly lineStyle: ConnectorLineStyle
   readonly manualGeometry: boolean
+  readonly broken: boolean
 }): VisibleConnectorControls {
   const routed = !style.manualGeometry
   const elbow = routed && style.lineStyle === 'ELBOW'
@@ -124,6 +132,7 @@ export function visibleConnectorControls(style: {
     lineStyle: routed,
     cornerRadius: elbow,
     detour: elbow,
-    handedOver: style.manualGeometry
+    handedOver: style.manualGeometry,
+    broken: style.broken
   }
 }

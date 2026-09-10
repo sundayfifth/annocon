@@ -93,17 +93,18 @@ describe('numericFieldText', () => {
 
 describe('visibleConnectorControls', () => {
   it('shows everything for a routed elbow', () => {
-    expect(visibleConnectorControls({ lineStyle: 'ELBOW', manualGeometry: false })).toEqual({
+    expect(visibleConnectorControls({ lineStyle: 'ELBOW', manualGeometry: false, broken: false })).toEqual({
       lineStyle: true,
       cornerRadius: true,
       detour: true,
-      handedOver: false
+      handedOver: false,
+      broken: false
     })
   })
 
   /** A straight line has no bend to round, and nothing it routes around. */
   it('hides corner radius and Go around for a straight line', () => {
-    expect(visibleConnectorControls({ lineStyle: 'STRAIGHT', manualGeometry: false })).toMatchObject({
+    expect(visibleConnectorControls({ lineStyle: 'STRAIGHT', manualGeometry: false, broken: false })).toMatchObject({
       lineStyle: true,
       cornerRadius: false,
       detour: false
@@ -111,7 +112,7 @@ describe('visibleConnectorControls', () => {
   })
 
   it('hides them for a curve too', () => {
-    expect(visibleConnectorControls({ lineStyle: 'CURVE', manualGeometry: false })).toMatchObject({
+    expect(visibleConnectorControls({ lineStyle: 'CURVE', manualGeometry: false, broken: false })).toMatchObject({
       cornerRadius: false,
       detour: false
     })
@@ -123,23 +124,57 @@ describe('visibleConnectorControls', () => {
    * style picker, which is shown for every routed line.
    */
   it('hides every shape control on a hand-drawn line, and explains itself instead', () => {
-    expect(visibleConnectorControls({ lineStyle: 'ELBOW', manualGeometry: true })).toEqual({
+    expect(visibleConnectorControls({ lineStyle: 'ELBOW', manualGeometry: true, broken: false })).toEqual({
       lineStyle: false,
       cornerRadius: false,
       detour: false,
-      handedOver: true
+      handedOver: true,
+      broken: false
     })
   })
 
   /** Being hand-drawn wins over what the record still says the line style was. */
   it('hides them however the line was routed before it was reshaped', () => {
     for (const lineStyle of ['STRAIGHT', 'CURVE', 'ELBOW'] as const) {
-      expect(visibleConnectorControls({ lineStyle, manualGeometry: true })).toEqual({
+      expect(visibleConnectorControls({ lineStyle, manualGeometry: true, broken: false })).toEqual({
         lineStyle: false,
         cornerRadius: false,
         detour: false,
-        handedOver: true
+        handedOver: true,
+        broken: false
       })
+    }
+  })
+
+  /**
+   * A broken line is not a mode the way a hand-drawn one is: its end being
+   * gone says nothing about whether its shape is the plugin's to decide, and
+   * its colour and caps still apply to the stale line on the canvas. So the
+   * notice appears alongside whatever else that line's state calls for,
+   * rather than replacing it.
+   */
+  it('shows the broken notice without taking any control away', () => {
+    expect(visibleConnectorControls({ lineStyle: 'ELBOW', manualGeometry: false, broken: true })).toEqual({
+      lineStyle: true,
+      cornerRadius: true,
+      detour: true,
+      handedOver: false,
+      broken: true
+    })
+  })
+
+  it('shows both notices for a hand-drawn line whose end is gone', () => {
+    expect(visibleConnectorControls({ lineStyle: 'ELBOW', manualGeometry: true, broken: true })).toMatchObject({
+      handedOver: true,
+      broken: true
+    })
+  })
+
+  it('says nothing about being broken unless it is', () => {
+    for (const manualGeometry of [true, false]) {
+      expect(
+        visibleConnectorControls({ lineStyle: 'ELBOW', manualGeometry, broken: false }).broken
+      ).toBe(false)
     }
   })
 
@@ -147,7 +182,7 @@ describe('visibleConnectorControls', () => {
   it('never shows the hand-drawn notice alongside a shape control', () => {
     for (const manualGeometry of [true, false]) {
       for (const lineStyle of ['STRAIGHT', 'CURVE', 'ELBOW'] as const) {
-        const visible = visibleConnectorControls({ lineStyle, manualGeometry })
+        const visible = visibleConnectorControls({ lineStyle, manualGeometry, broken: false })
         const anyShapeControl = visible.lineStyle || visible.cornerRadius || visible.detour
         expect(visible.handedOver && anyShapeControl).toBe(false)
       }
