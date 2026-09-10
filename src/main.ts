@@ -26,6 +26,7 @@ import {
   lastKnownOwnerOf,
   lastKnownRoleOf,
   annotationTargetsBehind,
+  annotationWriteIsOurs,
   ownerIdOf,
   reconcileAllAnnotations,
   removeRenderedNodesForOwner,
@@ -54,6 +55,7 @@ import {
   createConnector,
   findAllConnectorsOnPage,
   findConnectorBetween,
+  connectorWriteIsOurs,
   findConnectorsInvolving,
   findConnectorsNearBoxes,
   findConnectorsWithEndpointUnder,
@@ -452,10 +454,18 @@ function handleNodeChange(event: NodeChangeEvent): void {
     // whether there is a node left to look at and what narrows it to one.
     // A node deleted in the same batch as a property change arrives this way.
     if (!('absoluteBoundingBox' in node)) {
-      return { ...common, hasBox: false, role: null, ownerId: null }
+      return { ...common, hasBox: false, role: null, ownerId: null, unchangedSinceOurWrite: false }
     }
     if (node.type === 'TEXT') textNodesById.set(node.id, node)
-    return { ...common, hasBox: true, role: roleOf(node), ownerId: ownerIdOf(node) }
+    return {
+      ...common,
+      hasBox: true,
+      role: roleOf(node),
+      ownerId: ownerIdOf(node),
+      // Asked of both features because a change carries no hint of which one
+      // rendered the node, and neither claims a node the other drew.
+      unchangedSinceOurWrite: annotationWriteIsOurs(node) || connectorWriteIsOurs(node)
+    }
   })
 
   const batch = classifyBatch(observed)
@@ -775,8 +785,11 @@ async function resyncTouched({
       await maybeYield()
       continue
     }
-    await updateCardFromDrag(node)
-    touched = true
+    // Only when it actually wrote something. A card that turns out to be
+    // exactly where this plugin put it is not a drag, and running the layout
+    // pass over it would write the same positions back — which is the loop
+    // this whole attribution exists to stop.
+    if (await updateCardFromDrag(node)) touched = true
     await maybeYield()
   }
 

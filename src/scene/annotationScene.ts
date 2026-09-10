@@ -77,6 +77,66 @@ function rememberPlacement(card: FrameNode): void {
   card.setPluginData(PLACED_AT_KEY, placementFingerprint(placement))
 }
 
+/**
+ * Moves a card, and does nothing at all when it is already there.
+ *
+ * The check is not an optimisation. Writing `x` the value it already holds
+ * still fires a `nodechange`, and a card is the one node whose move this
+ * plugin cannot tell from a person's — so an unconditional write wakes a
+ * resync, which lays out again, which writes again. That loop is what made
+ * the editor stutter with the plugin open, and what let a sync overwrite
+ * words being typed into a card at the same moment.
+ *
+ * The same discipline `alreadyDrawn` applies to a connector's vertices and
+ * `samePolyline` to a leader's, which is where it was missing.
+ */
+function placeCard(card: FrameNode, x: number, y: number): void {
+  if (Math.round(card.x) !== Math.round(x)) card.x = x
+  if (Math.round(card.y) !== Math.round(y)) card.y = y
+  rememberPlacement(card)
+}
+
+/**
+ * The words this plugin last wrote into a card, so a person typing into one
+ * can be told from a sync re-rendering it — the text's counterpart to
+ * `annotationPlacedAt`, and the same reasoning as `connectorDrawnAs`.
+ */
+const TEXT_AS_KEY = 'annotationTextAs'
+
+function rememberCardText(text: TextNode): void {
+  text.setPluginData(TEXT_AS_KEY, text.characters)
+}
+
+/** Whether a card's text still holds exactly the words this plugin last wrote into it. */
+function ourCardText(text: TextNode): boolean {
+  const remembered = text.getPluginData(TEXT_AS_KEY)
+  return remembered !== '' && remembered === text.characters
+}
+
+/**
+ * Whether a node Annotate rendered still holds exactly what this plugin last
+ * wrote to it — see `ObservedChange.unchangedSinceOurWrite`.
+ *
+ * Only a card and a card's text can answer yes. A badge or a leader is locked
+ * and positioned only by this plugin, which the change filter already knows
+ * from the role alone; anything else on the page is not ours to vouch for.
+ *
+ * An unrecorded node answers no, which is the safe way round: it is read as a
+ * person's edit, and the first sync after this records it.
+ */
+export function annotationWriteIsOurs(node: SceneNode): boolean {
+  if (node.type === 'FRAME' && roleOf(node) === 'card') {
+    const box = node.absoluteBoundingBox
+    return box !== null && placedByUs(node.getPluginData(PLACED_AT_KEY), box)
+  }
+  if (node.type !== 'TEXT') return false
+  const card = node.parent
+  if (card === null || card.type !== 'FRAME' || roleOf(card) !== 'card') return false
+  // Nothing remembered is not a match, and neither is an emptied card: a card
+  // with no words is a note being deleted, which has to reach the handler.
+  return ourCardText(node)
+}
+
 type Role = 'badge' | 'card' | 'leader'
 
 // Leader colour for an annotation with no category assigned.
@@ -441,20 +501,33 @@ async function ensureCard(
     text.lineHeight = { value: 150, unit: 'PERCENT' }
     text.fills = [figma.util.solidPaint(CARD_TEXT)]
   }
-  // Reasserted every sync, not just on creation: a card whose text node was
-  // created before this fix existed would otherwise stay broken forever —
-  // this is also what was still leaving Thai text in a loopless fallback
-  // font: the font was only ever applied on first creation, so every
-  // already-existing card kept whatever it started with.
-  text.fontName = await resolveCardFont()
+  // Reasserted when it is wrong, not on every sync. It has to be reasserted
+  // at all because a card whose text node was created before the Thai font
+  // was resolved properly would otherwise keep its fallback forever — but
+  // writing it unconditionally means writing to a text node every time any
+  // note re-renders, and a person typing into that card on the canvas is
+  // inside Figma's text editor while it happens. Re-applying a font to the
+  // whole node discards what they have typed and puts the stored words back,
+  // which reads as the card refusing to be edited.
+  //
+  // Compared field by field: `fontName` reads back as `figma.mixed` on a node
+  // with more than one font in it, which is a card to repair rather than one
+  // to leave alone.
+  const wanted = await resolveCardFont()
+  const current = text.fontName
+  const fontIsWanted =
+    typeof current === 'object' &&
+    current.family === wanted.family &&
+    current.style === wanted.style
+  if (!fontIsWanted) text.fontName = wanted
   // After the reassignment above, never before it. Writing `fontSize` first
   // touches whatever font the node is *currently* set to, which for a card
   // written earlier is a Thai face this sync has not loaded — and Figma
   // refuses the write with "Cannot write to node with unloaded font". The
   // same rule the comment above spells out for a brand-new node applies to
   // an existing one whose font is about to be replaced.
-  text.fontSize = metrics.fontSize
-  text.textAutoResize = 'HEIGHT'
+  if (text.fontSize !== metrics.fontSize) text.fontSize = metrics.fontSize
+  if (text.textAutoResize !== 'HEIGHT') text.textAutoResize = 'HEIGHT'
   // Resizing an auto-layout frame makes Figma lay it out again, and this
   // whole dance runs for every note on the page every time the plugin opens.
   // When both widths are already what they should be there is nothing to lay
@@ -721,16 +794,39 @@ async function syncAnnotationBody(
       metricsForSize(record.size)
     )
     card.name = CARD_LAYER_NAME
-    card.x = layout.cardTopLeft.x
-    card.y = layout.cardTopLeft.y
-    // Fingerprinted straight after the write, so the `nodechange` this very
-    // write is about to fire can be recognised as ours whenever it arrives.
-    // The stacking pass below may move the card again and re-record it.
-    rememberPlacement(card)
-    if (text.characters !== record.text) {
+    // Fingerprinted straight after the write, so a `nodechange` this does
+    // fire is recognised as ours whenever it arrives. The stacking pass below
+    // may move the card again and re-record it.
+    placeCard(card, layout.cardTopLeft.x, layout.cardTopLeft.y)
+    // The record's words go onto the card only when the card is still showing
+    // the ones this plugin put there.
+    //
+    // Differing can mean two opposite things, and writing regardless picks
+    // the wrong one half the time: either the record changed — someone typed
+    // in the panel — and the card has to catch up, or the *card* changed
+    // because someone is typing into it on the canvas right now, and writing
+    // would put the stored words back over what they are in the middle of.
+    // The marker says which: it holds what we last wrote, so a card still
+    // matching it has not been touched since.
+    //
+    // A card typed into is left alone here and picked up by
+    // `captureCardTextEdit`, which reads the words the other way — canvas
+    // into record — which is the direction that edit actually goes.
+    const marker = text.getPluginData(TEXT_AS_KEY)
+    // An unmarked card is one drawn before any of this was recorded; there is
+    // nothing to have touched it since, so the record wins.
+    const untouchedSinceOurWrite = marker === '' || marker === text.characters
+    if (untouchedSinceOurWrite && text.characters !== record.text) {
       await figma.loadFontAsync(text.fontName as FontName)
       text.characters = record.text
     }
+    // Marked whenever the card and the record agree, however they came to —
+    // including the pass right after `captureCardTextEdit` has read somebody's
+    // typing into the record. Marking only after a write of our own left the
+    // marker stale from the moment anyone edited a card on the canvas, and a
+    // stale marker reads as "somebody is typing" forever: the card then
+    // ignored every later edit made in the panel.
+    if (text.characters !== marker && text.characters === record.text) rememberCardText(text)
 
     // Held from wherever the leader is placed below, so the order check at
     // the end has something to compare against without looking it up again.
@@ -881,13 +977,11 @@ export async function applyCardStacking(): Promise<void> {
           // card out of a frame — after which its `x` still holds a
           // frame-relative number that now reads as a page one, and writing
           // only `y` leaves the card sitting a frame's width off to the side.
-          item.card.x = item.left
-          item.card.y = top
           // Recorded here too, and this is the case a comparison against the
           // layout alone could not cover: stacking deliberately puts a card
           // somewhere its own layout does not, so "is it where the layout
           // says" would read every stacked card as dragged.
-          rememberPlacement(item.card)
+          placeCard(item.card, item.left, top)
           if (item.leader === null || item.leader.removed) return
           ensureOnPage(item.leader)
 
@@ -1037,13 +1131,13 @@ const CARD_OFFSET_EPSILON = 0.5
  * Captures a manual drag of the card as the record's new offset preference,
  * then re-syncs so the badge/leader catch up to wherever the card landed.
  */
-export async function updateCardFromDrag(target: SceneNode): Promise<void> {
+export async function updateCardFromDrag(target: SceneNode): Promise<boolean> {
   const record = getAnnotationRecord(target)
-  if (record === null) return
+  if (record === null) return false
   const rendered = findRenderedNodes(target.id)
-  if (rendered.card === null) return
+  if (rendered.card === null) return false
   const rect = target.absoluteBoundingBox
-  if (rect === null) return
+  if (rect === null) return false
 
   // `.x`/`.y` are relative to whatever the card's *current* parent is — and
   // the drag that triggered this call may well have dropped the card onto a
@@ -1053,7 +1147,7 @@ export async function updateCardFromDrag(target: SceneNode): Promise<void> {
   // one-off glitch, a permanently corrupted position. `absoluteBoundingBox`
   // is immune to whatever the parent currently is.
   const cardBox = rendered.card.absoluteBoundingBox
-  if (cardBox === null) return
+  if (cardBox === null) return false
 
   // Our own write coming back. A card is unlocked so a person can drag it,
   // which means a `nodechange` for one says nothing about who moved it —
@@ -1061,7 +1155,7 @@ export async function updateCardFromDrag(target: SceneNode): Promise<void> {
   // `withSuppressedNodeChange` used to be raised for. Answered by content
   // instead: if the card is exactly where this plugin last put it, nobody
   // has touched it since.
-  if (placedByUs(rendered.card.getPluginData(PLACED_AT_KEY), cardBox)) return
+  if (placedByUs(rendered.card.getPluginData(PLACED_AT_KEY), cardBox)) return false
 
   const before = layoutFor(target, rect, record)
   const newOffset: Point = {
@@ -1079,7 +1173,7 @@ export async function updateCardFromDrag(target: SceneNode): Promise<void> {
   // width they actually chose the first time the card passed a tight spot.
   const widthNow = cardBox.width
   const resized = Math.abs(widthNow - before.cardWidth) >= CARD_OFFSET_EPSILON
-  if (!movedBy && !resized) return
+  if (!movedBy && !resized) return false
 
   writeAnnotationRecord(target, {
     ...record,
@@ -1089,6 +1183,7 @@ export async function updateCardFromDrag(target: SceneNode): Promise<void> {
   })
   await syncAnnotation(target)
   await finalizeLayout()
+  return true
 }
 
 /**

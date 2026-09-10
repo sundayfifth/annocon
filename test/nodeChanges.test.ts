@@ -16,6 +16,7 @@ function change(overrides: Partial<ObservedChange> = {}): ObservedChange {
     hasBox: true,
     role: null,
     ownerId: null,
+    unchangedSinceOurWrite: false,
     ...overrides
   }
 }
@@ -24,6 +25,64 @@ const moved = (overrides: Partial<ObservedChange> = {}) =>
   change({ properties: ['x', 'y'], ...overrides })
 
 describe('classifyChange', () => {
+  /**
+   * The first question asked of any property change, and the one that
+   * replaced the timing-based suppress flag. Every meaning below it would be
+   * acting on what this plugin itself just wrote — and since the three
+   * properties that reach this filter looking like a person's edit are also
+   * the three written on every sync, a pass that acted on them would lay out
+   * again, write again, and wake itself.
+   */
+  describe('a write of our own', () => {
+    it('means nothing at all, whatever the change says', () => {
+      expect(classifyChange(moved({ unchangedSinceOurWrite: true }))).toEqual({
+        deleted: false,
+        movedTarget: false,
+        draggedCardOwnerId: null,
+        editedText: false
+      })
+    })
+
+    it('is dropped for a card that has not moved since we placed it', () => {
+      const ours = moved({ role: 'card', ownerId: 'layer-1', unchangedSinceOurWrite: true })
+      expect(classifyChange(ours).draggedCardOwnerId).toBeNull()
+    })
+
+    it('is dropped for a card still showing the words we wrote', () => {
+      const ours = change({
+        properties: ['characters'],
+        nodeType: 'TEXT',
+        unchangedSinceOurWrite: true
+      })
+      expect(classifyChange(ours).editedText).toBe(false)
+    })
+
+    it('is dropped for a connector still holding the shape we drew', () => {
+      const ours = change({
+        properties: ['vectorNetwork'],
+        nodeType: 'VECTOR',
+        unchangedSinceOurWrite: true
+      })
+      expect(classifyChange(ours).movedTarget).toBe(false)
+    })
+
+    /**
+     * A deletion is judged by id in `scene/removals.ts`, not by content —
+     * there is none left to compare — so this flag has no say over one.
+     */
+    it('has no say over a deletion', () => {
+      const gone = change({ type: 'DELETE', hasBox: false, unchangedSinceOurWrite: true })
+      expect(classifyChange(gone).deleted).toBe(true)
+    })
+
+    /** The same change from a person is the thing that must still get through. */
+    it('lets the identical change through when it is not ours', () => {
+      expect(classifyChange(moved({ role: 'card', ownerId: 'layer-1' })).draggedCardOwnerId).toBe(
+        'layer-1'
+      )
+    })
+  })
+
   it('takes a deletion as a deletion, whatever else it says', () => {
     expect(classifyChange(change({ type: 'DELETE', hasBox: false }))).toMatchObject({
       deleted: true,

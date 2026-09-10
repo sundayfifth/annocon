@@ -10,8 +10,9 @@
  * `scene/removals.ts` handles deletions, which have no content left to judge.
  *
  * A timing-based flag used to sit in front of all of this, dropping any batch
- * that arrived while a write was in flight. Measuring what it caught is what
- * produced this file; nothing it did is missing.
+ * that arrived while a write was in flight. `unchangedSinceOurWrite` is what
+ * replaced it — the same job, asked of the node's content rather than of a
+ * clock.
  *
  * Structural change type, like `TreeNode` and `OwnedNode` elsewhere in core:
  * the scene layer reads Figma's `NodeChangeEvent` and hands the parts of it
@@ -40,6 +41,23 @@ export interface ObservedChange {
   readonly role: ObservedRole
   /** The layer this node is a rendered part of, or `null` when it is not one of ours. */
   readonly ownerId: string | null
+  /**
+   * Whether this node still holds exactly what this plugin last wrote to it.
+   *
+   * The scene layer answers it by comparing content — a card against the
+   * placement it was given, a connector against the shape it was drawn as, a
+   * card's text against the words in its record. `false` for anything not
+   * rendered by this plugin, which is most of a page.
+   *
+   * This is the whole of what the removed suppress flag used to do, done
+   * without a clock: a write of ours must not merely be ignored downstream,
+   * it must not wake a pass at all. The three properties that reach this
+   * filter looking exactly like a person's edit — a card's position, a card's
+   * words, a connector's vertices — are also the three the plugin writes on
+   * every sync, so a pass that acts on them lays out again, writes again, and
+   * wakes itself.
+   */
+  readonly unchangedSinceOurWrite: boolean
 }
 
 /**
@@ -101,6 +119,9 @@ const NOTHING: ChangeEffects = {
 export function classifyChange(change: ObservedChange): ChangeEffects {
   if (change.type === 'DELETE') return { ...NOTHING, deleted: true }
   if (change.type !== 'PROPERTY_CHANGE') return NOTHING
+  // Our own write coming back. Checked before anything else a property could
+  // mean, because every meaning below would be acting on what we just did.
+  if (change.unchangedSinceOurWrite) return NOTHING
 
   const editedText =
     change.properties.includes('characters') && change.nodeType === 'TEXT' && change.hasBox
