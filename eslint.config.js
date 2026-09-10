@@ -10,6 +10,11 @@ import tseslint from 'typescript-eslint'
 export default tseslint.config(
   { ignores: ['build/**', 'coverage/**', 'manifest.json', 'node_modules/**'] },
   ...tseslint.configs.recommendedTypeChecked,
+  {
+    rules: {
+      '@typescript-eslint/no-unnecessary-condition': 'error'
+    }
+  },
   figmaPlugins.flatConfigs.recommended,
   {
     languageOptions: {
