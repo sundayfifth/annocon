@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 120" width="300" height="120" role="img" aria-label="เมื่อ layer ปลายทางถูกลบ เส้นจะกลายเป็นเส้นประสีแดง และปลั๊กอินบอกให้รู้พร้อมปุ่มลบ">
+  <style>
+    .s { fill: #F5F5F7; stroke: #D5D5DC; stroke-width: 1.5; }
+    .w { fill: none; stroke: #1E1E24; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .c { fill: #1E1E24; }
+    .broken { fill: none; stroke: #E5484D; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 3 4; }
+    .bdot { fill: #E5484D; }
+    .card { fill: #FFFFFF; stroke: #E1E1E6; stroke-width: 1.5; }
+    .t { fill: #C9C9D2; }
+    .btn { fill: #F5F5F7; stroke: #D5D5DC; stroke-width: 1.5; }
+    @media (prefers-color-scheme: dark) {
+      .s { fill: #26262C; stroke: #3A3A44; }
+      .w { stroke: #E8E8EE; }
+      .c { fill: #E8E8EE; }
+      .card { fill: #1C1C21; stroke: #3A3A44; }
+      .t { fill: #4A4A56; }
+      .btn { fill: #26262C; stroke: #3A3A44; }
+    }
+  </style>
+
+  <!-- the surviving screen -->
+  <rect class="s" x="16" y="34" width="64" height="52" rx="6"/>
+
+  <!-- the screen that gets deleted -->
+  <g>
+    <rect class="s" x="150" y="34" width="64" height="52" rx="6"/>
+    <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.3;0.42;0.9;1" dur="4s" repeatCount="indefinite"/>
+  </g>
+
+  <!-- the healthy line, while both ends are there -->
+  <g>
+    <path class="w" d="M80 60 L150 60"/>
+    <circle class="c" cx="80" cy="60" r="3"/>
+    <path class="c" d="M138 54 L150 60 L138 66 Z"/>
+    <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.3;0.42;0.9;1" dur="4s" repeatCount="indefinite"/>
+  </g>
+
+  <!-- what is left once an end is gone: red, dashed, held where it was -->
+  <g opacity="0">
+    <path class="broken" d="M80 60 L150 60"/>
+    <circle class="bdot" cx="80" cy="60" r="3"/>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.42;0.5;0.9;1" dur="4s" repeatCount="indefinite"/>
+  </g>
+
+  <!-- the panel saying what happened, and offering the way out -->
+  <g opacity="0">
+    <rect class="card" x="150" y="30" width="132" height="60" rx="6"/>
+    <rect class="bdot" x="160" y="41" width="34" height="5" rx="2.5"/>
+    <rect class="t" x="160" y="53" width="110" height="4" rx="2"/>
+    <rect class="t" x="160" y="61" width="86" height="4" rx="2"/>
+    <rect class="btn" x="160" y="71" width="52" height="12" rx="4"/>
+    <rect class="t" x="169" y="75.5" width="34" height="3" rx="1.5"/>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.5;0.58;0.9;1" dur="4s" repeatCount="indefinite"/>
+  </g>
+</svg>
