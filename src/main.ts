@@ -173,8 +173,14 @@ function summariseSelection(): Array<SelectionSummary> {
               manualGeometry: connectorRecord.manualGeometry,
               broken: isBrokenConnector(node),
               labelColor: connectorRecord.labelColor,
-              startMagnet: connectorRecord.start.kind === 'magnet' ? connectorRecord.start.magnet : 'AUTO',
-              endMagnet: connectorRecord.end.kind === 'magnet' ? connectorRecord.end.magnet : 'AUTO',
+              // No longer a choice: `Anchor` has one kind, and
+              // `parseConnectorRecord` refuses a record whose anchor is
+              // anything else, so a record that exists has magnets on both
+              // ends. The ternary this replaces was left behind when the
+              // union was cut, and read as though `'AUTO'` were a real
+              // fallback somebody might see.
+              startMagnet: connectorRecord.start.magnet,
+              endMagnet: connectorRecord.end.magnet,
               label: connectorRecord.label
             }
     }

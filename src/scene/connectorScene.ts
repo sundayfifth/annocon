@@ -424,13 +424,37 @@ export async function captureManualReshape(node: SceneNode): Promise<boolean> {
  * the canvas using `absoluteTransform` — the one thing that answers "where
  * is this" whatever the node's parent happens to be.
  */
-function drawnShapeOf(node: VectorNode): DrawnRun | null {
+/**
+ * Where a node actually sits on the page, whatever it is parented to.
+ *
+ * Read from `absoluteTransform` rather than `x`/`y`, which are relative to
+ * the current parent — the distinction this file turns on, since a connector
+ * is deliberately unlocked and Figma reparents anything dropped onto a frame.
+ *
+ * The fallbacks are unreachable: Figma types `absoluteTransform` as a fixed
+ * 2x3 tuple, so neither index can be missing, and the lint rule is right to
+ * say so. They are kept, and gathered here rather than left in three copies,
+ * because the guard is against Figma contradicting its own type — which
+ * nothing in this codebase can test for.
+ *
+ * What they must not become is trusted. `node.x` is the *relative* position,
+ * so a fallback that ever did fire would hand back the wrong kind of number
+ * rather than a safe one, which is the exact failure the callers below exist
+ * to prevent. Worth replacing with something that fails loudly; not worth
+ * changing blind.
+ */
+function absolutePositionOf(node: SceneNode): Point {
   const transform = node.absoluteTransform
-  return walkDrawnShape(
-    node.vectorNetwork,
-    transform[0]?.[2] ?? node.x,
-    transform[1]?.[2] ?? node.y
-  )
+  /* eslint-disable @typescript-eslint/no-unnecessary-condition */
+  const x = transform[0]?.[2] ?? node.x
+  const y = transform[1]?.[2] ?? node.y
+  /* eslint-enable @typescript-eslint/no-unnecessary-condition */
+  return { x, y }
+}
+
+function drawnShapeOf(node: VectorNode): DrawnRun | null {
+  const at = absolutePositionOf(node)
+  return walkDrawnShape(node.vectorNetwork, at.x, at.y)
 }
 
 /** Puts a hand-drawn connector back under the plugin's own routing. */
@@ -785,12 +809,10 @@ async function syncConnectorBody(
     // recorded shape to carry — would leave the line a whole frame origin
     // from where it was. So the absolute position is put back straight away,
     // and the drawing paths overwrite it as before.
-    const before = node.absoluteTransform
-    const absoluteX = before[0]?.[2] ?? node.x
-    const absoluteY = before[1]?.[2] ?? node.y
+    const before = absolutePositionOf(node)
     ensureOnPage(node)
-    node.x = absoluteX
-    node.y = absoluteY
+    node.x = before.x
+    node.y = before.y
     node.opacity = record.opacity
     if (!geometry.complete) {
       // Dangling — an endpoint's node is gone. Flag it visually and leave
@@ -879,12 +901,10 @@ async function syncConnectorBody(
     // what they mean. Without putting the absolute position back, a line
     // that drifted mid-draw is teleported by the frame's origin the instant
     // it finishes being drawn.
-    const drawnAt = node.absoluteTransform
-    const drawnX = drawnAt[0]?.[2] ?? node.x
-    const drawnY = drawnAt[1]?.[2] ?? node.y
+    const drawnAt = absolutePositionOf(node)
     ensureOnPage(node)
-    node.x = drawnX
-    node.y = drawnY
+    node.x = drawnAt.x
+    node.y = drawnAt.y
     // Fingerprinted after every draw, so the next change to this node can be
     // attributed: matching means we drew it, differing means somebody else did.
     rememberDrawnShape(node)
