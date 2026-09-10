@@ -58,15 +58,36 @@ Manual verification steps are in `docs/qa-checklist.md`.
 - Geometry flows one way: pluginData record → rendered node. Never read geometry
   back off a node; `vectorPaths` round-trips lossily and setting it moves and
   resizes the node.
+- **Never write a value the node already holds.** Not an optimisation — a
+  correctness rule. Figma reports a write as a change whether or not anything
+  changed, so an unconditional write is an event, and an event we cannot
+  attribute wakes a pass that writes again. `alreadyDrawn`, `samePolyline` and
+  `placeCard` are this rule; text properties reasserted every sync were how it
+  got broken, and a card being re-placed on every sync is how the plugin spent
+  a day waking itself in a loop. It is also what stops a sync interrupting
+  somebody: re-applying a font to a text node discards what they are typing
+  into it.
 - Our own writes come back through `nodechange`, and are told from a person's
   edits **by content, never by timing**. Three mechanisms, in the order a
   change meets them: the property filter in `core/nodeChanges.ts` drops what
-  no feature acts on (a `pluginData` echo, a reparent); `core/authorship.ts`
-  fingerprints the two writes that are genuinely ambiguous (a card's placement,
-  a connector's shape); `scene/removals.ts` names nodes we deleted, since a
-  deletion leaves no content to compare. Add a write that a person could also
-  make by hand and it needs one of these — a flag raised around the write does
-  not work, which is why there is no longer one.
+  no feature acts on (a `pluginData` echo, a reparent); `unchangedSinceOurWrite`
+  on the same change asks each feature whether the node still holds what we
+  last wrote, using the fingerprints in `core/authorship.ts`; `scene/removals.ts`
+  names nodes we deleted, since a deletion leaves no content to compare. Add a
+  write that a person could also make by hand and it needs one of these — a
+  flag raised around the write does not work, which is why there is no longer
+  one.
+- **A write that is not dropped by the property filter must be attributable
+  before it is acted on, not after.** Stopping a pass from acting wrongly is
+  not the same as stopping it from being woken, and only the second one ends
+  the loop. When measuring which writes are safe, enumerate the ones that get
+  *through* the filter — three do, and they are the three written on every
+  sync — rather than the ones it stops.
+- **When a value on a node and a value in a record disagree, decide which one
+  changed before writing either way.** A card whose text differs from its
+  record is either a record edited in the panel, or a person typing on the
+  canvas right now; the same difference, opposite correct responses. The
+  fingerprint of what we last wrote is what tells them apart.
 - Treat the canvas as untrusted: users move and delete the rendered nodes by
   hand, so reconciliation repairs whatever it finds instead of assuming.
 - Chunk long work. The plugin runs on the editor's main thread — a slow loop
