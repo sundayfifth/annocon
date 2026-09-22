@@ -110,6 +110,41 @@ describe('resolveAnchorPair', () => {
     expect(pair.end).toBeNull()
   })
 
+  /**
+   * An end whose layer was deleted. It keeps the place it was reaching for,
+   * so the line still has two points to draw between — which is the whole
+   * difference between a connector that survives losing a screen and one
+   * that only survives being deleted.
+   */
+  it('resolves an end that is attached to nothing, at the point it holds', () => {
+    const loose: Anchor = { kind: 'free', point: { x: -300, y: 50 } }
+    const pair = resolveAnchorPair(auto('l'), left, loose, null)
+    expect(pair.end).toEqual({ x: -300, y: 50 })
+    expect(pair.start).not.toBeNull()
+  })
+
+  /** A free end sits in open space, so there is no edge to come away from. */
+  it('gives a free end no side', () => {
+    const loose: Anchor = { kind: 'free', point: { x: -300, y: 50 } }
+    expect(resolveAnchorPair(auto('l'), left, loose, null).endSide).toBeNull()
+  })
+
+  /** The surviving end still aims at where the loose one actually is. */
+  it('points the attached end at the free one', () => {
+    const toTheLeft: Anchor = { kind: 'free', point: { x: -900, y: 50 } }
+    const toTheRight: Anchor = { kind: 'free', point: { x: 900, y: 50 } }
+    expect(resolveAnchorPair(auto('l'), left, toTheLeft, null).startSide).toBe('LEFT')
+    expect(resolveAnchorPair(auto('l'), left, toTheRight, null).startSide).toBe('RIGHT')
+  })
+
+  it('draws between two free ends with no layers at all', () => {
+    const a: Anchor = { kind: 'free', point: { x: 0, y: 0 } }
+    const b: Anchor = { kind: 'free', point: { x: 200, y: 120 } }
+    const pair = resolveAnchorPair(a, null, b, null)
+    expect(pair.start).toEqual({ x: 0, y: 0 })
+    expect(pair.end).toEqual({ x: 200, y: 120 })
+  })
+
   it('reports which side each endpoint resolved to, null for a missing box', () => {
     const pair = resolveAnchorPair(auto('l'), left, auto('r'), right)
     expect(pair.startSide).toBe('RIGHT')

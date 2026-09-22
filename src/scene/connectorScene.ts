@@ -92,6 +92,61 @@ const DRAWN_AS_KEY = 'connectorDrawnAs'
  */
 const BROKEN_KEY = 'connectorBroken'
 
+/**
+ * Where each end of this connector last resolved to, as `x,y|x,y`.
+ *
+ * Kept so that an end can be released in place when the layer holding it is
+ * deleted. By the time `nodechange` reports the deletion the node is a
+ * `RemovedNode` with no box left to ask, and the plugin does not read
+ * geometry back off its own line — so the only way to know where the end was
+ * is to have written it down while it was still true.
+ */
+const REACHED_KEY = 'connectorReachedAt'
+
+function rememberReached(node: VectorNode, start: Point, end: Point): void {
+  node.setPluginData(REACHED_KEY, `${start.x},${start.y}|${end.x},${end.y}`)
+}
+
+function readReached(node: SceneNode): { start: Point; end: Point } | null {
+  const parts = node.getPluginData(REACHED_KEY).split('|')
+  const points = parts.map((part) => {
+    const [x, y] = part.split(',').map(Number)
+    return typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y)
+      ? { x, y }
+      : null
+  })
+  const [start, end] = points
+  if (typeof start === 'undefined' || start === null) return null
+  if (typeof end === 'undefined' || end === null) return null
+  return { start, end }
+}
+
+/**
+ * Cuts one end loose where it stands, when the layer it was holding is gone.
+ *
+ * The line keeps the place it was already reaching for and carries on being a
+ * line. Doing nothing instead would leave it dangling — drawn, but attached
+ * to something that no longer exists, and useful only for deleting.
+ *
+ * Answers whether anything was released, so a caller can tell a connector
+ * that lost an end from one that merely had a neighbour deleted.
+ */
+export function releaseAnchorsFrom(node: VectorNode, deletedNodeId: string): boolean {
+  const record = getConnectorRecord(node)
+  if (record === null) return false
+  const reached = readReached(node)
+  if (reached === null) return false
+  const loosen = (anchor: ConnectorRecord['start'], at: Point): ConnectorRecord['start'] =>
+    anchor.kind === 'magnet' && anchor.nodeId === deletedNodeId
+      ? { kind: 'free', point: at }
+      : anchor
+  const start = loosen(record.start, reached.start)
+  const end = loosen(record.end, reached.end)
+  if (start === record.start && end === record.end) return false
+  writeConnectorRecord(node, { ...record, start, end })
+  return true
+}
+
 /** Whether the last sync found an end with no layer left to attach to. */
 export function isBrokenConnector(node: SceneNode): boolean {
   return node.getPluginData(BROKEN_KEY) === 'true'
@@ -156,7 +211,7 @@ export function findConnectorsInvolving(
 }
 
 function anchorRefersTo(anchor: ConnectorRecord['start'], nodeId: string): boolean {
-  return anchor.nodeId === nodeId
+  return anchor.kind === 'magnet' && anchor.nodeId === nodeId
 }
 
 /**
@@ -178,7 +233,7 @@ export function findConnectorBetween(aId: string, bId: string): VectorNode | nul
 }
 
 function anchorIn(anchor: ConnectorRecord['start'], ids: ReadonlySet<string>): boolean {
-  return ids.has(anchor.nodeId)
+  return anchor.kind === 'magnet' && ids.has(anchor.nodeId)
 }
 
 /**
@@ -392,8 +447,8 @@ export async function captureManualReshape(node: SceneNode): Promise<boolean> {
   // instead is what the project's own rule warns against, and what made the
   // handles loop.
   const [startBoxes, endBoxes] = await Promise.all([
-    boxesOf(record.start.nodeId),
-    boxesOf(record.end.nodeId)
+    boxesOfAnchor(record.start),
+    boxesOfAnchor(record.end)
   ])
   const geometry = resolveConnectorGeometry(
     record,
@@ -598,6 +653,17 @@ interface EndpointBoxes {
 
 const NO_ENDPOINT: EndpointBoxes = { rect: null, frameRect: null, obstacleId: null }
 
+/**
+ * The boxes behind one end of a connector.
+ *
+ * A free end has no layer and so no boxes — `NO_ENDPOINT` without asking the
+ * document, which is the whole saving: a line with a free end still resolves
+ * and still draws, it simply has nothing to measure on that side.
+ */
+async function boxesOfAnchor(anchor: ConnectorRecord['start']): Promise<EndpointBoxes> {
+  return anchor.kind === 'magnet' ? boxesOf(anchor.nodeId) : NO_ENDPOINT
+}
+
 async function boxesOf(nodeId: string): Promise<EndpointBoxes> {
   const node = await figma.getNodeByIdAsync(nodeId)
   if (node === null || !('absoluteBoundingBox' in node)) return NO_ENDPOINT
@@ -754,8 +820,8 @@ export async function syncConnector(
   if (record === null) return
 
   const [startBoxes, endBoxes] = await Promise.all([
-    boxesOf(record.start.nodeId),
-    boxesOf(record.end.nodeId)
+    boxesOfAnchor(record.start),
+    boxesOfAnchor(record.end)
   ])
   const geometry = resolveConnectorGeometry(
     record,
@@ -832,6 +898,9 @@ async function syncConnectorBody(
     const start = geometry.start
     const end = geometry.end
     if (start === null || end === null) return
+    // Written while it is still true, so an end can be released in place if
+    // the layer holding it is deleted — see `REACHED_KEY`.
+    rememberReached(node, start, end)
 
     // Reshaped by hand: everything above still applies — colour, weight, the
     // dash on a broken line — and nothing below does. The plugin has handed
@@ -1173,6 +1242,11 @@ export async function updateConnectorAnchorSide(
   const record = getConnectorRecord(node)
   if (record === null) return
   const anchor: Anchor = record[side]
+  // A free end has no box, so no side of one to leave by. The panel does not
+  // offer the choice for such an end — this is the second line, not the
+  // first, and it is here because the panel and the record can disagree for
+  // as long as it takes a message to arrive.
+  if (anchor.kind !== 'magnet') return
   writeConnectorRecord(node, { ...record, [side]: { ...anchor, magnet } })
   await syncConnector(node)
 }

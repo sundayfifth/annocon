@@ -18,7 +18,7 @@
  * canvas deletes the record with it; there is nothing left to orphan.
  */
 
-import { type Anchor, isMagnet } from './anchor.js'
+import { type Anchor, isMagnet, isPoint } from './anchor.js'
 import { type ManualShape, parseManualShape } from './manualShape.js'
 
 /**
@@ -280,13 +280,14 @@ export function serialiseConnectorStylePrefs(prefs: ConnectorStylePrefs): string
 /**
  * A record whose anchor does not decode is `null` rather than repaired, unlike
  * the style fields — including one carrying a `kind` this build does not know,
- * which is how a `ratio` or `free` anchor written by some future build arrives
+ * which is how a `ratio` anchor written by some future build would arrive
  * here. There is no default endpoint to fall back to: a connector with a
  * guessed end is a line drawn somewhere nobody put it.
  */
 function isAnchor(value: unknown): value is Anchor {
   if (typeof value !== 'object' || value === null) return false
   const candidate = value as Record<string, unknown>
+  if (candidate.kind === 'free') return isPoint(candidate.point)
   if (candidate.kind !== 'magnet') return false
   return (
     typeof candidate.nodeId === 'string' && candidate.nodeId !== '' && isMagnet(candidate.magnet)

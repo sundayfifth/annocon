@@ -276,15 +276,34 @@ describe('parseConnectorRecord', () => {
   })
 
   it('rejects the whole record when an anchor is of a kind this build cannot resolve', () => {
-    // How a `ratio` or `free` anchor from a future build arrives here. Unlike
-    // a style field, there is no default endpoint to fall back to, so the
+    // How a `ratio` anchor from a future build would arrive here. Unlike a
+    // style field, there is no default endpoint to fall back to, so the
     // record is refused rather than repaired into a line drawn somewhere its
     // author never put it.
+    const raw = JSON.stringify({
+      start: { kind: 'ratio', nodeId: 'a', ratio: { x: 0.5, y: 0.5 } },
+      end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' }
+    })
+    expect(parseConnectorRecord(raw)).toBeNull()
+  })
+
+  it('reads an end that is attached to nothing', () => {
     const raw = JSON.stringify({
       start: { kind: 'free', point: { x: 1, y: 2 } },
       end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' }
     })
-    expect(parseConnectorRecord(raw)).toBeNull()
+    expect(parseConnectorRecord(raw)?.start).toEqual({ kind: 'free', point: { x: 1, y: 2 } })
+  })
+
+  /** A free end is a place, so a place is what it has to carry. */
+  it('rejects a free end with no usable point', () => {
+    for (const point of [undefined, null, { x: 1 }, { x: 1, y: 'two' }, { x: 1, y: Number.NaN }]) {
+      const raw = JSON.stringify({
+        start: { kind: 'free', point },
+        end: { kind: 'magnet', nodeId: 'b', magnet: 'AUTO' }
+      })
+      expect(parseConnectorRecord(raw)).toBeNull()
+    }
   })
 
   it('reads a label when present, else defaults to none', () => {

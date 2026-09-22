@@ -426,9 +426,37 @@ function MagnetGraphicPicker({
   onChange
 }: {
   label: string
-  value: Magnet
+  /** `null` for an end attached to nothing — see `ConnectorStyleSummary`. */
+  value: Magnet | null
   onChange: (magnet: Magnet) => void
 }) {
+  // An end with no layer has no box, and so no side of one to leave by.
+  // Saying that is better than showing dots that would do nothing: this
+  // control was dead for exactly this state once before, silently, and the
+  // lesson was that the panel has to know what the record knows.
+  if (value === null) {
+    return (
+      <div style={{ flex: '1 1 0' }}>
+        <Text>
+          <Muted>{label}</Muted>
+        </Text>
+        <VerticalSpace space="extraSmall" />
+        <div
+          style={{
+            alignItems: 'center',
+            display: 'flex',
+            height: '52px',
+            justifyContent: 'center',
+            textAlign: 'center'
+          }}
+        >
+          <Text>
+            <Muted>ลอยอยู่</Muted>
+          </Text>
+        </div>
+      </div>
+    )
+  }
   return (
     <div style={{ flex: '1 1 0' }}>
       <Text>

@@ -59,6 +59,7 @@ import {
   deleteConnector,
   findConnectorsInvolving,
   isBrokenConnector,
+  releaseAnchorsFrom,
   findConnectorsNearBoxes,
   findConnectorsWithEndpointUnder,
   getConnectorRecord,
@@ -179,8 +180,8 @@ function summariseSelection(): Array<SelectionSummary> {
               // ends. The ternary this replaces was left behind when the
               // union was cut, and read as though `'AUTO'` were a real
               // fallback somebody might see.
-              startMagnet: connectorRecord.start.magnet,
-              endMagnet: connectorRecord.end.magnet,
+              startMagnet: connectorRecord.start.kind === 'magnet' ? connectorRecord.start.magnet : null,
+              endMagnet: connectorRecord.end.kind === 'magnet' ? connectorRecord.end.magnet : null,
               label: connectorRecord.label
             }
     }
@@ -687,6 +688,10 @@ async function resyncTouched({
       }
     }
     for (const connector of findConnectorsInvolving(id, allConnectors)) {
+      // Cut loose before re-syncing, not after: released in place the line
+      // still resolves and draws normally, whereas a sync run first would
+      // find an end with no layer and mark the whole connector broken.
+      releaseAnchorsFrom(connector, id)
       await syncConnectorOnce(connector)
     }
     touched = true
