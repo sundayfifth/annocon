@@ -40,9 +40,16 @@ export interface ConnectorStyleSummary {
   readonly broken: boolean
   /** The label pill's fill. */
   readonly labelColor: string
-  /** Which side of the start/end node the connector exits/enters from. `AUTO` picks based on relative position. */
-  readonly startMagnet: Magnet
-  readonly endMagnet: Magnet
+  /**
+   * Which side of the start/end node the connector exits/enters from. `AUTO`
+   * picks based on relative position.
+   *
+   * `null` for an end that is not attached to a layer at all — there is no
+   * box, so no side of one to leave by, and the panel says so instead of
+   * offering a choice that would do nothing.
+   */
+  readonly startMagnet: Magnet | null
+  readonly endMagnet: Magnet | null
   /** Optional label drawn at the midpoint of the route. Empty string means none. */
   readonly label: string
 }

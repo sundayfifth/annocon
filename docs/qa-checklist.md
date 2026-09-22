@@ -285,19 +285,30 @@ these are the paths that used to depend on the flag being raised in time.
 
 ## A connector whose end is gone
 
-Deleting a layer a connector is attached to leaves the line on the canvas,
-drawn red and dashed — there is nothing correct to route to, and guessing
-would be worse than a stale but honest line. What was missing was anything
-saying so.
+Deleting a layer a connector was attached to now **cuts that end loose where
+it stood** rather than leaving the line dangling. The line keeps the place it
+was already reaching for and carries on being a line — which is what FigJam
+does, and what someone who has just swapped one screen out of a flow expects.
 
-- [ ] Draw a connector, delete the layer at one end, then select the red
-      dashed line → the panel explains what happened and offers to delete it.
-- [ ] Press that button → the line goes, and its label pill with it.
-- [ ] Select an ordinary connector → no such notice.
-- [ ] Reshape a line by hand, then delete a layer at one end → both notices
-      appear. Being broken says nothing about whose the shape is, so neither
-      state replaces the other, and no control is taken away: colour, caps and
-      the label still apply to the line sitting on the canvas.
+- [ ] Draw a connector between two frames, note where it meets the second one,
+      then delete that frame → the line stays, still drawn normally, with that
+      end sitting where the frame's edge was. Not red, not dashed, not frozen.
+- [ ] Select that line → the panel shows **ลอยอยู่** in place of the magnet
+      dots for the loose end, and normal dots for the end still attached.
+- [ ] Move the layer at the attached end → the line follows it, and the loose
+      end stays put.
+- [ ] Undo the deletion → the frame comes back. The end stays loose, which is
+      correct: releasing it was a real edit, and undo returns the frame, not
+      the attachment.
+- [ ] Delete the *other* frame too → both ends are loose, and the line is
+      still there.
+
+The red dashed state is still reachable for a connector that lost an end
+before the plugin ever drew it — there is no remembered place to release it
+to, and a guess would be worse.
+
+- [ ] A connector whose end was deleted while the plugin was closed → red and
+      dashed, with the notice and the delete button.
 
 ## The connector panel's number fields
 

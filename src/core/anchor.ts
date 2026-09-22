@@ -47,28 +47,43 @@ export function isPoint(value: unknown): value is Point {
   )
 }
 
-/**
- * Snaps to the midpoint of a side of `nodeId`'s box, like a FigJam magnet.
- *
- * This was a three-way union — a magnet, a `ratio` pinned to a relative point
- * in the box, and a `free` point fixed in canvas space, mirroring FigJam.
- * Nothing ever created the other two: every anchor this plugin writes is a
- * magnet, so the branches that resolved a `ratio` or a `free` point were
- * unreachable, and so was the silent `return` they left in
- * `updateConnectorAnchorSide` — which made every magnet in the panel a dead
- * button for a state no code could produce.
- *
- * `kind` survives the cut with one value in it. It is on disk in every record
- * written so far, and dropping it would make records this build writes
- * unreadable to a teammate still running an older import of the plugin. It is
- * also the seam to widen if a second kind ever earns its place — at which
- * point resolution branches again, and the panel has to say so.
- */
-export interface Anchor {
+/** Snaps to the midpoint of a side of `nodeId`'s box, like a FigJam magnet. */
+export interface MagnetAnchor {
   readonly kind: 'magnet'
   readonly nodeId: string
   readonly magnet: Magnet
 }
+
+/**
+ * Not attached to anything — a point fixed in canvas space.
+ *
+ * What an end becomes when the layer it was holding is deleted. The line
+ * keeps the place it was already reaching for and carries on being a line,
+ * instead of freezing into something whose only remaining use is to be
+ * deleted. FigJam's connectors behave this way, and a person who has just
+ * removed one screen from a flow of six usually means to put another in its
+ * place, not to redraw the arrow.
+ *
+ * This existed once and was cut, in the same change that cut `ratio`, because
+ * nothing created either and the unreachable branches were making the panel's
+ * magnet dots dead buttons for a state no code could produce. That was right
+ * at the time. The note left behind said `kind` stayed as the seam to widen
+ * if a second kind ever earned its place; deleting an endpoint is what earned
+ * it. `ratio` is still not back — nothing creates one.
+ */
+export interface FreeAnchor {
+  readonly kind: 'free'
+  readonly point: Point
+}
+
+/**
+ * Where one end of a connector is, expressed without touching the `figma`
+ * global so it can be resolved and tested here.
+ *
+ * `kind` is on disk in every record written so far, which is why it survived
+ * the period when there was only one of them.
+ */
+export type Anchor = MagnetAnchor | FreeAnchor
 
 /**
  * Whether two boxes occupy exactly the same space.
@@ -281,7 +296,14 @@ export function outwardNormal(side: ResolvedMagnet): Point {
 
 interface ResolvedAnchorPoint {
   readonly point: Point | null
-  /** The side of the box the point landed on — `null` only when there is no box, i.e. the anchored node is gone. */
+  /**
+   * The side of the box the point left by — `null` when there is no box to
+   * leave: a free end, or a magnet whose layer is gone.
+   *
+   * A free end having no side is not a gap. It sits in open space, so there
+   * is no edge for the route to come away perpendicular to, and the router
+   * bends it on whichever axis has more room instead.
+   */
   readonly side: ResolvedMagnet | null
 }
 
@@ -291,6 +313,9 @@ function resolveAnchorDetailed(
   towards: Point | null,
   frame: Rect | null
 ): ResolvedAnchorPoint {
+  if (anchor.kind === 'free') {
+    return { point: anchor.point, side: null }
+  }
   if (rect === null) {
     return { point: null, side: null }
   }
@@ -335,6 +360,10 @@ export function resolveAnchorPair(
   startFrame: Rect | null = null,
   endFrame: Rect | null = null
 ): ResolvedPair {
+  // Seeds are only ever a stand-in for an end that has not been resolved yet,
+  // and a free end resolves to its own point on the first pass — so there is
+  // deliberately no free branch here. Adding one changes no answer, which is
+  // why there is no test for it either.
   const startSeed = startRect === null ? null : centerOf(startRect)
   const endSeed = endRect === null ? null : centerOf(endRect)
 
