@@ -122,29 +122,43 @@ function readReached(node: SceneNode): { start: Point; end: Point } | null {
 }
 
 /**
- * Cuts one end loose where it stands, when the layer it was holding is gone.
+ * Cuts an end loose where it stood, when the layer holding it is gone.
  *
  * The line keeps the place it was already reaching for and carries on being a
- * line. Doing nothing instead would leave it dangling — drawn, but attached
- * to something that no longer exists, and useful only for deleting.
+ * line. Left alone it would dangle instead — drawn, but attached to something
+ * that no longer exists, and useful only for deleting.
  *
- * Answers whether anything was released, so a caller can tell a connector
- * that lost an end from one that merely had a neighbour deleted.
+ * Decided from whether the layer resolved to a box rather than from a
+ * deletion event, and that is the whole point. An event only arrives while
+ * the plugin is open, so hanging this off one made the same deletion behave
+ * two different ways depending on something a person has no reason to
+ * connect it to. Asking "is the layer there" instead is true on every path
+ * that syncs — live, on open, and on an explicit re-sync alike.
+ *
+ * Answers the record to draw with, which is the one passed in when nothing
+ * had to be released.
  */
-export function releaseAnchorsFrom(node: VectorNode, deletedNodeId: string): boolean {
-  const record = getConnectorRecord(node)
-  if (record === null) return false
+function releaseMissingAnchors(
+  node: VectorNode,
+  record: ConnectorRecord,
+  startRect: Rect | null,
+  endRect: Rect | null
+): ConnectorRecord {
+  const missingStart = record.start.kind === 'magnet' && startRect === null
+  const missingEnd = record.end.kind === 'magnet' && endRect === null
+  if (!missingStart && !missingEnd) return record
+  // Nowhere recorded to release to — a line whose end went while the plugin
+  // had never drawn it. Guessing a point would put the end somewhere nobody
+  // chose, so it stays attached to the missing layer and is drawn broken.
   const reached = readReached(node)
-  if (reached === null) return false
-  const loosen = (anchor: ConnectorRecord['start'], at: Point): ConnectorRecord['start'] =>
-    anchor.kind === 'magnet' && anchor.nodeId === deletedNodeId
-      ? { kind: 'free', point: at }
-      : anchor
-  const start = loosen(record.start, reached.start)
-  const end = loosen(record.end, reached.end)
-  if (start === record.start && end === record.end) return false
-  writeConnectorRecord(node, { ...record, start, end })
-  return true
+  if (reached === null) return record
+  const released: ConnectorRecord = {
+    ...record,
+    start: missingStart ? { kind: 'free', point: reached.start } : record.start,
+    end: missingEnd ? { kind: 'free', point: reached.end } : record.end
+  }
+  writeConnectorRecord(node, released)
+  return released
 }
 
 /** Whether the last sync found an end with no layer left to attach to. */
@@ -816,13 +830,16 @@ export async function syncConnector(
   known?: ReadonlyArray<RouteObstacle>,
   labels?: LabelIndex
 ): Promise<void> {
-  const record = getConnectorRecord(node)
-  if (record === null) return
+  const stored = getConnectorRecord(node)
+  if (stored === null) return
 
   const [startBoxes, endBoxes] = await Promise.all([
-    boxesOfAnchor(record.start),
-    boxesOfAnchor(record.end)
+    boxesOfAnchor(stored.start),
+    boxesOfAnchor(stored.end)
   ])
+  // Before anything is resolved, so the rest of this function sees a record
+  // whose ends all point at something that exists.
+  const record = releaseMissingAnchors(node, stored, startBoxes.rect, endBoxes.rect)
   const geometry = resolveConnectorGeometry(
     record,
     startBoxes.rect,

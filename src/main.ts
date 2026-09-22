@@ -59,7 +59,6 @@ import {
   deleteConnector,
   findConnectorsInvolving,
   isBrokenConnector,
-  releaseAnchorsFrom,
   findConnectorsNearBoxes,
   findConnectorsWithEndpointUnder,
   getConnectorRecord,
@@ -687,11 +686,10 @@ async function resyncTouched({
         await updateConnectorStyle(connector, { label: '' })
       }
     }
+    // Cutting a lost end loose is the sync's own business — it decides from
+    // whether the layer is there, not from having seen it go, so it works the
+    // same whether the plugin was open at the time or is only finding out now.
     for (const connector of findConnectorsInvolving(id, allConnectors)) {
-      // Cut loose before re-syncing, not after: released in place the line
-      // still resolves and draws normally, whereas a sync run first would
-      // find an end with no layer and mark the whole connector broken.
-      releaseAnchorsFrom(connector, id)
       await syncConnectorOnce(connector)
     }
     touched = true
